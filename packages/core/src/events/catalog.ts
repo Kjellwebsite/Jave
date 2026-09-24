@@ -99,6 +99,14 @@ export const DOMAIN_EVENTS = {
     external: false,
   },
   'settings.updated': { description: 'Server settings changed.', external: false },
+  'referral.recorded': {
+    description: 'A join was attributed to a referral source.',
+    external: false,
+  },
+  'referral.invalidated': {
+    description: 'A referral was invalidated after staff review.',
+    external: false,
+  },
 } as const satisfies Record<string, DomainEventDefinition>;
 
 export type DomainEventType = keyof typeof DOMAIN_EVENTS;

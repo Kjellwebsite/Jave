@@ -1,0 +1,197 @@
+import type {
+  AchievementCriteriaInput,
+  AchievementRarity,
+  AchievementVisibility,
+} from './criteria';
+
+export interface StarterAchievement {
+  key: string;
+  title: string;
+  summary: string;
+  description: string;
+  category: string;
+  rarity: AchievementRarity;
+  visibility: AchievementVisibility;
+  criteria: AchievementCriteriaInput;
+  requiresVerification: boolean;
+  facetKey: string | null;
+  ordinal: number;
+}
+
+/**
+ * The starter catalog seeded by seedStarterAchievements. Every rule counts a
+ * verified outcome, never activity. Hidden entries stay masked in the
+ * catalog until a member unlocks them.
+ */
+export const STARTER_ACHIEVEMENTS: readonly StarterAchievement[] = [
+  {
+    key: 'first_mission',
+    title: 'First Mission',
+    summary: 'First mission verified.',
+    description: 'One mission taken, delivered and verified. The record starts here.',
+    category: 'missions',
+    rarity: 'standard',
+    visibility: 'public',
+    criteria: { type: 'event_count', event: 'mission.completed', threshold: 1 },
+    requiresVerification: false,
+    facetKey: null,
+    ordinal: 10,
+  },
+  {
+    key: 'first_project',
+    title: 'First Project',
+    summary: 'First project on record.',
+    description: 'An idea with a name and an owner. Now build it.',
+    category: 'projects',
+    rarity: 'standard',
+    visibility: 'public',
+    criteria: { type: 'event_count', event: 'project.created', threshold: 1 },
+    requiresVerification: false,
+    facetKey: null,
+    ordinal: 20,
+  },
+  {
+    key: 'first_verified_contribution',
+    title: 'First Verified Contribution',
+    summary: 'First contribution verified.',
+    description:
+      'Someone else checked your work and signed off. That is the only kind that counts.',
+    category: 'contributions',
+    rarity: 'standard',
+    visibility: 'public',
+    criteria: { type: 'event_count', event: 'contribution.verified', threshold: 1 },
+    requiresVerification: false,
+    facetKey: null,
+    ordinal: 30,
+  },
+  {
+    key: 'first_trial',
+    title: 'First Trial',
+    summary: 'First trial result on record.',
+    description: 'You stepped into a trial and saw it through to a result.',
+    category: 'trials',
+    rarity: 'standard',
+    visibility: 'public',
+    criteria: { type: 'event_count', event: 'trial.result_published', threshold: 1 },
+    requiresVerification: false,
+    facetKey: null,
+    ordinal: 40,
+  },
+  {
+    key: 'trial_pass',
+    title: 'Trial Pass',
+    summary: 'Trial passed.',
+    description: 'Tested under pressure, with a team, against a clock. Passed.',
+    category: 'trials',
+    rarity: 'notable',
+    visibility: 'public',
+    criteria: { type: 'event_count', event: 'trial.passed', threshold: 1 },
+    requiresVerification: false,
+    facetKey: null,
+    ordinal: 50,
+  },
+  {
+    key: 'project_shipped',
+    title: 'Project Shipped',
+    summary: 'First project shipped.',
+    description: 'Out of your head and into the world. Shipped.',
+    category: 'projects',
+    rarity: 'notable',
+    visibility: 'public',
+    criteria: { type: 'event_count', event: 'project.shipped', threshold: 1 },
+    requiresVerification: false,
+    facetKey: 'create.projects',
+    ordinal: 60,
+  },
+  {
+    key: 'researcher',
+    title: 'Researcher',
+    summary: '3 research items verified.',
+    description: 'Three research items reviewed and verified. Sources checked, claims held.',
+    category: 'research',
+    rarity: 'notable',
+    visibility: 'public',
+    criteria: { type: 'event_count', event: 'research.verified', threshold: 3 },
+    requiresVerification: false,
+    facetKey: 'mind.research',
+    ordinal: 70,
+  },
+  {
+    key: 'builder',
+    title: 'Builder',
+    summary: '3 projects shipped.',
+    description: 'Three projects shipped. Starting is common. Finishing is the signal.',
+    category: 'projects',
+    rarity: 'rare',
+    visibility: 'public',
+    criteria: { type: 'event_count', event: 'project.shipped', threshold: 3 },
+    requiresVerification: false,
+    facetKey: 'create.projects',
+    ordinal: 80,
+  },
+  {
+    key: 'operator',
+    title: 'Operator',
+    summary: '10 missions verified.',
+    description: 'Ten missions, every one verified. Reliability is a capability.',
+    category: 'missions',
+    rarity: 'rare',
+    visibility: 'public',
+    criteria: { type: 'event_count', event: 'mission.completed', threshold: 10 },
+    requiresVerification: false,
+    facetKey: 'life.execution',
+    ordinal: 90,
+  },
+  {
+    key: 'team_leader',
+    title: 'Team Leader',
+    summary: 'Led a team to a result.',
+    description: 'Led a team through real work to a real result. Awarded by staff on evidence.',
+    category: 'leadership',
+    rarity: 'notable',
+    visibility: 'public',
+    criteria: { type: 'manual' },
+    requiresVerification: false,
+    facetKey: 'life.execution',
+    ordinal: 100,
+  },
+  {
+    key: 'adversary',
+    title: 'Adversary',
+    summary: 'Played the other side.',
+    description: 'You held an adversarial role through a trial. The trial was sharper for it.',
+    category: 'trials',
+    rarity: 'rare',
+    visibility: 'hidden',
+    criteria: { type: 'event_count', event: 'adversarial.revealed', threshold: 1 },
+    requiresVerification: false,
+    facetKey: null,
+    ordinal: 200,
+  },
+  {
+    key: 'relentless',
+    title: 'Relentless',
+    summary: '25 missions verified.',
+    description: 'Twenty-five verified missions. Most people stop at five.',
+    category: 'missions',
+    rarity: 'exceptional',
+    visibility: 'hidden',
+    criteria: { type: 'event_count', event: 'mission.completed', threshold: 25 },
+    requiresVerification: false,
+    facetKey: 'life.execution',
+    ordinal: 210,
+  },
+  {
+    key: 'keystone',
+    title: 'Keystone',
+    summary: '25 contributions verified.',
+    description: 'Twenty-five verified contributions. Projects lean on you now.',
+    category: 'contributions',
+    rarity: 'exceptional',
+    visibility: 'hidden',
+    criteria: { type: 'event_count', event: 'contribution.verified', threshold: 25 },
+    requiresVerification: false,
+    facetKey: 'create.projects',
+    ordinal: 220,
+  },
+];

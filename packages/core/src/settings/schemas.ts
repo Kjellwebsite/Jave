@@ -50,6 +50,8 @@ export const settingsSchemas = {
     research: optionalSnowflake,
     achievements: optionalSnowflake,
     staffAlerts: optionalSnowflake,
+    /** Mission cards with an ACCEPT button. Falls back to `announcements` when unset. */
+    missions: optionalSnowflake,
   }),
   moderation: z.object({
     automodEnabled: z.boolean().default(true),

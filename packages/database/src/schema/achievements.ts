@@ -12,7 +12,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { createdAt, id, ts, updatedAt } from './_shared';
+import { createdAt, id, snowflake, ts, updatedAt } from './_shared';
 import { capabilityFacets, members, users } from './identity';
 
 export const achievementRarity = pgEnum('achievement_rarity', [
@@ -36,6 +36,8 @@ export const achievementDefinitions = pgTable('achievement_definitions', {
   key: varchar('key', { length: 64 }).primaryKey(),
   title: varchar('title', { length: 64 }).notNull(),
   description: text('description').notNull(),
+  /** One-line unlock summary, e.g. "3 projects shipped." Shown in notifications and announcements. */
+  summary: varchar('summary', { length: 120 }).notNull().default(''),
   category: varchar('category', { length: 32 }).notNull(),
   rarity: achievementRarity('rarity').notNull().default('standard'),
   visibility: achievementVisibility('visibility').notNull().default('public'),
@@ -73,11 +75,17 @@ export const memberAchievements = pgTable(
     note: text('note'),
     revokedAt: ts('revoked_at'),
     revokeReason: text('revoke_reason'),
+    revokedByUserId: uuid('revoked_by_user_id').references(() => users.id),
+    /** Discord announcement (set by the bot through markAchievementAnnounced). */
+    announcementChannelId: snowflake('announcement_channel_id'),
+    announcementMessageId: snowflake('announcement_message_id'),
+    announcedAt: ts('announced_at'),
   },
   (t) => [
     uniqueIndex('member_achievements_active_uq')
       .on(t.memberId, t.achievementKey)
       .where(sql`${t.revokedAt} is null`),
     index('member_achievements_key_idx').on(t.achievementKey),
+    index('member_achievements_member_idx').on(t.memberId, t.awardedAt),
   ],
 );

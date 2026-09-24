@@ -99,6 +99,15 @@ export const DOMAIN_EVENTS = {
     external: false,
   },
   'settings.updated': { description: 'Server settings changed.', external: false },
+
+  'achievement.verified': {
+    description: 'An unverified achievement award was verified by staff.',
+    external: false,
+  },
+  'achievement.revoked': { description: 'An achievement award was revoked.', external: false },
+  'mission.accepted': { description: 'A member accepted a mission assignment.', external: false },
+  'mission.abandoned': { description: 'A member abandoned a mission.', external: false },
+  'mission.closed': { description: 'A mission closed or was archived.', external: false },
 } as const satisfies Record<string, DomainEventDefinition>;
 
 export type DomainEventType = keyof typeof DOMAIN_EVENTS;

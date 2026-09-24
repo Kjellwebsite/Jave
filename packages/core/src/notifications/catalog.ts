@@ -111,6 +111,21 @@ export const NOTIFICATION_TYPES = {
     severity: 'notice',
     channels: ['discord_dm'],
   },
+  'moderation.notice': {
+    label: 'Moderation notice',
+    description: 'A moderation action concerning your account.',
+    severity: 'important',
+    // Inbox only: the Discord DM is sent by the discord.moderation.apply job,
+    // which orders it before a kick or ban.
+    channels: [],
+  },
+  'moderation.sync_failed': {
+    label: 'Moderation sync failed',
+    description: 'A moderation action could not be applied in Discord.',
+    severity: 'important',
+    channels: ['discord_dm'],
+    staff: true,
+  },
 } as const satisfies Record<string, NotificationTypeDefinition>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;

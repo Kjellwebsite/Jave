@@ -32,6 +32,13 @@ export const NOTIFICATION_TYPES = {
     severity: 'important',
     channels: ['discord_dm'],
   },
+  'verification.assigned': {
+    label: 'Verification assigned',
+    description: 'A verification was assigned to you for review.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+    staff: true,
+  },
   'rank.updated': {
     label: 'Rank updated',
     description: 'An evaluator updated one of your verified ranks.',

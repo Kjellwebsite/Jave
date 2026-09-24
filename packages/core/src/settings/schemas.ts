@@ -50,6 +50,8 @@ export const settingsSchemas = {
     research: optionalSnowflake,
     achievements: optionalSnowflake,
     staffAlerts: optionalSnowflake,
+    /** Staff channel for verification queue cards (discord.verification.queue_card). Unset = no cards. */
+    verificationQueue: optionalSnowflake,
   }),
   moderation: z.object({
     automodEnabled: z.boolean().default(true),

@@ -1,0 +1,36 @@
+{
+  "name": "@jave/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --maxWorkers=2",
+    "test:e2e": "next build && playwright test"
+  },
+  "dependencies": {
+    "@jave/brand": "workspace:*",
+    "@jave/config": "workspace:*",
+    "@jave/core": "workspace:*",
+    "@jave/database": "workspace:*",
+    "@jave/ui": "workspace:*",
+    "drizzle-orm": "^0.45.3",
+    "lucide-react": "^1.48.0",
+    "next": "16.3.6",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "postgres": "^3.4.9",
+    "tailwindcss": "^4.3.3"
+  }
+}

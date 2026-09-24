@@ -1,0 +1,481 @@
+/*
+ * JAVELIN design system — Tailwind v4 theme.
+ *
+ * Import after Tailwind:   @import 'tailwindcss';  @import '@jave/ui/styles.css';
+ * and point Tailwind at the component sources:  @source '<path>/packages/ui/src';
+ *
+ * Values mirror src/tokens.ts (verified by tokens.test.ts). Default namespaces
+ * are reset so only JAVELIN tokens exist: no stray purples, no random radii.
+ */
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+@import '@fontsource-variable/orbitron';
+
+@theme {
+  --color-*: initial;
+  --font-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --text-*: initial;
+  --ease-*: initial;
+  --animate-*: initial;
+
+  /* Palette */
+  --color-chrome: #e8eaed;
+  --color-aluminium: #b8bdc3;
+  --color-steel: #737981;
+  --color-graphite: #181a1d;
+  --color-black: #08090a;
+  --color-white: #ffffff;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  /* Neutral ramp */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #f4f5f7;
+  --color-neutral-100: #e8eaed;
+  --color-neutral-200: #d3d6da;
+  --color-neutral-300: #b8bdc3;
+  --color-neutral-400: #979ca3;
+  --color-neutral-500: #737981;
+  --color-neutral-600: #555a61;
+  --color-neutral-700: #3a3e44;
+  --color-neutral-800: #26292d;
+  --color-neutral-900: #181a1d;
+  --color-neutral-950: #0c0d0f;
+  --color-neutral-1000: #08090a;
+
+  /* Semantic — dark (default) */
+  --color-canvas: #08090a;
+  --color-surface: #0e0f11;
+  --color-surface-raised: #141619;
+  --color-surface-sunken: #0a0b0c;
+  --color-surface-overlay: #121417;
+  --color-line-subtle: #16181b;
+  --color-line: #202328;
+  --color-line-strong: #2c3035;
+  --color-fg: #e8eaed;
+  --color-fg-muted: #b8bdc3;
+  --color-fg-subtle: #8b9097;
+  --color-fg-faint: #5e636a;
+  --color-fg-inverse: #08090a;
+  --color-action: #e8eaed;
+  --color-action-hover: #ffffff;
+  --color-action-fg: #08090a;
+  --color-focus: #a9bed3;
+  --color-success: #7dbf9c;
+  --color-warning: #d2b574;
+  --color-danger: #e3868a;
+  --color-danger-solid: #b8444b;
+  --color-info: #9db3cb;
+  --color-accent-trial: #9fb4c7;
+  --color-accent-supporter: #c9b98f;
+
+  /* Type */
+  --font-display: 'Orbitron Variable', 'Geist Variable', ui-sans-serif, sans-serif;
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-display: 2.5rem;
+  --text-display--line-height: 1.1;
+  --text-display--letter-spacing: 0.14em;
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.25;
+  --text-title--letter-spacing: 0.16em;
+  --text-numeral: 1.875rem;
+  --text-numeral--line-height: 1.1;
+  --text-numeral--letter-spacing: 0.04em;
+  --text-heading: 0.9375rem;
+  --text-heading--line-height: 1.45;
+  --text-heading--letter-spacing: -0.005em;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.6;
+  --text-small: 0.8125rem;
+  --text-small--line-height: 1.5;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.45;
+  --text-micro--letter-spacing: 0.08em;
+
+  /* Shape & depth */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 0 rgb(0 0 0 / 0.35);
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 0.35), 0 6px 16px -6px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.35), 0 18px 48px -12px rgb(0 0 0 / 0.55);
+  --shadow-highlight: inset 0 1px 0 rgb(255 255 255 / 0.045);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --default-transition-duration: 160ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+
+  --animate-spin: spin 0.8s linear infinite;
+  --animate-shimmer: shimmer 1.8s cubic-bezier(0.2, 0, 0, 1) infinite;
+  --animate-fade-in: fade-in 160ms cubic-bezier(0.2, 0, 0, 1);
+  --animate-rise-in: rise-in 180ms cubic-bezier(0.2, 0, 0, 1);
+  --animate-slide-in-left: slide-in-left 220ms cubic-bezier(0.2, 0, 0, 1);
+  --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes shimmer {
+    0% {
+      background-position: 100% 0;
+    }
+    100% {
+      background-position: -100% 0;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.99);
+    }
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-100%);
+    }
+  }
+}
+
+/* Semantic — light (opt-in via data-theme="light") */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-canvas: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-surface-raised: #fafafb;
+  --color-surface-sunken: #eef0f2;
+  --color-surface-overlay: #ffffff;
+  --color-line-subtle: #e9ebee;
+  --color-line: #dcdfe3;
+  --color-line-strong: #c5cad0;
+  --color-fg: #0c0d0f;
+  --color-fg-muted: #3a3e44;
+  --color-fg-subtle: #5b6068;
+  --color-fg-faint: #9a9fa6;
+  --color-fg-inverse: #ffffff;
+  --color-action: #181a1d;
+  --color-action-hover: #08090a;
+  --color-action-fg: #ffffff;
+  --color-focus: #3c5e82;
+  --color-success: #2f7552;
+  --color-warning: #85621a;
+  --color-danger: #a63a40;
+  --color-danger-solid: #a63a40;
+  --color-info: #3c5e82;
+  --color-accent-trial: #4e6a85;
+  --color-accent-supporter: #77683f;
+  --shadow-highlight: inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-md: 0 1px 2px rgb(12 13 15 / 0.06), 0 6px 16px -6px rgb(12 13 15 / 0.12);
+  --shadow-lg: 0 2px 6px rgb(12 13 15 / 0.08), 0 18px 48px -12px rgb(12 13 15 / 0.22);
+  --chrome-plate: linear-gradient(180deg, #2a2d32 0%, #111214 100%);
+  --chrome-plate-fg: #ffffff;
+  --chrome-edge: rgb(12 13 15 / 0.08);
+  --grid-line: rgb(12 13 15 / 0.05);
+  --tick-color: rgb(12 13 15 / 0.3);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    /* Brushed chrome: the material of VERIFIED ranks and the primary action. */
+    --chrome-plate: linear-gradient(180deg, #ffffff 0%, #d9dce0 55%, #c3c8ce 100%);
+    --chrome-plate-fg: #08090a;
+    /* Machined edge: a 1px highlight along the top of raised panels. */
+    --chrome-edge: rgb(232 234 237 / 0.1);
+    /* Blueprint grid hairline and registration ticks (identity surfaces only). */
+    --grid-line: rgb(232 234 237 / 0.035);
+    --tick-color: rgb(232 234 237 / 0.28);
+  }
+
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-line);
+  }
+
+  html {
+    background: var(--color-canvas);
+    color: var(--color-fg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    min-height: 100dvh;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-focus) 35%, transparent);
+    color: var(--color-fg);
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ─── Typographic roles ─────────────────────────────────────────────────── */
+
+@utility type-display {
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  line-height: var(--text-display--line-height);
+  letter-spacing: var(--text-display--letter-spacing);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+@utility type-title {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  line-height: var(--text-title--line-height);
+  letter-spacing: var(--text-title--letter-spacing);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+@utility type-numeral {
+  font-family: var(--font-display);
+  font-size: var(--text-numeral);
+  line-height: var(--text-numeral--line-height);
+  letter-spacing: var(--text-numeral--letter-spacing);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility type-heading {
+  font-family: var(--font-sans);
+  font-size: var(--text-heading);
+  line-height: var(--text-heading--line-height);
+  letter-spacing: var(--text-heading--letter-spacing);
+  font-weight: 600;
+}
+
+@utility type-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  line-height: var(--text-micro--line-height);
+  letter-spacing: var(--text-micro--letter-spacing);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+@utility type-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* ─── Materials ─────────────────────────────────────────────────────────── */
+
+/* The element must be positioned (relative/absolute/fixed) for the edge line. */
+@utility machined {
+  box-shadow: var(--shadow-highlight), var(--shadow-sm);
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -1px -1px auto -1px;
+    height: 1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--chrome-edge) 20%,
+      var(--chrome-edge) 80%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+}
+
+@utility chrome-plate {
+  background-image: var(--chrome-plate);
+  color: var(--chrome-plate-fg);
+}
+
+/*
+ * Horizontal scrollers (tab strips, chip rails): the trailing edge fades so a
+ * clipped item reads as "more this way". Pair with end padding of at least the
+ * fade width so the last item is fully visible once scrolled.
+ */
+@utility scroll-fade-x {
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
+}
+
+@utility skeleton-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-surface-raised) 0%,
+    var(--color-line) 50%,
+    var(--color-surface-raised) 100%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+/*
+ * Blueprint grid: 1px hairlines on a 32px module, fading out from the centre.
+ * Reserved for identity surfaces (sign-in, public profile) — never behind data.
+ */
+@utility blueprint-grid {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: center top;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, black 30%, transparent 100%);
+}
+
+/*
+ * Registration ticks: four hairline corner marks, as on a technical drawing.
+ * The element must be positioned. Uses ::after (machined uses ::before).
+ */
+@utility corner-ticks {
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--tick-color), var(--tick-color)) top left / 12px 1px no-repeat,
+      linear-gradient(var(--tick-color), var(--tick-color)) top left / 1px 12px no-repeat,
+      linear-gradient(var(--tick-color), var(--tick-color)) top right / 12px 1px no-repeat,
+      linear-gradient(var(--tick-color), var(--tick-color)) top right / 1px 12px no-repeat,
+      linear-gradient(var(--tick-color), var(--tick-color)) bottom left / 12px 1px no-repeat,
+      linear-gradient(var(--tick-color), var(--tick-color)) bottom left / 1px 12px no-repeat,
+      linear-gradient(var(--tick-color), var(--tick-color)) bottom right / 12px 1px no-repeat,
+      linear-gradient(var(--tick-color), var(--tick-color)) bottom right / 1px 12px no-repeat;
+  }
+}
+
+/* ─── Rank plates: VERIFIED solid · CLAIMED outlined · UNKNOWN dash ─────── */
+
+@utility rank-verified {
+  background-image: var(--chrome-plate);
+  color: var(--chrome-plate-fg);
+  border: 1px solid transparent;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.6),
+    0 1px 0 rgb(0 0 0 / 0.4);
+}
+
+@utility rank-claimed {
+  background: transparent;
+  color: var(--color-fg-subtle);
+  border: 1px dashed var(--color-fg-faint);
+}
+
+@utility rank-unknown {
+  background: transparent;
+  color: var(--color-fg-faint);
+  border: 1px solid var(--color-line);
+}
+
+/* ─── Role treatments (packages/core permissions/roles.ts `treatment`) ──── */
+
+@utility role-holographic {
+  color: #08090a;
+  border: 1px solid rgb(8 9 10 / 0.14);
+  background-image: linear-gradient(
+    118deg,
+    #c9ced4 0%,
+    #f4f5f7 22%,
+    #ffffff 34%,
+    #aeb4bb 52%,
+    #e8eaed 70%,
+    #b8bdc3 88%,
+    #eef0f2 100%
+  );
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8);
+}
+
+@utility role-silver {
+  color: #08090a;
+  border: 1px solid rgb(8 9 10 / 0.14);
+  background-image: linear-gradient(180deg, #ffffff 0%, #cfd3d8 100%);
+}
+
+@utility role-metallic {
+  color: #08090a;
+  border: 1px solid rgb(8 9 10 / 0.14);
+  background-image: linear-gradient(180deg, #c3c8ce 0%, #8e949b 100%);
+}
+
+@utility role-steel {
+  color: #e8eaed;
+  border: 1px solid #3a3e44;
+  background-image: linear-gradient(180deg, #2a2d32 0%, #1c1e22 100%);
+}
+
+@utility role-white {
+  color: var(--color-fg);
+  border: 1px solid var(--color-fg-muted);
+  background: transparent;
+}
+
+@utility role-accent {
+  color: var(--color-accent-trial);
+  border: 1px solid color-mix(in oklab, var(--color-accent-trial) 45%, transparent);
+  background: color-mix(in oklab, var(--color-accent-trial) 8%, transparent);
+}
+
+@utility role-muted {
+  color: var(--color-fg-subtle);
+  border: 1px solid var(--color-line-strong);
+  background: transparent;
+}
+
+@utility role-neutral {
+  color: var(--color-fg-muted);
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-surface-raised);
+}
+
+@utility role-special {
+  color: var(--color-accent-supporter);
+  border: 1px solid color-mix(in oklab, var(--color-accent-supporter) 45%, transparent);
+  background: color-mix(in oklab, var(--color-accent-supporter) 8%, transparent);
+}

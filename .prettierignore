@@ -5,3 +5,4 @@ packages/database/drizzle/
 coverage/
 playwright-report/
 test-results/
+.claude/

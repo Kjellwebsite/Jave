@@ -24,16 +24,16 @@ Discord Activity sharing one relational data layer and one domain layer.
 
 ## Repository layout
 
-| Path | Purpose |
-| --- | --- |
-| `packages/config` | Environment schemas (zod). The only place `process.env` is interpreted. |
-| `packages/database` | Drizzle schema (one file per domain), SQL migrations, reference data, PGlite test harness. |
-| `packages/core` | Domain layer: every business rule, permission check, audit entry and state transition. No Discord or HTTP code. |
-| `packages/ai` | Provider-agnostic AI layer (`AIProvider`, `AIRequest`, `AIResponse`, `AIContext`, `AIUsage`). |
-| `packages/ui` | JAVELIN design system: tokens, fonts, React primitives, emblem. |
-| `apps/bot` | Discord gateway client, interaction router, Discord side-effect job handlers, job worker, health server. |
-| `apps/dashboard` | Next.js operations dashboard, public profiles, OAuth, inbound webhooks, Activity token exchange. |
-| `apps/activity` | Discord Activity (Embedded App SDK) front-end. |
+| Path                | Purpose                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `packages/config`   | Environment schemas (zod). The only place `process.env` is interpreted.                                         |
+| `packages/database` | Drizzle schema (one file per domain), SQL migrations, reference data, PGlite test harness.                      |
+| `packages/core`     | Domain layer: every business rule, permission check, audit entry and state transition. No Discord or HTTP code. |
+| `packages/ai`       | Provider-agnostic AI layer (`AIProvider`, `AIRequest`, `AIResponse`, `AIContext`, `AIUsage`).                   |
+| `packages/ui`       | JAVELIN design system: tokens, fonts, React primitives, emblem.                                                 |
+| `apps/bot`          | Discord gateway client, interaction router, Discord side-effect job handlers, job worker, health server.        |
+| `apps/dashboard`    | Next.js operations dashboard, public profiles, OAuth, inbound webhooks, Activity token exchange.                |
+| `apps/activity`     | Discord Activity (Embedded App SDK) front-end.                                                                  |
 
 The monorepo uses pnpm workspaces. Internal packages export TypeScript source
 (`"exports": { ".": "./src/index.ts" }`); apps compile them (Next.js via
@@ -54,15 +54,15 @@ no global state.
 
 ```ts
 interface ServiceContext {
-  db: Database;        // current executor (a transaction inside withTransaction)
-  rootDb: Database;    // never a transaction — for writes that must survive rollback
-  actor: Actor;        // user | system | integration | anonymous
-  clock: Clock;        // injectable time (ManualClock in tests)
-  logger: Logger;      // pino child logger carrying requestId
+  db: Database; // current executor (a transaction inside withTransaction)
+  rootDb: Database; // never a transaction — for writes that must survive rollback
+  actor: Actor; // user | system | integration | anonymous
+  clock: Clock; // injectable time (ManualClock in tests)
+  logger: Logger; // pino child logger carrying requestId
   requestId: string;
   effects: { jobIds: number[] }; // jobs enqueued during this unit of work
-  cache: TtlCache;     // per-process cache (settings, catalog)
-  config: CoreConfig;  // founder bootstrap ids, public URL, encryption key
+  cache: TtlCache; // per-process cache (settings, catalog)
+  config: CoreConfig; // founder bootstrap ids, public URL, encryption key
 }
 ```
 
@@ -199,3 +199,49 @@ extension points: recorded as `skipped` until a provider exists.
 - Inbound webhooks: signature verification, replay window, idempotency keys.
 
 See `SECURITY.md` for the full threat model.
+
+## Discord bot (`apps/bot`)
+
+```
+discord.js client ──► adapter ──► InteractionRouter ──► feature handler ──► @jave/core services
+       │                                  │                                     │
+       │                                  └─ runJobsNow(ctx.effects.jobIds) ◄────┘ (jobs enqueued in the tx)
+       │
+       └─► gateway events ──► GatewayDispatcher ──► feature listeners (isolated)
+Worker (same process) ──► core job handlers + feature 'discord.*' handlers ──► DiscordGateway
+```
+
+- **InteractionContext** (`interactions/types.ts`) is JAVE's own interaction
+  abstraction. Handlers never touch discord.js objects; `adapter.ts` translates,
+  and tests use `FakeInteraction` which enforces Discord's response rules.
+- **InteractionRouter** applies a uniform envelope to every interaction: home-guild
+  guard → per-user rate limit (12/10 s) → identity sync (`syncDiscordUser` +
+  `resolveUserActor`) → optional `requires` capability gate → optional defer →
+  handler → error rendering (JaveError → safe message; anything else → error ID
+  only) → immediate execution of the Discord jobs the handler enqueued.
+- **Features** (`features/<domain>/index.ts`) are the unit of composition:
+  `{ commands, components, modals, jobHandlers(services), onMessage, onMemberJoin, … }`.
+  `features/index.ts` composes them; `/help` is generated from the live catalog.
+- **Custom IDs** are `namespace:action:args` (≤ 100 chars). They route; they never
+  authorize. Every component handler re-checks the clicking user through core services.
+- **DiscordGateway** (`discord/gateway.ts`) is the only way handlers act on Discord.
+  `DiscordJsGateway` implements it; `FakeDiscordGateway` records calls for tests.
+  Discord failures are normalized to `DiscordActionError` with a `permanent`
+  flag so jobs dead-letter instead of retrying hopeless calls.
+- **Discord side effects are jobs.** Core services enqueue `discord.*` jobs; the
+  bot's worker runs them (immediately after an interaction via `runNow`, otherwise
+  on its poll loop). Handlers are idempotent and report back through core callbacks.
+- **UI kit** (`ui/`): `panel()` embeds (uppercase titles, kicker line, JAVELIN
+  footer), `button/linkButton/row/stringSelect`, `rankMark()` (`S ✓` verified,
+  `A ◇` claimed, `—` unknown), `userText()` which escapes markdown and neutralizes
+  mentions in any user-provided text. All automated messages use
+  `allowedMentions: { parse: [] }`.
+- **Replies** are ephemeral unless the content is meant for the channel; staff-only
+  data is never posted publicly.
+- **Health**: `/healthz` (liveness) and `/readyz` (Discord, database, queue,
+  webhooks) on `BOT_HEALTH_PORT`; `/jave status` renders the same report.
+- **Build**: esbuild bundles the bot and all dependencies into `dist/main.mjs`;
+  the container needs only Node.js.
+- **Testing**: `createBotHarness()` = TestKit + FakeDiscordGateway + the real app
+  composition. `bot.run({ kind, name, user, options })` drives the router exactly
+  as Discord would.

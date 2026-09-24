@@ -1,0 +1,26 @@
+{
+  "name": "@jave/bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "start": "node dist/main.mjs",
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "commands:deploy": "tsx --env-file-if-exists=../../.env src/scripts/deploy-commands.ts",
+    "commands:print": "tsx src/scripts/print-commands.ts"
+  },
+  "dependencies": {
+    "@jave/ai": "workspace:*",
+    "@jave/config": "workspace:*",
+    "@jave/core": "workspace:*",
+    "@jave/database": "workspace:*",
+    "discord.js": "^14.27.0",
+    "drizzle-orm": "^0.45.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

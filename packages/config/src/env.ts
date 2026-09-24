@@ -55,6 +55,8 @@ export const botEnvSchema = baseEnvSchema
     BOT_HEALTH_PORT: z.coerce.number().int().min(1).max(65535).default(8080),
     JAVE_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
     JAVE_WORKER_POLL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
+    /** Dashboard base URL, used for links in Discord messages. */
+    JAVE_PUBLIC_URL: z.string().url().optional(),
   });
 
 export const aiEnvSchema = z.object({

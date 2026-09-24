@@ -27,3 +27,6 @@ blob-report/
 .DS_Store
 .vercel
 .turbo
+
+# agent worktrees / local tooling
+.claude/

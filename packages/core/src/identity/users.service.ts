@@ -267,13 +267,14 @@ export async function recordGuildJoin(
       .update(members)
       .set({ guildStatus: 'present', joinedGuildAt: now, leftGuildAt: null })
       .where(eq(members.id, member.id));
-    await enqueueJob(
-      ctx,
-      DISCORD_ROLE_SYNC_JOB,
-      { memberId: member.id },
-      { dedupeKey: `roles-sync:${member.id}` },
-    );
   }
+  // New and returning members get their mapped Discord roles applied.
+  await enqueueJob(
+    ctx,
+    DISCORD_ROLE_SYNC_JOB,
+    { memberId: member.id },
+    { dedupeKey: `roles-sync:${member.id}` },
+  );
   const accountAgeDays = Math.floor(
     (now.getTime() - snowflakeToDate(profile.discordId).getTime()) / 86_400_000,
   );

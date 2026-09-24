@@ -103,7 +103,10 @@ describe('identity', () => {
 
     it('quarantined members lose all capabilities', async () => {
       const mod = await kit.member({ roles: ['moderator'] });
-      await kit.db.update(members).set({ standing: 'quarantined' }).where(eq(members.id, mod.memberId!));
+      await kit.db
+        .update(members)
+        .set({ standing: 'quarantined' })
+        .where(eq(members.id, mod.memberId!));
       const again = await resolveUserActor(kit.system, mod.userId);
       expect(again.capabilities.size).toBe(0);
     });

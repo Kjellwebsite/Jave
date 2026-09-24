@@ -39,6 +39,14 @@ importers:
         specifier: ^5.0.1
         version: 5.0.1(@types/node@22.20.4)(vite@8.3.0(@types/node@22.20.4)(esbuild@0.28.2)(tsx@4.23.15))
 
+  packages/ai:
+    dependencies:
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+
+  packages/brand: {}
+
   packages/config:
     dependencies:
       zod:
@@ -47,6 +55,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@jave/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@jave/config':
         specifier: workspace:*
         version: link:../config

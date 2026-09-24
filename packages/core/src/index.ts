@@ -32,3 +32,24 @@ export * from './observability/health';
 
 // Domain modules
 export * from './identity';
+
+// Domain modules are namespaced to keep service names unambiguous:
+//   import { trials } from '@jave/core'; trials.startTrial(ctx, …)
+export * as applications from './applications';
+export * as verification from './verification';
+export * as trials from './trials';
+export * as adversarial from './adversarial';
+export * as tickets from './tickets';
+export * as moderation from './moderation';
+export * as invites from './invites';
+export * as analytics from './analytics';
+export * as achievements from './achievements';
+export * as missions from './missions';
+export * as projects from './projects';
+export * as integrations from './integrations';
+export * as calendar from './calendar';
+export * as games from './games';
+export * as ai from './ai';
+export * as research from './research';
+
+export { coreJobHandlers, coreRecurringJobs, coreSubscribers } from './registry';

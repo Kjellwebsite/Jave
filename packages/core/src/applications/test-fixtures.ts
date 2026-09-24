@@ -11,6 +11,12 @@ import type { UpdateDraftInput } from './schemas';
 
 /** Test-only helpers for the applications module. */
 
+/**
+ * PGlite-backed suites are slow on a loaded shared machine. Generous limits
+ * keep them from timing out there; no assertion depends on them.
+ */
+export const PGLITE_SUITE_TIMEOUTS = { testTimeout: 180_000, hookTimeout: 180_000 } as const;
+
 export const COMPLETE_DRAFT = {
   domainKey: 'create',
   motivation: 'I want to ship real products with people who hold a higher bar than I do.',

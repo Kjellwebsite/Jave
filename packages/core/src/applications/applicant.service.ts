@@ -18,7 +18,7 @@ import { notify, notifyCapabilityHolders } from '../notifications/notifications.
 import { systemActor } from '../permissions/actor';
 import { requireMember } from '../permissions/authorize';
 import { getSettings } from '../settings/settings.service';
-import { applicantCopy, formatDay, reviewerCopy } from './copy';
+import { applicantCopy, formatUtc, reviewerCopy } from './copy';
 import {
   assertEligibleToApply,
   requireApplicant,
@@ -32,18 +32,19 @@ import {
   applicationNumber,
   findLatestApplication,
   findOpenApplication,
-  lastRejectionAt,
+  loadClosures,
   loadStatusHistory,
   transitionApplication,
 } from './repository';
 import {
-  cooldownEndsAt,
   isEligibleToApply,
   missingRequirements,
+  reapplyAvailableAt,
   REQUIREMENT_MESSAGES,
   shouldGrantApplicant,
 } from './rules';
 import { type UpdateDraftInput, updateDraftSchema, withdrawSchema } from './schemas';
+import { isOpenStatus } from './state-machine';
 import { type ApplicantApplicationView, toApplicantView } from './views';
 
 /** Applicant self-service. Every function acts only on the caller's own application. */
@@ -156,9 +157,10 @@ export async function updateDraft(
 }
 
 /**
- * Submit the caller's draft: applications must be open, the rejection
- * cooldown must have passed, and every requirement must be met. Grants
- * APPLICANT to plain members, notifies reviewers and posts the review card.
+ * Submit the caller's draft: applications must be open, no reapply cooldown
+ * may be running (after a rejection, or after withdrawing a submitted
+ * application), and every requirement must be met. Grants APPLICANT to plain
+ * members, notifies reviewers and posts the review card.
  */
 export async function submitApplication(ctx: ServiceContext): Promise<ApplicantApplicationView> {
   const actor = requireApplicant(ctx);
@@ -166,20 +168,18 @@ export async function submitApplication(ctx: ServiceContext): Promise<ApplicantA
   const settings = await getSettings(ctx, 'applications');
   if (!settings.open) throw new DisabledError('Applications');
   const now = ctx.clock.now();
-  const cooldown = cooldownEndsAt(
-    await lastRejectionAt(ctx, actor.userId),
-    settings.cooldownDaysAfterRejection,
-    now,
-  );
-  if (cooldown) {
-    throw new InvalidStateError(`You can apply again from ${formatDay(cooldown)}.`, {
-      availableAt: cooldown.toISOString(),
-    });
-  }
   const catalog = await loadCatalog(ctx);
 
   return withTransaction(ctx, async (tx) => {
+    // Read after locking the draft: it is this person's only open
+    // application, so no closure can be added while the check runs.
     const app = await loadOwnDraft(tx, actor.userId);
+    const availableAt = reapplyAvailableAt(await loadClosures(tx, actor.userId), settings, now);
+    if (availableAt) {
+      throw new InvalidStateError(`You can apply again from ${formatUtc(availableAt)}.`, {
+        availableAt: availableAt.toISOString(),
+      });
+    }
     const missing = missingRequirements(app);
     const [first] = missing;
     if (first) {
@@ -246,7 +246,10 @@ export async function submitApplication(ctx: ServiceContext): Promise<ApplicantA
   });
 }
 
-/** Withdraw the caller's open application from any open state. */
+/**
+ * Withdraw the caller's open application from any open state. Withdrawing a
+ * submitted application starts a reapply cooldown (see closureCooldownMs).
+ */
 export async function withdrawApplication(
   ctx: ServiceContext,
   input: { reason?: string } = {},
@@ -294,8 +297,14 @@ export interface MyApplicationStatus {
   applicationsOpen: boolean;
   /** False when the caller already holds TRIAL, VERIFIED or a staff role. */
   eligible: boolean;
-  /** Set while a rejection cooldown blocks a new submission. */
+  /** Set while a cooldown (after a rejection or a withdrawal) blocks a new submission. */
   cooldownEndsAt: Date | null;
+  /**
+   * When the person could submit again if they withdrew the open application
+   * now; null when withdrawing starts no cooldown or nothing is open. Show it
+   * before a withdrawal is confirmed.
+   */
+  withdrawalCooldownEndsAt: Date | null;
 }
 
 /** Applicant-safe status: never decision reasons, reviews or reviewer identities. */
@@ -303,15 +312,20 @@ export async function getMyApplication(ctx: ServiceContext): Promise<MyApplicati
   const actor = requireMember(ctx);
   const settings = await getSettings(ctx, 'applications');
   const latest = await findLatestApplication(ctx, actor.userId);
-  const lastRejected = await lastRejectionAt(ctx, actor.userId);
+  const closures = await loadClosures(ctx, actor.userId);
+  const now = ctx.clock.now();
+  const open = latest && isOpenStatus(latest.status) ? latest : null;
   return {
     application: latest ? await applicantView(ctx, latest) : null,
     applicationsOpen: settings.open,
     eligible: isEligibleToApply(actor.roles),
-    cooldownEndsAt: cooldownEndsAt(
-      lastRejected,
-      settings.cooldownDaysAfterRejection,
-      ctx.clock.now(),
-    ),
+    cooldownEndsAt: reapplyAvailableAt(closures, settings, now),
+    withdrawalCooldownEndsAt: open
+      ? reapplyAvailableAt(
+          [...closures, { outcome: 'withdrawn', from: open.status, at: now }],
+          settings,
+          now,
+        )
+      : null,
   };
 }

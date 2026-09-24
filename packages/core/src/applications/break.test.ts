@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { applications, auditLogs, jobs, members } from '@jave/database';
+import { applications, auditLogs, jobs, members, notifications } from '@jave/database';
 import { grantRoleUnchecked } from '../identity/roles.service';
 import { resolveUserActor } from '../identity/users.service';
 import { MINUTE } from '../kernel/clock';
@@ -23,11 +23,20 @@ import {
   withdrawApplication,
 } from './applicant.service';
 import { decideApplication } from './decision.service';
+import { APPLICATION_REVIEW_CARD_JOB } from './discord-jobs';
 import { APPLICATION_INTERVIEW_REMINDER_JOB } from './keys';
 import { getReviewCard } from './review-card.service';
 import { reviewApplication, scheduleInterview, startReview } from './review.service';
 import { getApplication, listApplications } from './staff-queries.service';
-import { createReferralCode, draftingApplicant, submittedApplicant } from './test-fixtures';
+import {
+  COMPLETE_DRAFT,
+  createReferralCode,
+  draftingApplicant,
+  PGLITE_SUITE_TIMEOUTS,
+  submittedApplicant,
+} from './test-fixtures';
+
+vi.setConfig(PGLITE_SUITE_TIMEOUTS);
 
 describe('applications: BREAK', () => {
   let kit: TestKit;
@@ -175,6 +184,27 @@ describe('applications: BREAK', () => {
           interviewAt: new Date(kit.clock.now().getTime() + 60 * MINUTE),
         }),
       ).rejects.toThrow(ForbiddenError);
+    });
+
+    it('BREAK: a promoted applicant never sees their own application in the staff list', async () => {
+      const core = await kit.member({ roles: ['core'] });
+      const { staff, applicationId } = await applicantPromotedMidFlight('operations');
+      const other = await submittedApplicant(kit);
+      await startReview(kit.as(core), { applicationId });
+      const [own] = await kit.db
+        .select({ number: applications.number })
+        .from(applications)
+        .where(eq(applications.id, applicationId));
+
+      const list = await listApplications(kit.as(staff));
+      expect(list.items.map((item) => item.id)).toEqual([other.applicationId]);
+      expect(list.total).toBe(1);
+      const byNumber = await listApplications(kit.as(staff), { number: own!.number });
+      expect(byNumber).toMatchObject({ items: [], total: 0 });
+      const assigned = await listApplications(kit.as(staff), { status: 'review' });
+      expect(assigned.items).toEqual([]);
+      // Other staff still see it.
+      expect((await listApplications(kit.as(core))).total).toBe(2);
     });
 
     it('BREAK: the applicant cannot be assigned as their own reviewer', async () => {
@@ -343,6 +373,42 @@ describe('applications: BREAK', () => {
       expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
       const failure = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
       expect(failure.reason).toBeInstanceOf(InvalidStateError);
+    });
+
+    it('BREAK: a submit/withdraw loop cannot spam reviewers or the review channel', async () => {
+      const reviewers = [
+        await kit.member({ roles: ['operations'] }),
+        await kit.member({ roles: ['core'] }),
+      ];
+      const { applicant } = await submittedApplicant(kit);
+      for (let round = 0; round < 3; round++) {
+        const me = await resolveUserActor(kit.system, applicant.userId);
+        await withdrawApplication(kit.as(me));
+        const again = await resolveUserActor(kit.system, applicant.userId);
+        await getOrCreateDraft(kit.as(again));
+        await updateDraft(kit.as(again), COMPLETE_DRAFT);
+        await expect(submitApplication(kit.as(again))).rejects.toThrow(/apply again from/);
+        kit.clock.advance(MINUTE);
+      }
+      for (const reviewer of reviewers) {
+        const received = await kit.db
+          .select()
+          .from(notifications)
+          .where(
+            and(
+              eq(notifications.recipientUserId, reviewer.userId),
+              eq(notifications.title, 'APPLICATION RECEIVED'),
+            ),
+          );
+        expect(received).toHaveLength(1);
+      }
+      const cards = await kit.db
+        .select({ payload: jobs.payload })
+        .from(jobs)
+        .where(eq(jobs.type, APPLICATION_REVIEW_CARD_JOB));
+      // One card: posted on submission, updated on the single withdrawal.
+      expect(new Set(cards.map((card) => card.payload.applicationId)).size).toBe(1);
+      expect(cards.map((card) => card.payload.revision).sort()).toEqual([1, 2]);
     });
 
     it('BREAK: competing decisions — exactly one wins and roles stay consistent', async () => {

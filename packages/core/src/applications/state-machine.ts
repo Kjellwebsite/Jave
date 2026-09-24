@@ -79,3 +79,18 @@ const STAFF_ACTIONS: Readonly<Record<ApplicationStatus, readonly StaffAction[]>>
 export function staffActionsFor(status: ApplicationStatus): readonly StaffAction[] {
   return STAFF_ACTIONS[status];
 }
+
+const DECISION_ACTIONS: readonly StaffAction[] = ['accept', 'reject'];
+
+/**
+ * Buttons a review card shows: the state's actions, minus accept/reject
+ * until enough counted reviews exist for a decision. A button that can only
+ * fail is not offered.
+ */
+export function reviewCardActions(
+  status: ApplicationStatus,
+  decisionReady: boolean,
+): readonly StaffAction[] {
+  const actions = staffActionsFor(status);
+  return decisionReady ? actions : actions.filter((action) => !DECISION_ACTIONS.includes(action));
+}

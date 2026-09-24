@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, ne } from 'drizzle-orm';
 import { applicationStatusChanges, jobs, notifications } from '@jave/database';
 import { resolveUserActor } from '../identity/users.service';
@@ -15,7 +15,9 @@ import { decideApplication } from './decision.service';
 import { APPLICATION_REVIEW_CARD_JOB } from './discord-jobs';
 import { reviewApplication, scheduleInterview, startReview } from './review.service';
 import { getApplication } from './staff-queries.service';
-import { COMPLETE_DRAFT } from './test-fixtures';
+import { COMPLETE_DRAFT, PGLITE_SUITE_TIMEOUTS } from './test-fixtures';
+
+vi.setConfig(PGLITE_SUITE_TIMEOUTS);
 
 describe('applications: end-to-end lifecycle', () => {
   let kit: TestKit;

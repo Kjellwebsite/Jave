@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { applicationStatus } from '@jave/database';
-import { DAY } from '../kernel/clock';
+import { DAY, HOUR } from '../kernel/clock';
 import { InvalidStateError, ValidationError } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { APPLICATION_FORM_FIELDS, DISCORD_MODAL_LIMITS } from './form';
 import {
   acceptanceGrant,
+  closureCooldownMs,
   cooldownEndsAt,
   isEligibleToApply,
   missingRequirements,
+  reapplyAvailableAt,
   shouldGrantApplicant,
   tallyReviews,
 } from './rules';
@@ -30,6 +32,7 @@ import {
   isOpenStatus,
   isTerminalStatus,
   OPEN_STATUSES,
+  reviewCardActions,
   staffActionsFor,
 } from './state-machine';
 
@@ -92,6 +95,19 @@ describe('application state machine', () => {
         canTransition(status, 'interview') || status === 'interview',
       );
     }
+  });
+
+  it('review cards offer accept/reject only when a decision can succeed', () => {
+    for (const status of ALL_STATUSES) {
+      expect(reviewCardActions(status, true)).toEqual(staffActionsFor(status));
+      const early = reviewCardActions(status, false);
+      expect(early).not.toContain('accept');
+      expect(early).not.toContain('reject');
+      expect(early).toEqual(
+        staffActionsFor(status).filter((action) => action !== 'accept' && action !== 'reject'),
+      );
+    }
+    expect(reviewCardActions('submitted', false)).toEqual(['start_review', 'review']);
   });
 
   it('staff can filter every status except DRAFT', () => {
@@ -167,6 +183,55 @@ describe('application rules', () => {
     expect(cooldownEndsAt(rejectedAt, 30, exactly)).toBeNull();
     expect(cooldownEndsAt(rejectedAt, 0, justBefore)).toBeNull();
     expect(cooldownEndsAt(null, 30, justBefore)).toBeNull();
+  });
+
+  describe('reapply cooldowns', () => {
+    const policy = { cooldownDaysAfterRejection: 30, withdrawalCooldownHours: 24 };
+    const at = new Date('2026-01-01T00:00:00Z');
+
+    it('rejections serve the rejection cooldown', () => {
+      expect(closureCooldownMs({ outcome: 'rejected', at }, policy)).toBe(30 * DAY);
+    });
+
+    it('a discarded draft never blocks', () => {
+      expect(closureCooldownMs({ outcome: 'withdrawn', from: 'draft', at }, policy)).toBe(0);
+    });
+
+    it('a withdrawal before review serves the withdrawal cooldown only', () => {
+      expect(closureCooldownMs({ outcome: 'withdrawn', from: 'submitted', at }, policy)).toBe(
+        24 * HOUR,
+      );
+    });
+
+    it('a withdrawal once staff engaged also serves the rejection cooldown', () => {
+      for (const from of ['review', 'interview'] as const) {
+        expect(closureCooldownMs({ outcome: 'withdrawn', from, at }, policy)).toBe(30 * DAY);
+        expect(
+          closureCooldownMs(
+            { outcome: 'withdrawn', from, at },
+            { cooldownDaysAfterRejection: 0, withdrawalCooldownHours: 24 },
+          ),
+        ).toBe(24 * HOUR);
+      }
+    });
+
+    it('takes the latest end across closures, with an exact boundary', () => {
+      const closures = [
+        { outcome: 'rejected' as const, at },
+        {
+          outcome: 'withdrawn' as const,
+          from: 'submitted' as const,
+          at: new Date(at.getTime() + 30 * DAY),
+        },
+      ];
+      const ends = at.getTime() + 31 * DAY;
+      expect(reapplyAvailableAt(closures, policy, new Date(ends - 1))?.getTime()).toBe(ends);
+      expect(reapplyAvailableAt(closures, policy, new Date(ends))).toBeNull();
+      expect(reapplyAvailableAt([], policy, at)).toBeNull();
+      expect(
+        reapplyAvailableAt([{ outcome: 'withdrawn', from: 'draft', at }], policy, at),
+      ).toBeNull();
+    });
   });
 
   it('tallies reviews; abstentions do not count toward the minimum', () => {

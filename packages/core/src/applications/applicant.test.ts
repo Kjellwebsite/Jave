@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import {
   applications,
@@ -10,8 +10,9 @@ import {
   referralCodes,
 } from '@jave/database';
 import { resolveUserActor } from '../identity/users.service';
-import { DAY } from '../kernel/clock';
+import { DAY, HOUR, MINUTE } from '../kernel/clock';
 import { DisabledError, InvalidStateError, NotFoundError, ValidationError } from '../kernel/errors';
+import type { UserActor } from '../permissions/actor';
 import { createTestKit, type TestKit } from '../testing';
 import {
   getMyApplication,
@@ -22,14 +23,17 @@ import {
 } from './applicant.service';
 import { decideApplication } from './decision.service';
 import { APPLICATION_REVIEW_CARD_JOB } from './discord-jobs';
-import { reviewApplication } from './review.service';
+import { reviewApplication, startReview } from './review.service';
 import {
   COMPLETE_DRAFT,
   createReferralCode,
   draftingApplicant,
+  PGLITE_SUITE_TIMEOUTS,
   setApplicationSettings,
   submittedApplicant,
 } from './test-fixtures';
+
+vi.setConfig(PGLITE_SUITE_TIMEOUTS);
 
 describe('applications: applicant self-service', () => {
   let kit: TestKit;
@@ -289,6 +293,59 @@ describe('applications: applicant self-service', () => {
       const applicant = await kit.member();
       await expect(withdrawApplication(kit.as(applicant))).rejects.toThrow(NotFoundError);
     });
+
+    /** Withdraw, then prepare a complete new draft; returns the refreshed actor. */
+    async function withdrawAndRedraft(applicant: UserActor): Promise<UserActor> {
+      await withdrawApplication(kit.as(applicant));
+      const again = await resolveUserActor(kit.system, applicant.userId);
+      await getOrCreateDraft(kit.as(again));
+      await updateDraft(kit.as(again), COMPLETE_DRAFT);
+      return again;
+    }
+
+    it('a withdrawal after submission blocks a new submission for withdrawalCooldownHours', async () => {
+      await setApplicationSettings(kit, { withdrawalCooldownHours: 6 });
+      const { applicant } = await submittedApplicant(kit);
+      const before = await getMyApplication(kit.as(applicant));
+      expect(before.withdrawalCooldownEndsAt?.toISOString()).toBe('2026-03-01T18:00:00.000Z');
+
+      const again = await withdrawAndRedraft(applicant);
+      const status = await getMyApplication(kit.as(again));
+      expect(status.cooldownEndsAt?.toISOString()).toBe('2026-03-01T18:00:00.000Z');
+      // Withdrawing the new draft would add nothing.
+      expect(status.withdrawalCooldownEndsAt?.toISOString()).toBe('2026-03-01T18:00:00.000Z');
+      kit.clock.advance(6 * HOUR - MINUTE);
+      await expect(submitApplication(kit.as(again))).rejects.toThrow(
+        /apply again from 2026-03-01 18:00 UTC/,
+      );
+      kit.clock.advance(MINUTE);
+      expect((await submitApplication(kit.as(again))).status).toBe('submitted');
+    });
+
+    it('BREAK: withdrawing once review started cannot dodge the rejection cooldown', async () => {
+      const ops = await kit.member({ roles: ['operations'] });
+      const { applicant, applicationId } = await submittedApplicant(kit);
+      await startReview(kit.as(ops), { applicationId });
+      // The applicant can see the consequence before confirming.
+      const preview = await getMyApplication(kit.as(applicant));
+      expect(preview.withdrawalCooldownEndsAt?.toISOString()).toBe('2026-03-31T12:00:00.000Z');
+
+      const again = await withdrawAndRedraft(applicant);
+      kit.clock.advance(30 * DAY - MINUTE);
+      await expect(submitApplication(kit.as(again))).rejects.toThrow(
+        /apply again from 2026-03-31 12:00 UTC/,
+      );
+      kit.clock.advance(MINUTE);
+      expect((await submitApplication(kit.as(again))).status).toBe('submitted');
+    });
+
+    it('discarding a draft starts no cooldown', async () => {
+      const { applicant } = await draftingApplicant(kit);
+      expect((await getMyApplication(kit.as(applicant))).withdrawalCooldownEndsAt).toBeNull();
+      const again = await withdrawAndRedraft(applicant);
+      expect((await getMyApplication(kit.as(again))).cooldownEndsAt).toBeNull();
+      expect((await submitApplication(kit.as(again))).status).toBe('submitted');
+    });
   });
 
   describe('my application', () => {
@@ -299,6 +356,7 @@ describe('applications: applicant self-service', () => {
         applicationsOpen: true,
         eligible: true,
         cooldownEndsAt: null,
+        withdrawalCooldownEndsAt: null,
       });
       const trial = await kit.member({ roles: ['trial'] });
       expect((await getMyApplication(kit.as(trial))).eligible).toBe(false);

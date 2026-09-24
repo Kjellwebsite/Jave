@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { applicationReviews, auditLogs, domainEvents, jobs, notifications } from '@jave/database';
 import { resolveUserActor } from '../identity/users.service';
@@ -14,9 +14,12 @@ import {
   COMPLETE_DRAFT,
   createReferralCode,
   draftingApplicant,
+  PGLITE_SUITE_TIMEOUTS,
   setApplicationSettings,
   submittedApplicant,
 } from './test-fixtures';
+
+vi.setConfig(PGLITE_SUITE_TIMEOUTS);
 
 describe('applications: staff workflow', () => {
   let kit: TestKit;
@@ -197,6 +200,43 @@ describe('applications: staff workflow', () => {
       expect(inbox.map((n) => n.title)).toContain('INTERVIEW MOVED');
       const mine = await getMyApplication(kit.as(applicant));
       expect(mine.application?.interviewAt?.toISOString()).toBe(later.toISOString());
+    });
+
+    it('tells the applicant about every move, even back to an earlier time, and ignores a repeat', async () => {
+      const core = await kit.member({ roles: ['core'] });
+      const { applicant, applicationId } = await submittedApplicant(kit);
+      await startReview(kit.as(core), { applicationId });
+      const monday = new Date(kit.clock.now().getTime() + 48 * HOUR);
+      const tuesday = new Date(monday.getTime() + 24 * HOUR);
+      await scheduleInterview(kit.as(core), { applicationId, interviewAt: monday });
+      // A double click re-sends the time on record: nothing changes.
+      await scheduleInterview(kit.as(core), { applicationId, interviewAt: monday });
+      await scheduleInterview(kit.as(core), { applicationId, interviewAt: tuesday });
+      await scheduleInterview(kit.as(core), { applicationId, interviewAt: monday });
+
+      const inbox = await kit.db
+        .select({ title: notifications.title, body: notifications.body })
+        .from(notifications)
+        .where(eq(notifications.recipientUserId, applicant.userId));
+      const interviewNotices = inbox
+        .filter((n) => n.title.startsWith('INTERVIEW'))
+        .map((n) => `${n.title} ${n.body}`)
+        .sort();
+      expect(interviewNotices).toEqual([
+        'INTERVIEW MOVED APP-0001 — interview at 2026-03-03 12:00 UTC.',
+        'INTERVIEW MOVED APP-0001 — interview at 2026-03-04 12:00 UTC.',
+        'INTERVIEW SCHEDULED APP-0001 — interview at 2026-03-03 12:00 UTC.',
+      ]);
+      const events = await kit.db
+        .select()
+        .from(domainEvents)
+        .where(eq(domainEvents.type, 'application.interview_scheduled'));
+      expect(events).toHaveLength(3);
+      const reminders = await kit.db
+        .select({ payload: jobs.payload })
+        .from(jobs)
+        .where(and(eq(jobs.type, APPLICATION_INTERVIEW_REMINDER_JOB), eq(jobs.status, 'pending')));
+      expect(reminders.map((r) => r.payload.interviewAt)).toEqual([monday.toISOString()]);
     });
 
     it('requires review first and a time inside the window', async () => {

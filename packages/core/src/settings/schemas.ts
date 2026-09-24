@@ -106,8 +106,17 @@ export const settingsSchemas = {
     cooldownDaysAfterRejection: z.number().int().min(0).max(365).default(30),
     /** Drafts untouched this long are withdrawn automatically. */
     draftExpiryDays: z.number().int().min(1).max(365).default(30),
-    /** Reviewers are reminded once when a submission waits this long unclaimed. */
+    /**
+     * Reviewers are reminded once when a submission waits this long unclaimed,
+     * and once per assignment that goes this long without a counted review.
+     */
     reviewReminderHours: z.number().int().min(1).max(720).default(72),
+    /**
+     * Hours a withdrawal after submission blocks a new submission. A withdrawal
+     * after review started also serves cooldownDaysAfterRejection. Floor of 1h
+     * so submit/withdraw cannot be looped to spam reviewers.
+     */
+    withdrawalCooldownHours: z.number().int().min(1).max(720).default(24),
   }),
   trials: z.object({
     enabled: z.boolean().default(true),

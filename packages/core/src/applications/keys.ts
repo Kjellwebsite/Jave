@@ -24,3 +24,15 @@ export function currentInterviewReminderKey(app: {
 export function reviewCardKey(applicationId: string, revision: number): string {
   return `application:${applicationId}:review-card:${revision}`;
 }
+
+/**
+ * A re-render after a render lost its lease. Unique per lost render, so it
+ * can never be absorbed by a render job that is already past its edit.
+ */
+export function reviewCardRepairKey(
+  applicationId: string,
+  revision: number,
+  lostRenderId: string,
+): string {
+  return `${reviewCardKey(applicationId, revision)}:repair:${lostRenderId}`;
+}

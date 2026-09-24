@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, isNotNull, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, ne, type SQL, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { applicationReviews, applications, referralCodes } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
@@ -20,13 +20,20 @@ import { type ApplicationListItem, type StaffApplicationView, toStaffView } from
 
 /** Staff read paths. Drafts are never visible here: only submitted applications exist to staff. */
 
+/**
+ * Submitted applications for staff. The caller's own applications are never
+ * listed: staff data about them (assignee, review count) stays hidden from
+ * the applicant even after a promotion to staff.
+ */
 export async function listApplications(
   ctx: ServiceContext,
   input: z.input<typeof listApplicationsSchema> = {},
 ): Promise<Page<ApplicationListItem>> {
   await authorize(ctx, 'canViewApplications', { type: 'application' });
   const q = parseInput(listApplicationsSchema, input);
+  const me = actorUserId(ctx.actor);
   const filters: SQL[] = [isNotNull(applications.submittedAt)];
+  if (me) filters.push(ne(applications.userId, me));
   if (q.status !== undefined) {
     const statuses = Array.isArray(q.status) ? q.status : [q.status];
     filters.push(inArray(applications.status, statuses));
@@ -34,7 +41,6 @@ export async function listApplications(
   if (q.domainKey) filters.push(eq(applications.domainKey, q.domainKey));
   if (q.number !== undefined) filters.push(eq(applications.number, q.number));
   if (q.assignedToMe) {
-    const me = actorUserId(ctx.actor);
     // Non-user actors have no assignments.
     filters.push(me ? eq(applications.assignedReviewerUserId, me) : sql`false`);
   }

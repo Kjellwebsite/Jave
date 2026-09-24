@@ -1,7 +1,7 @@
 import { DAY, HOUR } from '../kernel/clock';
 import { isStaffRole, type OrgRole, PROGRESSION_ROLES, roleRank } from '../permissions/roles';
 import { MIN_LONG_ANSWER_CHARS } from './schemas';
-import type { ApplicationRecommendation } from './state-machine';
+import type { ApplicationRecommendation, ApplicationStatus } from './state-machine';
 
 /** Pure policy for the application workflow. No I/O. */
 
@@ -81,6 +81,52 @@ export function cooldownEndsAt(
   if (!lastRejectedAt || cooldownDays <= 0) return null;
   const ends = new Date(lastRejectedAt.getTime() + cooldownDays * DAY);
   return ends.getTime() > now.getTime() ? ends : null;
+}
+
+/** Settings that decide when someone may submit again. */
+export interface ReapplyPolicy {
+  cooldownDaysAfterRejection: number;
+  withdrawalCooldownHours: number;
+}
+
+/** A submitted application that closed without acceptance. */
+export type ApplicationClosure =
+  { outcome: 'rejected'; at: Date } | { outcome: 'withdrawn'; from: ApplicationStatus; at: Date };
+
+/** States in which staff have already engaged with an application. */
+const STAFF_ENGAGED_STATUSES: readonly ApplicationStatus[] = ['review', 'interview'];
+
+/**
+ * How long a closure blocks a new submission. A rejection serves the
+ * rejection cooldown. Any withdrawal after submission serves the withdrawal
+ * cooldown, so submit/withdraw cannot be looped; a withdrawal after review
+ * started also serves the rejection cooldown, so withdrawing cannot dodge an
+ * expected rejection. Discarding a draft never blocks.
+ */
+export function closureCooldownMs(closure: ApplicationClosure, policy: ReapplyPolicy): number {
+  const rejectionMs = policy.cooldownDaysAfterRejection * DAY;
+  if (closure.outcome === 'rejected') return rejectionMs;
+  if (closure.from === 'draft') return 0;
+  const withdrawalMs = policy.withdrawalCooldownHours * HOUR;
+  return STAFF_ENGAGED_STATUSES.includes(closure.from)
+    ? Math.max(withdrawalMs, rejectionMs)
+    : withdrawalMs;
+}
+
+/** When the person may submit again, or null when nothing blocks it at `now`. */
+export function reapplyAvailableAt(
+  closures: readonly ApplicationClosure[],
+  policy: ReapplyPolicy,
+  now: Date,
+): Date | null {
+  let latest: number | null = null;
+  for (const closure of closures) {
+    const cooldownMs = closureCooldownMs(closure, policy);
+    if (cooldownMs <= 0) continue;
+    const ends = closure.at.getTime() + cooldownMs;
+    if (latest === null || ends > latest) latest = ends;
+  }
+  return latest !== null && latest > now.getTime() ? new Date(latest) : null;
 }
 
 /** When an untouched draft expires. */

@@ -268,11 +268,41 @@ export const decideSchema = z
   })
   .strict();
 
+/** Longest render id accepted; the bot passes its job id. */
+export const REVIEW_CARD_RENDER_ID_MAX_CHARS = 64;
+
+/**
+ * Identifies one render: the bot passes the job id, so a retry of the same
+ * job keeps (or regains) its own lease.
+ */
+const renderIdSchema = z
+  .string()
+  .min(1)
+  .max(REVIEW_CARD_RENDER_ID_MAX_CHARS)
+  .regex(/^[A-Za-z0-9:_-]+$/, 'letters, digits, :, _ and - only');
+
+const discordId = z.string().regex(/^\d{17,20}$/, 'must be a Discord ID');
+
+export const beginReviewCardRenderSchema = z
+  .object({
+    applicationId: z.uuid(),
+    /** The revision the job was enqueued for. */
+    revision: z.number().int().min(1),
+    renderId: renderIdSchema,
+  })
+  .strict();
+
 export const reviewCardMessageSchema = z
   .object({
     applicationId: z.uuid(),
-    channelId: z.string().regex(/^\d{17,20}$/, 'must be a Discord ID'),
-    messageId: z.string().regex(/^\d{17,20}$/, 'must be a Discord ID'),
-    revision: z.number().int().min(0),
+    channelId: discordId,
+    messageId: discordId,
+    /** `card.revision` of the card that was rendered. */
+    revision: z.number().int().min(1),
+    renderId: renderIdSchema,
   })
+  .strict();
+
+export const releaseReviewCardRenderSchema = z
+  .object({ applicationId: z.uuid(), renderId: renderIdSchema })
   .strict();

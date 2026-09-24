@@ -38,12 +38,16 @@ export {
   reviewCardJobPayloadSchema,
 } from './discord-jobs';
 export {
+  beginReviewCardRender,
   getReviewCard,
   type MessageRef,
   recordReviewCardMessage,
+  releaseReviewCardRender,
   REVIEW_CARD_EXCERPT_CHARS,
+  REVIEW_CARD_RENDER_LEASE_MS,
   type ReviewCard,
   type ReviewCardRecordResult,
+  type ReviewCardRenderStart,
 } from './review-card.service';
 
 // Pure model: states, rules, form, inputs, views
@@ -57,16 +61,21 @@ export {
   isOpenStatus,
   isTerminalStatus,
   OPEN_STATUSES,
+  reviewCardActions,
   type StaffAction,
   staffActionsFor,
 } from './state-machine';
 export {
   ACCEPTANCE_ROLES,
   acceptanceGrant,
+  type ApplicationClosure,
   type ApplicationRequirement,
+  closureCooldownMs,
   cooldownEndsAt,
   isEligibleToApply,
   missingRequirements,
+  type ReapplyPolicy,
+  reapplyAvailableAt,
   REQUIREMENT_MESSAGES,
   type ReviewTally,
   shouldGrantApplicant,
@@ -81,10 +90,13 @@ export {
 export {
   APPLICATION_FIELD_LIMITS,
   applicationRefSchema,
+  beginReviewCardRenderSchema,
   decideSchema,
   isSafeHttpUrl,
   listApplicationsSchema,
   MIN_LONG_ANSWER_CHARS,
+  releaseReviewCardRenderSchema,
+  REVIEW_CARD_RENDER_ID_MAX_CHARS,
   reviewCardMessageSchema,
   reviewSchema,
   scheduleInterviewSchema,
@@ -111,7 +123,8 @@ export {
   APPLICATION_INTERVIEW_REMINDER_JOB,
   APPLICATION_REVIEW_REMINDER_JOB,
 } from './keys';
-export { APPLICATION_SWEEP_BATCH_SIZE, APPLICATION_SWEEP_INTERVAL_MS } from './jobs';
+export { APPLICATION_SWEEP_INTERVAL_MS } from './jobs';
+export { APPLICATION_SWEEP_BATCH_SIZE } from './reminders';
 
 /** Job handlers owned by this module (non-Discord). */
 export const jobHandlers: JobHandlerMap = applicationJobHandlers;

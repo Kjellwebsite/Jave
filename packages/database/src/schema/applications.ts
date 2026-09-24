@@ -54,7 +54,13 @@ export const applications = pgTable(
     decisionReason: text('decision_reason'),
     /** Message shared with the applicant on decision. */
     applicantMessage: text('applicant_message'),
-    /** Set once reviewers were reminded that this submission is waiting. */
+    /** When the current reviewer was assigned (claim or reassignment). */
+    reviewAssignedAt: ts('review_assigned_at'),
+    /**
+     * Set once reviewers were reminded about the current wait: an unclaimed
+     * submission, then an assignment with no recommendation. Cleared on every
+     * (re)assignment, so each assignment is reminded at most once.
+     */
     reviewReminderSentAt: ts('review_reminder_sent_at'),
     /**
      * Staff review card in the applicationsReview channel. `reviewCardRevision`
@@ -65,6 +71,12 @@ export const applications = pgTable(
     reviewMessageId: snowflake('review_message_id'),
     reviewCardRevision: integer('review_card_revision').notNull().default(0),
     reviewCardRenderedRevision: integer('review_card_rendered_revision').notNull().default(0),
+    /**
+     * Render lease: at most one card render is in flight per application, so
+     * Discord applies edits in the order JAVE issues them.
+     */
+    reviewCardLeaseId: varchar('review_card_lease_id', { length: 64 }),
+    reviewCardLeaseExpiresAt: ts('review_card_lease_expires_at'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

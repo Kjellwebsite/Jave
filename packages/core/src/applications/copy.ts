@@ -87,4 +87,12 @@ export const reviewerCopy = {
     title: 'APPLICATION ASSIGNED',
     body: `${number} is assigned to you for review.`,
   }),
+  assignmentWaiting: (number: string, hours: number): NotificationCopy => ({
+    title: 'REVIEW PENDING',
+    body: `${number} has been assigned to you for more than ${hours}h without a recommendation.`,
+  }),
+  reviewerUnavailable: (number: string, hours: number): NotificationCopy => ({
+    title: 'REVIEW STALLED',
+    body: `${number} has had no recommendation for more than ${hours}h and its reviewer can no longer review. Reassign it.`,
+  }),
 };

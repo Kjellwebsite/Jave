@@ -59,19 +59,26 @@ export async function assertNotOwnApplication(
 }
 
 /** A reviewer must currently hold canReviewApplications and be in good standing. */
-export async function assertEligibleReviewer(
+export async function isEligibleReviewer(
   ctx: ServiceContext,
   reviewerUserId: string,
-): Promise<void> {
+): Promise<boolean> {
   const reviewer = await resolveUserActor(ctx, reviewerUserId).catch((error: unknown) => {
     if (error instanceof NotFoundError) return null;
     throw error;
   });
-  if (
-    !reviewer ||
-    reviewer.standing !== 'good' ||
-    !reviewer.capabilities.has('canReviewApplications')
-  ) {
+  return (
+    reviewer !== null &&
+    reviewer.standing === 'good' &&
+    reviewer.capabilities.has('canReviewApplications')
+  );
+}
+
+export async function assertEligibleReviewer(
+  ctx: ServiceContext,
+  reviewerUserId: string,
+): Promise<void> {
+  if (!(await isEligibleReviewer(ctx, reviewerUserId))) {
     throw new ValidationError('That person cannot review applications.', [
       { path: 'reviewerUserId', message: 'not an eligible reviewer' },
     ]);

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, max, sql } from 'drizzle-orm';
 import {
   applicationReviews,
   applications,
@@ -14,7 +14,13 @@ import { enqueueJob } from '../jobs/queue';
 import { actorUserId } from '../permissions/actor';
 import { APPLICATION_REVIEW_CARD_JOB } from './discord-jobs';
 import { reviewCardKey } from './keys';
-import { type ApplicationStatus, assertTransition, OPEN_STATUSES } from './state-machine';
+import type { ApplicationClosure } from './rules';
+import {
+  type ApplicationStatus,
+  assertTransition,
+  IN_FLIGHT_STATUSES,
+  OPEN_STATUSES,
+} from './state-machine';
 
 /** Data access shared by the application services. Callers authorize first. */
 
@@ -95,14 +101,41 @@ export async function findLatestApplication(
   return row ?? null;
 }
 
-export async function lastRejectionAt(ctx: ServiceContext, userId: string): Promise<Date | null> {
-  const [row] = await ctx.db
-    .select({ decidedAt: applications.decidedAt })
-    .from(applications)
-    .where(and(eq(applications.userId, userId), eq(applications.status, 'rejected')))
-    .orderBy(sql`${applications.decidedAt} desc nulls last`)
-    .limit(1);
-  return row?.decidedAt ?? null;
+/**
+ * The latest rejection and the latest withdrawal from each post-submission
+ * state for this person, read from the status change log. Discarded drafts
+ * are not closures: they never reached staff.
+ */
+export async function loadClosures(
+  ctx: ServiceContext,
+  userId: string,
+): Promise<ApplicationClosure[]> {
+  const rows = await ctx.db
+    .select({
+      to: applicationStatusChanges.toStatus,
+      from: applicationStatusChanges.fromStatus,
+      at: max(applicationStatusChanges.createdAt),
+    })
+    .from(applicationStatusChanges)
+    .innerJoin(applications, eq(applications.id, applicationStatusChanges.applicationId))
+    .where(
+      and(
+        eq(applications.userId, userId),
+        inArray(applicationStatusChanges.toStatus, ['rejected', 'withdrawn']),
+        inArray(applicationStatusChanges.fromStatus, [...IN_FLIGHT_STATUSES]),
+      ),
+    )
+    .groupBy(applicationStatusChanges.toStatus, applicationStatusChanges.fromStatus);
+  const closures: ApplicationClosure[] = [];
+  for (const row of rows) {
+    if (!row.at || !row.from) continue;
+    closures.push(
+      row.to === 'rejected'
+        ? { outcome: 'rejected', at: row.at }
+        : { outcome: 'withdrawn', from: row.from, at: row.at },
+    );
+  }
+  return closures;
 }
 
 /** The applicant's (non-deleted) member id, if they still have a profile. */
@@ -185,9 +218,13 @@ export async function updateApplication(
 
 /**
  * Bump the review card revision and enqueue the Discord render. Call inside
- * the transaction that made the change. No-op for never-submitted drafts.
+ * the transaction that made the change. Returns the new revision, which also
+ * numbers the change itself; null (no-op) for never-submitted drafts.
  */
-export async function refreshReviewCard(ctx: ServiceContext, applicationId: string): Promise<void> {
+export async function refreshReviewCard(
+  ctx: ServiceContext,
+  applicationId: string,
+): Promise<number | null> {
   const [row] = await ctx.db
     .update(applications)
     .set({
@@ -196,13 +233,14 @@ export async function refreshReviewCard(ctx: ServiceContext, applicationId: stri
     })
     .where(and(eq(applications.id, applicationId), isNotNull(applications.submittedAt)))
     .returning({ revision: applications.reviewCardRevision });
-  if (!row) return;
+  if (!row) return null;
   await enqueueJob(
     ctx,
     APPLICATION_REVIEW_CARD_JOB,
     { applicationId, revision: row.revision },
     { dedupeKey: reviewCardKey(applicationId, row.revision) },
   );
+  return row.revision;
 }
 
 export type ApplicationPatch = Partial<
@@ -221,7 +259,8 @@ export interface TransitionOptions {
  * Move an application to `to`. Compare-and-set on the current status, so a
  * concurrent transition loses with ConflictError instead of overwriting.
  * Writes the status change row, the status_changed event and the review card
- * refresh. Must run inside a transaction.
+ * refresh. Returns the row as it stands after all of that (including the new
+ * card revision). Must run inside a transaction.
  */
 export async function transitionApplication(
   ctx: ServiceContext,
@@ -259,6 +298,6 @@ export async function transitionApplication(
       to,
     },
   });
-  await refreshReviewCard(ctx, app.id);
-  return updated;
+  const revision = await refreshReviewCard(ctx, app.id);
+  return revision === null ? updated : { ...updated, reviewCardRevision: revision };
 }

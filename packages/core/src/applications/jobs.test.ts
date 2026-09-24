@@ -1,42 +1,37 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { and, eq } from 'drizzle-orm';
 import {
   applications,
   applicationStatusChanges,
   domainEvents,
   jobs,
+  members,
+  notificationDeliveries,
   notifications,
 } from '@jave/database';
 import { enqueueJob, enqueueRecurring } from '../jobs/queue';
-import { type JobHandler, PermanentJobError } from '../jobs/worker';
+import { PermanentJobError } from '../jobs/worker';
 import { DAY, HOUR, MINUTE } from '../kernel/clock';
-import { ForbiddenError, ValidationError } from '../kernel/errors';
 import { updateSettings } from '../settings/settings.service';
 import { coreJobHandlers, coreRecurringJobs } from '../registry';
 import { createTestKit, type TestKit } from '../testing';
-import { updateDraft, withdrawApplication } from './applicant.service';
-import { decideApplication } from './decision.service';
-import {
-  APPLICATION_REVIEW_CARD_JOB,
-  type ReviewCardJobPayload,
-  reviewCardJobPayloadSchema,
-} from './discord-jobs';
+import { updateDraft } from './applicant.service';
+import { APPLICATION_REVIEW_CARD_JOB } from './discord-jobs';
 import { recurringJobs } from './index';
 import {
   APPLICATION_DRAFT_EXPIRY_JOB,
   APPLICATION_INTERVIEW_REMINDER_JOB,
   APPLICATION_REVIEW_REMINDER_JOB,
 } from './keys';
-import { getReviewCard, recordReviewCardMessage } from './review-card.service';
 import { reviewApplication, scheduleInterview, startReview } from './review.service';
 import {
   applicationHandlers,
-  COMPLETE_DRAFT,
   draftingApplicant,
+  PGLITE_SUITE_TIMEOUTS,
   submittedApplicant,
 } from './test-fixtures';
 
-const REVIEW_CHANNEL = '400000000000000001';
+vi.setConfig(PGLITE_SUITE_TIMEOUTS);
 
 async function titlesFor(kit: TestKit, userId: string): Promise<string[]> {
   const rows = await kit.db
@@ -164,6 +159,91 @@ describe('applications: background jobs', () => {
       expect(row!.updatedAt.toISOString()).toBe('2026-03-01T12:00:00.000Z');
       expect(await titlesFor(kit, waiting.applicant.userId)).not.toContain('APPLICATION WAITING');
     });
+
+    /** Run one reminder sweep. */
+    async function sweepReminders(): Promise<void> {
+      await enqueueJob(kit.system, APPLICATION_REVIEW_REMINDER_JOB);
+      await kit.drain(applicationHandlers());
+    }
+
+    /** Application ids `userId` was notified about under `title`. */
+    async function remindedAbout(userId: string, title: string): Promise<string[]> {
+      const rows = await kit.db
+        .select({ data: notifications.data })
+        .from(notifications)
+        .where(and(eq(notifications.recipientUserId, userId), eq(notifications.title, title)));
+      return rows.map((row) => String(row.data.applicationId)).sort();
+    }
+
+    it('reminds the assigned reviewer once when a claimed review stalls', async () => {
+      const ops = await kit.member({ roles: ['operations'] });
+      const stalled = await submittedApplicant(kit);
+      const abstained = await submittedApplicant(kit);
+      const reviewed = await submittedApplicant(kit);
+      for (const { applicationId } of [stalled, abstained, reviewed]) {
+        await startReview(kit.as(ops), { applicationId });
+      }
+      await reviewApplication(kit.as(ops), {
+        applicationId: abstained.applicationId,
+        recommendation: 'abstain',
+      });
+      await reviewApplication(kit.as(ops), {
+        applicationId: reviewed.applicationId,
+        recommendation: 'accept',
+        score: 4,
+      });
+
+      kit.clock.advance(72 * HOUR - MINUTE);
+      await sweepReminders();
+      expect(await remindedAbout(ops.userId, 'REVIEW PENDING')).toEqual([]);
+
+      kit.clock.advance(2 * MINUTE);
+      await sweepReminders();
+      await sweepReminders();
+      // An abstention is not a recommendation; a counted review ends the wait.
+      expect(await remindedAbout(ops.userId, 'REVIEW PENDING')).toEqual(
+        [stalled.applicationId, abstained.applicationId].sort(),
+      );
+      expect(await titlesFor(kit, stalled.applicant.userId)).not.toContain('REVIEW PENDING');
+    });
+
+    it('gives every reassignment its own reminder window', async () => {
+      const core = await kit.member({ roles: ['core'] });
+      const first = await kit.member({ roles: ['operations'] });
+      const second = await kit.member({ roles: ['operations'] });
+      const { applicationId } = await submittedApplicant(kit);
+      await startReview(kit.as(core), { applicationId, reviewerUserId: first.userId });
+
+      kit.clock.advance(73 * HOUR);
+      await sweepReminders();
+      expect(await remindedAbout(first.userId, 'REVIEW PENDING')).toEqual([applicationId]);
+
+      await startReview(kit.as(core), { applicationId, reviewerUserId: second.userId });
+      kit.clock.advance(71 * HOUR);
+      await sweepReminders();
+      expect(await remindedAbout(second.userId, 'REVIEW PENDING')).toEqual([]);
+      kit.clock.advance(2 * HOUR);
+      await sweepReminders();
+      await sweepReminders();
+      expect(await remindedAbout(second.userId, 'REVIEW PENDING')).toEqual([applicationId]);
+      expect(await remindedAbout(first.userId, 'REVIEW PENDING')).toEqual([applicationId]);
+    });
+
+    it('asks deciders to reassign when the assigned reviewer can no longer review', async () => {
+      const core = await kit.member({ roles: ['core'] });
+      const ops = await kit.member({ roles: ['operations'] });
+      const { applicationId } = await submittedApplicant(kit);
+      await startReview(kit.as(ops), { applicationId });
+      await kit.db
+        .update(members)
+        .set({ standing: 'restricted' })
+        .where(eq(members.id, ops.memberId!));
+
+      kit.clock.advance(73 * HOUR);
+      await sweepReminders();
+      expect(await remindedAbout(core.userId, 'REVIEW STALLED')).toEqual([applicationId]);
+      expect(await titlesFor(kit, ops.userId)).not.toContain('REVIEW PENDING');
+    });
   });
 
   describe('interview reminder', () => {
@@ -196,153 +276,51 @@ describe('applications: background jobs', () => {
         PermanentJobError,
       );
     });
-  });
-});
 
-/**
- * MOCK / DEVELOPMENT ONLY — a stand-in for the bot's review-card handler,
- * written against the contract in discord-jobs.ts, to prove the contract is
- * implementable and convergent. Records "posted" and "deleted" messages.
- */
-function simulatedBot() {
-  let nextMessage = 500000000000000000n;
-  const posted: { channelId: string; messageId: string; revision: number }[] = [];
-  const edited: { messageId: string; revision: number }[] = [];
-  const deleted: string[] = [];
-  const handler: JobHandler = async (ctx, payload) => {
-    const job: ReviewCardJobPayload = reviewCardJobPayloadSchema.parse(payload);
-    const card = await getReviewCard(ctx, { applicationId: job.applicationId });
-    if (card.revision > job.revision) return { skipped: 'superseded' };
-    let message = card.message;
-    if (message) {
-      edited.push({ messageId: message.messageId, revision: card.revision });
-    } else {
-      if (!card.channelId) return { skipped: 'no review channel' };
-      nextMessage += 1n;
-      message = { channelId: card.channelId, messageId: nextMessage.toString() };
-      posted.push({ ...message, revision: card.revision });
-    }
-    const { discard } = await recordReviewCardMessage(ctx, {
-      applicationId: job.applicationId,
-      channelId: message.channelId,
-      messageId: message.messageId,
-      revision: card.revision,
-    });
-    if (discard) deleted.push(discard.messageId);
-    return { rendered: card.revision };
-  };
-  return { handler, posted, edited, deleted };
-}
-
-describe('applications: review card contract', () => {
-  let kit: TestKit;
-  beforeEach(async () => {
-    kit = await createTestKit();
-    await updateSettings(kit.system, 'channels', { applicationsReview: REVIEW_CHANNEL });
-  });
-  afterEach(async () => {
-    await kit.close();
-  });
-
-  it('exposes card data without references or decision reasons', async () => {
-    const core = await kit.member({ roles: ['core'] });
-    const { applicationId } = await submittedApplicant(kit);
-    await reviewApplication(kit.as(core), { applicationId, recommendation: 'accept', score: 5 });
-    await decideApplication(kit.as(core), {
-      applicationId,
-      decision: 'accept',
-      reason: 'INTERNAL-ONLY-REASON',
-    });
-    const card = await getReviewCard(kit.system, { applicationId });
-    expect(card).toMatchObject({
-      status: 'accepted',
-      channelId: REVIEW_CHANNEL,
-      message: null,
-      domain: { key: 'create', label: 'Create' },
-      decisionReady: true,
-      evidenceLinkCount: 1,
-      referred: false,
-      actions: [],
-    });
-    const serialized = JSON.stringify(card);
-    expect(serialized).not.toContain(COMPLETE_DRAFT.references);
-    expect(serialized).not.toContain('INTERNAL-ONLY-REASON');
-  });
-
-  it('converges on one card that shows the newest revision', async () => {
-    const ops = await kit.member({ roles: ['operations'] });
-    const { applicant, applicationId } = await submittedApplicant(kit);
-    await startReview(kit.as(ops), { applicationId });
-    await reviewApplication(kit.as(ops), { applicationId, recommendation: 'accept', score: 4 });
-
-    const bot = simulatedBot();
-    const handlers = { ...applicationHandlers(), [APPLICATION_REVIEW_CARD_JOB]: bot.handler };
-    const outcomes = await kit.drain(handlers);
-    const cardRuns = outcomes.filter((o) => o.type === APPLICATION_REVIEW_CARD_JOB);
-    expect(cardRuns.filter((o) => o.result?.skipped === 'superseded')).toHaveLength(
-      cardRuns.length - 1,
-    );
-    expect(bot.posted).toHaveLength(1);
-
-    await withdrawApplication(kit.as(applicant));
-    await kit.drain(handlers);
-    expect(bot.posted).toHaveLength(1);
-    expect(bot.edited).toHaveLength(1);
-    const [row] = await kit.db
-      .select()
-      .from(applications)
-      .where(eq(applications.id, applicationId));
-    expect(row!.reviewMessageId).toBe(bot.posted[0]!.messageId);
-    expect(row!.reviewCardRenderedRevision).toBe(row!.reviewCardRevision);
-  });
-
-  it('keeps the newest render when two renders race, and returns the loser to delete', async () => {
-    const ops = await kit.member({ roles: ['operations'] });
-    const { applicationId } = await submittedApplicant(kit);
-    await startReview(kit.as(ops), { applicationId });
-    const record = (messageId: string, revision: number) =>
-      recordReviewCardMessage(kit.system, {
+    it('BREAK: a failure part way through leaves nothing behind, so the retry sends it in full', async () => {
+      const core = await kit.member({ roles: ['core'] });
+      const { applicant, applicationId } = await submittedApplicant(kit);
+      await startReview(kit.as(core), { applicationId });
+      await scheduleInterview(kit.as(core), {
         applicationId,
-        channelId: REVIEW_CHANNEL,
-        messageId,
-        revision,
+        interviewAt: new Date(kit.clock.now().getTime() + 48 * HOUR),
       });
-    expect(await record('600000000000000001', 2)).toEqual({ discard: null });
-    expect(await record('600000000000000001', 2)).toEqual({ discard: null });
-    // An older render that posted a second message loses.
-    expect(await record('600000000000000002', 1)).toEqual({
-      discard: { channelId: REVIEW_CHANNEL, messageId: '600000000000000002' },
-    });
-    // A newer render that posted a second message wins; the stored one is discarded.
-    await reviewApplication(kit.as(ops), { applicationId, recommendation: 'abstain' });
-    expect(await record('600000000000000003', 3)).toEqual({
-      discard: { channelId: REVIEW_CHANNEL, messageId: '600000000000000001' },
-    });
-    await expect(record('600000000000000004', 99)).rejects.toThrow(ValidationError);
-  });
+      // Fault injection in real SQL: the DM delivery row fails after the inbox row is written.
+      await kit.database.pg.exec(`
+        create function test_fail_delivery() returns trigger language plpgsql
+          as $$ begin raise exception 'injected delivery failure'; end $$;
+        create trigger test_fail_delivery before insert on notification_deliveries
+          for each row execute function test_fail_delivery();
+      `);
 
-  it('only the worker records card messages', async () => {
-    const core = await kit.member({ roles: ['core'] });
-    const { applicationId } = await submittedApplicant(kit);
-    await expect(
-      recordReviewCardMessage(kit.as(core), {
-        applicationId,
-        channelId: REVIEW_CHANNEL,
-        messageId: '600000000000000001',
-        revision: 1,
-      }),
-    ).rejects.toThrow(ForbiddenError);
-  });
+      kit.clock.advance(47 * HOUR);
+      const failed = await kit.drain(applicationHandlers());
+      const attempt = failed.find((o) => o.type === APPLICATION_INTERVIEW_REMINDER_JOB);
+      expect(attempt).toMatchObject({ status: 'retry' });
+      expect(attempt?.error).toMatch(/insert into "notification_deliveries"/);
+      expect(await titlesFor(kit, applicant.userId)).not.toContain('INTERVIEW IN 1 HOUR');
 
-  it('skips cleanly when no review channel is configured', async () => {
-    await updateSettings(kit.system, 'channels', { applicationsReview: undefined });
-    await submittedApplicant(kit);
-    const bot = simulatedBot();
-    const outcomes = await kit.drain({
-      ...applicationHandlers(),
-      [APPLICATION_REVIEW_CARD_JOB]: bot.handler,
+      await kit.database.pg.exec('drop trigger test_fail_delivery on notification_deliveries;');
+      kit.clock.advance(MINUTE);
+      const retried = await kit.drain(applicationHandlers());
+      expect(retried.find((o) => o.type === APPLICATION_INTERVIEW_REMINDER_JOB)).toMatchObject({
+        status: 'completed',
+        result: { reminded: true },
+      });
+      const [reminder] = await kit.db
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(
+          and(
+            eq(notifications.recipientUserId, applicant.userId),
+            eq(notifications.title, 'INTERVIEW IN 1 HOUR'),
+          ),
+        );
+      const deliveries = await kit.db
+        .select({ channel: notificationDeliveries.channel })
+        .from(notificationDeliveries)
+        .where(eq(notificationDeliveries.notificationId, reminder!.id));
+      expect(deliveries).toEqual([{ channel: 'discord_dm' }]);
     });
-    const card = outcomes.find((o) => o.type === APPLICATION_REVIEW_CARD_JOB);
-    expect(card?.result).toEqual({ skipped: 'no review channel' });
   });
 });

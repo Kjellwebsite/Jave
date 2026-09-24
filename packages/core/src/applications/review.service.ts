@@ -19,6 +19,7 @@ import {
   interviewReminderKey,
 } from './keys';
 import {
+  type ApplicationPatch,
   type ApplicationRecord,
   applicantMemberId,
   applicationNumber,
@@ -60,6 +61,23 @@ export function toStaffSummary(app: ApplicationRecord): ApplicationStaffSummary 
     interviewAt: app.interviewAt,
     decidedAt: app.decidedAt,
   };
+}
+
+/**
+ * Columns written on every (re)assignment. A new assignment gets its own
+ * reminder window, so the reminder flag is cleared.
+ */
+function assignmentFields(reviewerUserId: string, now: Date) {
+  return {
+    assignedReviewerUserId: reviewerUserId,
+    reviewAssignedAt: now,
+    reviewReminderSentAt: null,
+  } satisfies ApplicationPatch;
+}
+
+/** The row after a card refresh (the refresh bumps the revision in place). */
+function withRevision(app: ApplicationRecord, revision: number | null): ApplicationRecord {
+  return revision === null ? app : { ...app, reviewCardRevision: revision };
 }
 
 /** Re-read under lock and fail if anything the pre-checks relied on moved. */
@@ -119,10 +137,11 @@ export async function startReview(
     const current = await lockUnchanged(tx, app);
     const memberId = await applicantMemberId(tx, current.userId);
     const number = applicationNumber(current);
+    const assignment = assignmentFields(reviewerUserId, tx.clock.now());
     let updated: ApplicationRecord;
     if (current.status === 'submitted') {
       updated = await transitionApplication(tx, current, 'review', {
-        set: { assignedReviewerUserId: reviewerUserId },
+        set: assignment,
         note: 'review started',
         subjectMemberId: memberId,
       });
@@ -134,10 +153,8 @@ export async function startReview(
         dedupeKey: `application:${current.id}:in-review`,
       });
     } else {
-      updated = await updateApplication(tx, current.id, {
-        assignedReviewerUserId: reviewerUserId,
-      });
-      await refreshReviewCard(tx, current.id);
+      updated = await updateApplication(tx, current.id, assignment);
+      updated = withRevision(updated, await refreshReviewCard(tx, current.id));
     }
     await recordAudit(tx, {
       action: 'application.review_assigned',
@@ -151,7 +168,7 @@ export async function startReview(
         type: 'application.received',
         ...reviewerCopy.assigned(number),
         data: { applicationId: current.id, number },
-        dedupeKey: `application:${current.id}:assigned:${reviewerUserId}:${tx.clock.now().getTime()}`,
+        dedupeKey: `application:${current.id}:assigned:${updated.reviewCardRevision}`,
       });
     }
     return toStaffSummary(updated);
@@ -196,7 +213,7 @@ export async function reviewApplication(
     const number = applicationNumber(current);
     if (current.status === 'submitted') {
       current = await transitionApplication(tx, current, 'review', {
-        set: { assignedReviewerUserId: current.assignedReviewerUserId ?? reviewer.userId },
+        set: assignmentFields(current.assignedReviewerUserId ?? reviewer.userId, tx.clock.now()),
         note: 'review started by first review',
         subjectMemberId: memberId,
       });
@@ -274,6 +291,8 @@ export async function reviewApplication(
 /**
  * Invite the applicant to an interview (REVIEW → INTERVIEW) or move an
  * existing one. The time must fall inside the interview scheduling window.
+ * Re-sending the time already on record changes nothing (a double click
+ * must not tell the applicant their interview moved).
  */
 export async function scheduleInterview(
   ctx: ServiceContext,
@@ -305,13 +324,16 @@ export async function scheduleInterview(
 
   return withTransaction(ctx, async (tx) => {
     const current = await lockUnchanged(tx, app);
+    const rescheduled = current.status === 'interview';
+    if (rescheduled && current.interviewAt?.getTime() === data.interviewAt.getTime()) {
+      return toStaffSummary(current);
+    }
     const memberId = await applicantMemberId(tx, current.userId);
     const number = applicationNumber(current);
-    const rescheduled = current.status === 'interview';
     let updated: ApplicationRecord;
     if (rescheduled) {
       updated = await updateApplication(tx, current.id, { interviewAt: data.interviewAt });
-      await refreshReviewCard(tx, current.id);
+      updated = withRevision(updated, await refreshReviewCard(tx, current.id));
     } else {
       updated = await transitionApplication(tx, current, 'interview', {
         set: { interviewAt: data.interviewAt },
@@ -362,7 +384,8 @@ export async function scheduleInterview(
         data.applicantMessage ?? null,
       ),
       data: { applicationId: current.id, number, interviewAt: data.interviewAt.toISOString() },
-      dedupeKey: `application:${current.id}:interview:${data.interviewAt.toISOString()}`,
+      // Keyed by the change, not the time: moving A → B → A must notify every move.
+      dedupeKey: `application:${current.id}:interview:${updated.reviewCardRevision}`,
     });
     return toStaffSummary(updated);
   });

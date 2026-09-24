@@ -84,6 +84,14 @@ export const DOMAIN_EVENTS = {
   'ticket.claimed': { description: 'A ticket was claimed.', external: false },
   'ticket.closed': { description: 'A ticket was closed.', external: false },
   'ticket.reopened': { description: 'A ticket was reopened.', external: false },
+  'ticket.transferred': {
+    description: 'A ticket was assigned to another handler.',
+    external: false,
+  },
+  'ticket.sla_breached': {
+    description: 'A ticket missed its first-response target.',
+    external: false,
+  },
 
   'moderation.case_created': { description: 'A moderation case was recorded.', external: false },
   'security.event_raised': { description: 'A security event was raised.', external: false },

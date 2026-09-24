@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   index,
@@ -48,6 +49,8 @@ export const tickets = pgTable(
     /** Tickets live in private threads under the configured ticket channel. */
     discordChannelId: snowflake('discord_channel_id'),
     discordThreadId: snowflake('discord_thread_id'),
+    /** The bot's status card (opening embed) inside the thread; edited on every change. */
+    discordCardMessageId: snowflake('discord_card_message_id'),
     slaFirstResponseDueAt: ts('sla_first_response_due_at'),
     firstResponseAt: ts('first_response_at'),
     slaBreachedAt: ts('sla_breached_at'),
@@ -68,6 +71,10 @@ export const tickets = pgTable(
     index('tickets_status_idx').on(t.status, t.createdAt),
     index('tickets_assignee_idx').on(t.assigneeUserId),
     index('tickets_opener_idx').on(t.openerUserId),
+    /** SLA sweep: tickets still waiting for a first response. */
+    index('tickets_sla_pending_idx')
+      .on(t.slaFirstResponseDueAt)
+      .where(sql`${t.firstResponseAt} is null and ${t.slaBreachedAt} is null`),
   ],
 );
 
@@ -78,17 +85,32 @@ export interface TicketAttachment {
   contentType?: string;
 }
 
+/**
+ * Who wrote a ticket message, resolved when it was recorded (roles change over
+ * time; the transcript keeps the role the author held at the moment).
+ */
+export const ticketAuthorRole = pgEnum('ticket_author_role', [
+  'requester',
+  'handler',
+  'participant',
+]);
+
 /** Transcript. Internal notes are messages with is_internal = true. */
 export const ticketMessages = pgTable(
   'ticket_messages',
   {
     id: id(),
+    /** Insertion order; breaks ties between messages sent in the same millisecond. */
+    seq: integer('seq').notNull().generatedAlwaysAsIdentity(),
     ticketId: uuid('ticket_id')
       .notNull()
       .references(() => tickets.id, { onDelete: 'cascade' }),
     authorUserId: uuid('author_user_id').references(() => users.id),
+    authorRole: ticketAuthorRole('author_role').notNull().default('participant'),
     discordMessageId: snowflake('discord_message_id'),
     body: text('body').notNull(),
+    /** Body as first recorded, kept once the message is edited. */
+    originalBody: text('original_body'),
     attachments: jsonb('attachments').$type<TicketAttachment[]>().notNull().default([]),
     isInternal: boolean('is_internal').notNull().default(false),
     createdAt: createdAt(),
@@ -124,6 +146,8 @@ export const ticketEvents = pgTable(
     ticketId: uuid('ticket_id')
       .notNull()
       .references(() => tickets.id, { onDelete: 'cascade' }),
+    /** Insertion order; breaks ties between events recorded in the same millisecond. */
+    seq: integer('seq').notNull().generatedAlwaysAsIdentity(),
     type: ticketEventType('type').notNull(),
     actorUserId: uuid('actor_user_id').references(() => users.id),
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),

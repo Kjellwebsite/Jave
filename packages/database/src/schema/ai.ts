@@ -8,6 +8,8 @@ export const aiRequestStatus = pgEnum('ai_request_status', [
   'refused',
   'rate_limited',
   'disabled',
+  /** Reserved before the provider call so concurrent requests count against the daily limit. */
+  'pending',
 ]);
 
 /**
@@ -20,6 +22,8 @@ export const aiRequests = pgTable(
     id: id(),
     userId: uuid('user_id').references(() => users.id),
     feature: varchar('feature', { length: 32 }).notNull(),
+    /** 'discord' | 'dashboard'. */
+    surface: varchar('surface', { length: 16 }),
     provider: varchar('provider', { length: 32 }).notNull(),
     model: varchar('model', { length: 64 }).notNull(),
     status: aiRequestStatus('status').notNull(),
@@ -60,6 +64,8 @@ export const aiActionProposals = pgTable(
       .references(() => users.id),
     aiRequestId: uuid('ai_request_id').references(() => aiRequests.id),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    /** SHA-256 of the canonical payload shown in the preview; re-checked before execution. */
+    payloadHash: varchar('payload_hash', { length: 64 }).notNull(),
     preview: text('preview').notNull(),
     status: aiProposalStatus('status').notNull().default('pending'),
     decidedByUserId: uuid('decided_by_user_id').references(() => users.id),
@@ -70,5 +76,9 @@ export const aiActionProposals = pgTable(
     expiresAt: ts('expires_at').notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index('ai_action_proposals_status_idx').on(t.status, t.createdAt)],
+  (t) => [
+    index('ai_action_proposals_status_idx').on(t.status, t.createdAt),
+    index('ai_action_proposals_requester_idx').on(t.requestedByUserId, t.status),
+    index('ai_action_proposals_expiry_idx').on(t.status, t.expiresAt),
+  ],
 );

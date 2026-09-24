@@ -111,6 +111,18 @@ export const NOTIFICATION_TYPES = {
     severity: 'notice',
     channels: ['discord_dm'],
   },
+  'research.reviewed': {
+    label: 'Research reviewed',
+    description: 'A research item you submitted was reviewed or verified.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
+  'ai.proposal_decided': {
+    label: 'AI proposal decided',
+    description: 'Someone confirmed or declined an action you proposed through JAVE AI.',
+    severity: 'info',
+    channels: [],
+  },
 } as const satisfies Record<string, NotificationTypeDefinition>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;

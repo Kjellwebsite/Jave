@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRng, seededShuffle } from './rng';
-import { rankPlacements } from './placements';
+import { isWin, rankPlacements } from './placements';
 import { findGame, listGames, registerGame } from './registry';
 import { TRIVIA_CATEGORIES, TRIVIA_QUESTIONS } from './trivia/bank';
 import {
@@ -63,6 +63,18 @@ describe('placements', () => {
       { playerId: 'c', score: 5, placement: 3 },
       { playerId: 'd', score: 0, placement: 4 },
     ]);
+  });
+
+  it('BREAK: a win needs first place, a ranked session and a positive score', () => {
+    expect(isWin({ placement: 1, score: 150 }, true)).toBe(true);
+    expect(isWin({ placement: 1, score: 150 }, false)).toBe(false);
+    expect(isWin({ placement: 2, score: 150 }, true)).toBe(false);
+    // An all-zero tie puts everyone first — and nobody wins.
+    for (const standing of rankPlacements(['a', 'b', 'c'], {})) {
+      expect(standing.placement).toBe(1);
+      expect(isWin(standing, true)).toBe(false);
+    }
+    expect(isWin({ placement: 1, score: -20 }, true)).toBe(false);
   });
 });
 

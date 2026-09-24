@@ -1,6 +1,13 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { auditLogs, domainEvents, events, jobs, notifications } from '@jave/database';
+import { eq, inArray, sql } from 'drizzle-orm';
+import {
+  auditLogs,
+  domainEvents,
+  events,
+  jobs,
+  notificationDeliveries,
+  notifications,
+} from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import { DAY, HOUR, MINUTE } from '../kernel/clock';
 import {
@@ -11,14 +18,15 @@ import {
 } from '../kernel/errors';
 import type { UserActor } from '../permissions/actor';
 import { CALENDAR_REMINDER_JOB } from './constants';
-import { DISCORD_EVENTS_CANCEL_JOB, getEventPublication, markEventPublished } from './discord-jobs';
 import { cancelEvent, getEvent, scheduleEvent, updateEvent } from './events.service';
 import { checkIn, generateCheckInCode } from './check-in.service';
 import { rsvp } from './rsvp.service';
 import { SNAPSHOT_BUILD_TIMEOUT_MS, warmUpTestDatabase } from './test-support';
 import { jobHandlers } from './index';
 
-/** Check-in, reminders and the Discord callbacks. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Check-in and reminders. */
 describe('calendar attendance', () => {
   let kit: TestKit;
   let staff: UserActor;
@@ -224,53 +232,56 @@ describe('calendar attendance', () => {
       );
       expect(result).toEqual({ skipped: 'rescheduled' });
     });
-  });
 
-  describe('Discord callbacks', () => {
-    it('stores Discord ids through the system-only publish callback', async () => {
-      const event = await schedule();
-      const publication = await getEventPublication(kit.system, event.id);
-      expect(publication).toMatchObject({ revision: 0, rsvpOpen: true, announceChannelId: null });
-      await markEventPublished(kit.system, {
-        eventId: event.id,
-        discordScheduledEventId: '123456789012345678',
-        announcementChannelId: '223456789012345678',
-        announcementMessageId: '323456789012345678',
-      });
-      const view = await getEvent(kit.system, { eventId: event.id });
-      expect(view.discordScheduledEventId).toBe('123456789012345678');
-    });
+    it('BREAK: a reminder that fails mid-delivery leaves nothing half-written; the retry delivers', async () => {
+      const event = await schedule({ startsAt: fromNow(2 * DAY) });
+      const [first, second] = await Promise.all([kit.member(), kit.member()]);
+      await rsvp(kit.as(first!), { eventId: event.id, status: 'going' });
+      await rsvp(kit.as(second!), { eventId: event.id, status: 'going' });
+      await kit.drain(jobHandlers);
 
-    it('BREAK: users cannot call bot callbacks, even staff', async () => {
-      const event = await schedule();
-      await expect(
-        markEventPublished(kit.as(staff), {
-          eventId: event.id,
-          discordScheduledEventId: '123456789012345678',
-        }),
-      ).rejects.toBeInstanceOf(ForbiddenError);
-      await expect(getEventPublication(kit.as(staff), event.id)).rejects.toBeInstanceOf(
-        ForbiddenError,
+      // The delivery store fails for the first recipient only. (DDL takes no
+      // bind parameters; the id is a UUID this test just created.)
+      expect(first!.userId).toMatch(UUID);
+      await kit.db.execute(
+        sql.raw(`
+        create function test_fail_delivery() returns trigger language plpgsql as $$
+        begin
+          if exists (select 1 from notifications n
+                     where n.id = new.notification_id
+                       and n.recipient_user_id = '${first!.userId}'::uuid) then
+            raise exception 'delivery store unavailable';
+          end if;
+          return new;
+        end $$`),
       );
-      await expect(
-        markEventPublished(kit.system, { eventId: event.id, discordScheduledEventId: 'abc' }),
-      ).rejects.toBeInstanceOf(ValidationError);
-    });
+      await kit.db.execute(sql`
+        create trigger test_fail_delivery before insert on notification_deliveries
+        for each row execute function test_fail_delivery()`);
 
-    it('a publish that lands after cancellation re-enqueues the Discord cancel', async () => {
-      const event = await schedule();
-      await cancelEvent(kit.as(staff), { eventId: event.id, reason: 'Postponed.' });
-      await kit.db
-        .update(jobs)
-        .set({ status: 'completed' })
-        .where(eq(jobs.type, DISCORD_EVENTS_CANCEL_JOB));
-      const result = await markEventPublished(kit.system, {
-        eventId: event.id,
-        discordScheduledEventId: '123456789012345678',
-      });
-      expect(result.status).toBe('cancelled');
-      const cancels = await jobsOf(DISCORD_EVENTS_CANCEL_JOB);
-      expect(cancels.filter((j) => j.status === 'pending')).toHaveLength(1);
+      kit.clock.set(new Date(event.startsAt.getTime() - DAY));
+      const [outcome] = await kit.drain(jobHandlers);
+      expect(outcome).toMatchObject({ type: CALENDAR_REMINDER_JOB, status: 'retry' });
+      const stranded = await notificationsOf('event.reminder');
+      expect(stranded.map((n) => n.recipientUserId)).not.toContain(first!.userId);
+
+      await kit.db.execute(sql`drop trigger test_fail_delivery on notification_deliveries`);
+      kit.clock.advance(MINUTE);
+      await kit.drain(jobHandlers);
+      const reminders = await notificationsOf('event.reminder');
+      expect(reminders.map((n) => n.recipientUserId).sort()).toEqual(
+        [first!.userId, second!.userId].sort(),
+      );
+      const deliveries = await kit.db
+        .select()
+        .from(notificationDeliveries)
+        .where(
+          inArray(
+            notificationDeliveries.notificationId,
+            reminders.map((n) => n.id),
+          ),
+        );
+      expect(deliveries).toHaveLength(2);
     });
   });
 });

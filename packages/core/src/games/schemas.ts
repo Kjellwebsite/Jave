@@ -81,11 +81,15 @@ export const leaderboardSchema = z.object({
   limit: z.number().int().min(1).max(LEADERBOARD_MAX).default(LEADERBOARD_DEFAULT),
 });
 
-export const markGameMessageSchema = z.object({
-  sessionId: z.uuid(),
-  channelId: snowflake,
-  messageId: snowflake,
-});
+export const markGameMessageSchema = z
+  .object({
+    sessionId: z.uuid(),
+    channelId: snowflake,
+    messageId: snowflake,
+    /** `discordMessageId` from the render the bot acted on: null for a first post. */
+    replacesMessageId: snowflake.nullable(),
+  })
+  .strict();
 
 export const gameChannelUnavailableSchema = z.object({
   sessionId: z.uuid(),

@@ -9,10 +9,18 @@ import {
   roundName,
   seedOrder,
 } from './bracket';
+import { discordObjectVerdict } from './discord-objects';
 import { formatEventTime } from './format';
 import { classifyLocation } from './location';
 import { drawTeams, nextTeamNames } from './team-draw';
-import { checkInTiming, plannedReminders, resolveEventTimes, validateEventTimes } from './timing';
+import {
+  announcementRefreshTimes,
+  checkInTiming,
+  countsRefreshDueAt,
+  plannedReminders,
+  resolveEventTimes,
+  validateEventTimes,
+} from './timing';
 
 const teamsOf = (n: number) => Array.from({ length: n }, (_, i) => `t${i + 1}`);
 const seedOf = (team: string) => Number(team.slice(1));
@@ -215,5 +223,35 @@ describe('BREAK: event locations', () => {
     ]) {
       expect(classifyLocation(value), value).toBeNull();
     }
+  });
+});
+
+describe('Discord mirror rules', () => {
+  it('compare-and-set: first create stores, a racing duplicate is discarded, a retry is kept', () => {
+    expect(discordObjectVerdict(null, 'a', null)).toBe('store');
+    expect(discordObjectVerdict('a', 'b', null)).toBe('discard');
+    expect(discordObjectVerdict('a', 'a', null)).toBe('keep');
+    expect(discordObjectVerdict('a', 'a', 'z')).toBe('keep');
+    expect(discordObjectVerdict('a', 'c', 'a')).toBe('store');
+    // BREAK: a run that saw an older id never overwrites a newer one.
+    expect(discordObjectVerdict('c', 'd', 'a')).toBe('discard');
+  });
+
+  it('refreshes the buttons at the RSVP close and at the end', () => {
+    const endsAt = new Date('2026-03-05T20:00:00.000Z');
+    const closes = new Date('2026-03-05T12:00:00.000Z');
+    expect(announcementRefreshTimes({ endsAt, rsvpClosesAt: closes })).toEqual([closes, endsAt]);
+    expect(announcementRefreshTimes({ endsAt, rsvpClosesAt: null })).toEqual([endsAt]);
+    expect(announcementRefreshTimes({ endsAt, rsvpClosesAt: new Date(endsAt) })).toEqual([endsAt]);
+  });
+
+  it('debounces RSVP count refreshes into fixed windows, always strictly ahead', () => {
+    const window = 30_000;
+    const at = (ms: number) => new Date(Date.UTC(2026, 2, 1) + ms);
+    expect(countsRefreshDueAt(at(0), window)).toEqual(at(window));
+    expect(countsRefreshDueAt(at(1), window)).toEqual(at(window));
+    expect(countsRefreshDueAt(at(window - 1), window)).toEqual(at(window));
+    // At a window's end (its refresh is due or running) a change goes to the next window.
+    expect(countsRefreshDueAt(at(window), window)).toEqual(at(2 * window));
   });
 });

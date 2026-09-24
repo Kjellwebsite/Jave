@@ -15,7 +15,7 @@ export type {
   AppliedMove,
 } from './types';
 export { createRng, seededShuffle, type Rng } from './rng';
-export { rankPlacements } from './placements';
+export { rankPlacements, isWin } from './placements';
 export { registerGame, getGame, findGame, listGames } from './registry';
 export {
   availableGames,
@@ -42,6 +42,7 @@ export {
   markGameChannelUnavailable,
   type DiscordGamesRenderPayload,
   type GameRender,
+  type GameMessageResult,
 } from './discord-jobs';
 export type { SessionView, SessionPlayerView } from './views';
 export type { SessionStatus, SessionSurface } from './records';

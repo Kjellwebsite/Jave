@@ -6,7 +6,7 @@ import { publishEvent } from '../events/bus';
 import { enqueueJob } from '../jobs/queue';
 import { GAMES_TICK_JOB, MIN_RANKED_PLAYERS } from './constants';
 import { enqueueRender } from './discord-jobs';
-import { rankPlacements } from './placements';
+import { isWin, rankPlacements } from './placements';
 import { compareAndSetSession, loadPlayers, type SessionRecord, toJsonObject } from './records';
 import type { AnyGameDefinition } from './types';
 
@@ -36,7 +36,7 @@ export async function scheduleTick(
 /**
  * Final scores and placements (standard competition ranking), then one
  * `game.completed` per player. Sessions with fewer than two players are
- * practice: recorded, but `ranked: false` and never a win.
+ * practice: recorded, but `ranked: false` and never a win (see `isWin`).
  */
 async function recordResults(
   tx: ServiceContext,
@@ -68,7 +68,7 @@ async function recordResults(
         placement: standing.placement,
         players: players.length,
         ranked,
-        won: ranked && standing.placement === 1,
+        won: isWin({ placement: standing.placement, score }, ranked),
       },
     });
   }

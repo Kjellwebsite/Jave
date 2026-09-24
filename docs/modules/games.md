@@ -39,9 +39,16 @@ active ──abandon / sweep (2 h without progress) / channel rejected──► 
 
 - `game_sessions.version` is the optimistic concurrency guard: every write is
   `UPDATE … WHERE version = :read` (`compareAndSetSession`). Lobby changes run under the
-  row lock; moves and ticks are lock-free and retry up to 3 times on a lost race.
+  row lock; moves and ticks are lock-free and retry up to 3 times on a lost race. A tick
+  that loses all 3 throws a retryable `ConflictError`: the `games.tick` job backs off and
+  runs again (the competing commit's tick for the same deadline was dropped behind the
+  running job's dedupe key, so completing would leave the round open until the sweep).
 - `seat` (join order, assigned under the lock) is the engine's player order.
 - `playerCount < 2` ⇒ practice: recorded, `ranked: false`, never a win, never on leaderboards.
+- A **win** (`isWin`) is placement 1 in a ranked session **with a positive score**. Tied
+  leaders with points share the win; when the leaders scored nothing (nobody answered,
+  nobody tapped) nobody wins, so idle sessions cannot farm wins. The leaderboard's `wins`
+  applies the same rule.
 
 ## Services
 
@@ -55,7 +62,7 @@ active ──abandon / sweep (2 h without progress) / channel rejected──► 
 | `tickSession`                        | host, player, system                                         | Advance timers now (idempotent). The system advances everything due; hosts and players only transitions overdue by ≥ 2 s, so nobody can race the worker to see a new question or GO first.                                                                                                                |
 | `abandonSession`                     | host, or `canManageEvents`                                   | Audited `game.abandoned`.                                                                                                                                                                                                                                                                                 |
 | `getSessionView` / `findLiveSession` | member, system                                               | `SessionView` = metadata + players + `publicView` for the viewer (spectator view for non-players). Never the raw state or the seed.                                                                                                                                                                       |
-| `getLeaderboard`                     | member                                                       | Per game: `wins` / `best_score` / `sessions`; ranked sessions only; members with `showOnLeaderboards`, good standing, not deleted; competition ranking.                                                                                                                                                   |
+| `getLeaderboard`                     | member                                                       | Per game: `wins` (see `isWin`) / `best_score` / `sessions`; ranked sessions only; members with `showOnLeaderboards`, good standing, not deleted; competition ranking.                                                                                                                                     |
 
 Error mapping for refused moves: not a player → `ForbiddenError`; round closed or wrong
 round → `InvalidStateError`; duplicate → `ConflictError`; invalid → `ValidationError`.
@@ -91,14 +98,14 @@ happens. Best on the Activity surface (Discord message edits add latency).
 ## Domain events
 
 `game.completed` — one per player (`subjectMemberId` set), payload
-`{ gameKey, score, placement, players, ranked, won }`.
+`{ gameKey, score, placement, players, ranked, won }` (`won` per `isWin`).
 
 ## Jobs
 
-| Type          | Schedule                                               | Behaviour                                                                                                   |
-| ------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `games.tick`  | at each `nextDeadline` (dedupe per session + deadline) | Advances timers; finishes the game when the engine says so. System actor.                                   |
-| `games.sweep` | recurring, every 5 min                                 | Abandons lobbies idle 30 min; advances, then abandons, active games without progress for 2 h. System actor. |
+| Type          | Schedule                                               | Behaviour                                                                                                                                                          |
+| ------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `games.tick`  | at each `nextDeadline` (dedupe per session + deadline) | Advances timers; finishes the game when the engine says so. Retries (backoff) when it keeps losing version races. System actor.                                    |
+| `games.sweep` | recurring, every 5 min                                 | Abandons lobbies idle 30 min; advances, then abandons, active games without progress for 2 h (a session busy with moves is left for the next sweep). System actor. |
 
 ## Discord job contract — `discord.games.render`
 
@@ -119,14 +126,24 @@ The bot must:
    View Channel + Send Messages in `discordChannelId` (non-Discord surfaces let a member name
    any channel id) and that the bot can post; if not, call
    `markGameChannelUnavailable(ctx, { sessionId, reason: 'host_cannot_post' | 'bot_cannot_post' })`
-   (ends the session without another render). Otherwise post and call
-   `markGameMessagePosted(ctx, { sessionId, channelId, messageId })` (channel must match).
-   With a message id, edit it; re-post (same checks) if it was deleted.
-4. Button clicks call `joinSession` / `leaveSession` / `startSession` / `submitMove` as the
+   (ends the session without another render and audits `game.channel_rejected`, result
+   `denied`, with the host and channel). Otherwise post and call
+   `markGameMessagePosted(ctx, { sessionId, channelId, messageId, replacesMessageId: null })`
+   (channel must match). With a message id, edit it; if it was deleted, re-post (same checks)
+   and report it with `replacesMessageId` = the old id.
+4. `markGameMessagePosted` is a compare-and-set on the id the bot saw: the result's
+   `messageId` is the session's panel from now on; when `discard` is set another run stored
+   its panel first — delete the `discard` message and edit `messageId` instead. A retried
+   callback for the stored message is a no-op.
+5. Button clicks call `joinSession` / `leaveSession` / `startSession` / `submitMove` as the
    clicking user. The custom id routes, it never authorizes.
 
+Renders for one session must not overlap: the bot holds a per-session lock in the worker
+process; the compare-and-set is the backstop across processes, so a session never keeps
+two live panels.
+
 **Permissions** in the session channel: View Channel, Send Messages, Embed Links,
-Read Message History.
+Read Message History (deleting its own duplicate needs nothing more).
 
 ## Extension points
 
@@ -143,3 +160,8 @@ Read Message History.
 - Leaderboards aggregate on read (fine at JAVELIN scale; index `game_players_user_idx`).
 - REACTION over Discord is latency-bound; fairness is best on the Activity surface.
 - A game unregistered while sessions are live ends those sessions on their next tick.
+- Tests run on PGlite, which executes one transaction at a time. There, version races are
+  staged (a competing writer bumps the version right before each transaction) and the
+  host-row lock is checked by statement order. Real interleaving runs in the opt-in
+  `src/games/concurrency.pg.test.ts` (per-host cap, concurrent answers) — see "Concurrency
+  tests" in `calendar.md` for how to run it.

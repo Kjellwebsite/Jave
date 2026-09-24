@@ -41,8 +41,8 @@ export const CHECK_IN_ATTEMPT_WINDOW_SECONDS = 600;
 /** Per-member RSVP changes, across events (surfaces add their own limits on top). */
 export const RSVP_RATE_LIMIT = 20;
 export const RSVP_RATE_WINDOW_SECONDS = 60;
-/** RSVP count changes refresh the Discord announcement at most this often per event. */
-export const ANNOUNCEMENT_REFRESH_DELAY_MS = 30_000;
+/** RSVP count changes refresh the Discord announcement once per window of this length per event. */
+export const ANNOUNCEMENT_REFRESH_WINDOW_MS = 30_000;
 
 // ─── Teams & tournaments
 export const TEAM_NAME_MAX = 64;

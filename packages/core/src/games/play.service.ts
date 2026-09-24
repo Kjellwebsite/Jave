@@ -115,6 +115,7 @@ export async function submitMove(
 }
 
 const GAME_UNAVAILABLE_REASON = 'This game is no longer available.';
+const GAME_BUSY_REASON = 'The game is busy — try again.';
 
 /**
  * Advance a session's timers to now (idempotent). Internal: no authorization
@@ -124,6 +125,11 @@ const GAME_UNAVAILABLE_REASON = 'This game is no longer available.';
  * `overdueByMs` > 0 only advances when the next deadline passed at least that
  * long ago: player-initiated ticks then cannot race the worker to reveal new
  * information (a new question, GO) to themselves first.
+ *
+ * Throws ConflictError (retryable) when every attempt lost the version race
+ * to a concurrent writer: the `games.tick` job must retry rather than
+ * complete, because the competing commit's tick for the same deadline was
+ * dropped behind the running job's dedupe key.
  */
 export async function advanceSession(
   ctx: ServiceContext,
@@ -151,7 +157,7 @@ export async function advanceSession(
       if (ended) return ended;
     }
   }
-  return loadSession(ctx, sessionId);
+  throw new ConflictError(GAME_BUSY_REASON);
 }
 
 /**

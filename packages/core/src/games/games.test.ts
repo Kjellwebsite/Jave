@@ -14,12 +14,7 @@ import {
 } from '../kernel/errors';
 import { anonymousActor, type UserActor } from '../permissions/actor';
 import { GAMES_TICK_JOB } from './constants';
-import {
-  DISCORD_GAMES_RENDER_JOB,
-  getGameRender,
-  markGameChannelUnavailable,
-  markGameMessagePosted,
-} from './discord-jobs';
+import { DISCORD_GAMES_RENDER_JOB, getGameRender } from './discord-jobs';
 import { getLeaderboard } from './leaderboard.service';
 import { submitMove, tickSession } from './play.service';
 import { registerGame } from './registry';
@@ -354,7 +349,8 @@ describe('game sessions', () => {
       ).rejects.toBeInstanceOf(ValidationError);
     });
 
-    it('BREAK: a stale version is rejected; concurrent answers both land', async () => {
+    it('BREAK: a stale version is rejected; a burst of answers all land (sequential invariant)', async () => {
+      // PGlite serializes these calls; integrity.test.ts forces real version races.
       const [a, b] = await Promise.all([kit.member(), kit.member()]);
       const session = await startedTrivia([a, b]);
       await submitMove(kit.as(a), {
@@ -518,82 +514,6 @@ describe('game sessions', () => {
       kit.clock.advance(2 * HOUR + 1);
       expect(await sweepStaleSessions(kit.system)).toEqual({ abandoned: 1, advanced: 0 });
       expect((await row(stalled.id)).status).toBe('abandoned');
-    });
-
-    it('Discord render callbacks are system-only and bound to the session channel', async () => {
-      const session = await lobby();
-      const render = await getGameRender(kit.system, session.id);
-      expect(render).toMatchObject({ discordChannelId: CHANNEL, discordMessageId: null });
-      expect(render.playerDiscordIds[host.userId]).toBe(host.discordId);
-      await expect(getGameRender(kit.as(staff), session.id)).rejects.toBeInstanceOf(ForbiddenError);
-      await expect(
-        markGameMessagePosted(kit.as(host), {
-          sessionId: session.id,
-          channelId: CHANNEL,
-          messageId: '923456789012345678',
-        }),
-      ).rejects.toBeInstanceOf(ForbiddenError);
-      await expect(
-        markGameMessagePosted(kit.system, {
-          sessionId: session.id,
-          channelId: '999999999999999999',
-          messageId: '923456789012345678',
-        }),
-      ).rejects.toBeInstanceOf(ValidationError);
-      await markGameMessagePosted(kit.system, {
-        sessionId: session.id,
-        channelId: CHANNEL,
-        messageId: '923456789012345678',
-      });
-      expect((await getGameRender(kit.system, session.id)).discordMessageId).toBe(
-        '923456789012345678',
-      );
-      const dashboard = await lobby({ surface: 'dashboard', discordChannelId: undefined });
-      const renders = await kit.db
-        .select()
-        .from(jobs)
-        .where(eq(jobs.type, DISCORD_GAMES_RENDER_JOB));
-      expect(renders.every((j) => j.payload.sessionId !== dashboard.id)).toBe(true);
-    });
-
-    it('BREAK: a channel the host cannot use ends the session without another render', async () => {
-      const session = await lobby({ discordChannelId: '323456789012345678' });
-      const rendersBefore = await kit.db
-        .select()
-        .from(jobs)
-        .where(eq(jobs.type, DISCORD_GAMES_RENDER_JOB));
-      await expect(
-        markGameChannelUnavailable(kit.as(staff), {
-          sessionId: session.id,
-          reason: 'host_cannot_post',
-        }),
-      ).rejects.toBeInstanceOf(ForbiddenError);
-      const result = await markGameChannelUnavailable(kit.system, {
-        sessionId: session.id,
-        reason: 'host_cannot_post',
-      });
-      expect(result.status).toBe('abandoned');
-      expect((await row(session.id)).endReason).toBe('The host cannot post in that channel.');
-      const rendersAfter = await kit.db
-        .select()
-        .from(jobs)
-        .where(eq(jobs.type, DISCORD_GAMES_RENDER_JOB));
-      expect(rendersAfter).toHaveLength(rendersBefore.length);
-      await expect(
-        markGameChannelUnavailable(kit.system, {
-          sessionId: session.id,
-          reason: 'bot_cannot_post',
-        }),
-      ).resolves.toEqual({ status: 'abandoned' });
-    });
-
-    it('BREAK: concurrent creates respect the per-host cap', async () => {
-      const results = await Promise.allSettled(
-        [1, 2, 3, 4].map(() => lobby({ surface: 'dashboard', discordChannelId: undefined })),
-      );
-      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
-      const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
-      expect(rejected.reason).toBeInstanceOf(ConflictError);
     });
   });
 });

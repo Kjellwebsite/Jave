@@ -2,34 +2,37 @@ import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { events } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
-import { parseInput } from '../kernel/validation';
-import { enqueueJob } from '../jobs/queue';
-import { getSettings } from '../settings/settings.service';
-import { ANNOUNCEMENT_REFRESH_DELAY_MS } from './constants';
-import { requireSystemActor } from './guards';
-import { type LocationView, toLocationView } from './location';
-import {
-  type EventKind,
-  type EventRecord,
-  type EventStatus,
-  loadEvent,
-  OPEN_EVENT_STATUSES,
-  type RsvpCounts,
-  rsvpCounts,
-} from './records';
-import { markEventPublishedSchema } from './schemas';
-import { isRsvpOpen } from './timing';
+import { cancelJob, enqueueJob } from '../jobs/queue';
+import { ANNOUNCEMENT_REFRESH_WINDOW_MS } from './constants';
+import type { EventRecord } from './records';
+import { announcementRefreshTimes, countsRefreshDueAt } from './timing';
 
 /**
  * Discord job contracts for JAVELIN events. Core enqueues these inside the
  * transaction that changed the event; the bot's worker executes them
- * (apps/bot/src/features/events) and reports back through the callbacks
- * below. Handlers must be idempotent: jobs are at-least-once.
+ * (apps/bot/src/features/events) and reports back through the callbacks in
+ * `discord-callbacks.ts`. Jobs are at-least-once and several can be due for
+ * one event, so handlers are idempotent full syncs.
+ *
+ * Serialization: the bot runs at most one `discord.events.*` handler per
+ * event at a time (a per-event lock in the worker process). Core's
+ * compare-and-set callback is the backstop when runs still overlap (two bot
+ * processes during a deploy): it stores one object per slot and tells the
+ * losing run to delete its duplicate.
  */
 
-const jobPayload = z.object({
+const publishPayload = z.object({
   eventId: z.uuid(),
-  /** events.revision when enqueued. A handler seeing a newer revision may skip: a newer job exists. */
+  /**
+   * events.revision when a change enqueued the job. Absent on refreshes
+   * (RSVP counts, RSVP close, event end): those are never skipped.
+   */
+  revision: z.number().int().min(0).optional(),
+});
+
+const cancelPayload = z.object({
+  eventId: z.uuid(),
+  /** events.revision of the cancellation (informational; the handler checks the status). */
   revision: z.number().int().min(0),
 });
 
@@ -37,31 +40,42 @@ const jobPayload = z.object({
  * `discord.events.publish` — bring Discord in line with the event (create or sync).
  *
  * The bot must:
- * 1. Load `getEventPublication(ctx, eventId)`. If `publication.revision > payload.revision`,
- *    return `{ skipped: 'superseded' }` (a newer publish job is queued).
+ * 1. Load `getEventPublication(ctx, eventId)`. If `payload.revision` is set and
+ *    `publication.revision > payload.revision`, return `{ skipped: 'superseded' }` (a newer
+ *    publish job exists). A payload without `revision` is a refresh and always runs.
  * 2. If `status` is `cancelled`, do nothing (the cancel job owns that path).
- * 3. Scheduled Event: create one when `discordScheduledEventId` is null, otherwise edit it —
- *    name = title, description, start/end, and either the voice/stage channel
- *    (`location.kind === 'channel'`) or an external location (`url`/`text`, or "JAVELIN"
- *    when no location is set). Set its status to ACTIVE when `status === 'live'` and
- *    COMPLETED when `status === 'completed'` (gateway extension: status on edit).
- * 4. Announcement: when `announceChannelId` is set, post (first run) or edit the
- *    announcement panel in that channel: title, time, location, capacity/spots left, and
- *    RSVP buttons with custom ids `events:rsvp:<eventId>:going|maybe|declined`, disabled
- *    when `rsvpOpen` is false. All user text through `userText()`; `allowedMentions: { parse: [] }`.
- *    Button clicks call `calendar.rsvp(ctx, …)` as the clicking user — the id never authorizes.
- * 5. Report the ids with `markEventPublished(ctx, { eventId, discordScheduledEventId,
- *    announcementChannelId, announcementMessageId })`.
+ * 3. Scheduled Event: edit `discordScheduledEventId` when set — name = title, description,
+ *    start/end, and either the voice/stage channel (`location.kind === 'channel'`) or an
+ *    external location (`url`/`text`, or "JAVELIN" when no location is set); status ACTIVE
+ *    when `status === 'live'`, COMPLETED when `status === 'completed'` (gateway extension:
+ *    status on edit). When it is null (or Discord answers Unknown Scheduled Event) and the
+ *    status is `scheduled` or `live`, create one. Never create for a completed event.
+ * 4. Announcement: when `announcementMessageId` is set, edit that message in
+ *    `announcementChannelId`; otherwise, when `announceChannelId` is set and the status is
+ *    `scheduled` or `live`, post one there (also after Unknown Message). Panel: title, time,
+ *    location, capacity/spots left, and RSVP buttons with custom ids
+ *    `events:rsvp:<eventId>:going|maybe|declined` — going and maybe disabled when `rsvpOpen`
+ *    is false, declined disabled when `declineOpen` is false. All user text through
+ *    `userText()`; `allowedMentions: { parse: [] }`. Button clicks call `calendar.rsvp(ctx, …)`
+ *    as the clicking user — the id never authorizes.
+ * 5. Report only what it created, with the publication's `revision` and the id the
+ *    publication showed for that slot: `markEventPublished(ctx, { eventId, revision,
+ *    scheduledEvent: { id, replaces }, announcement: { channelId, messageId, replaces } })`
+ *    (`replaces` is null for a first create). Then delete every object listed in the
+ *    result's `discard` — another run stored its own first — and apply the same content to
+ *    the objects in `result.stored`.
  *
- * Besides one job per revision, RSVP changes enqueue a debounced count refresh of the same
- * type (at most one pending per event, 30 s delay); the handler is the same idempotent sync.
+ * Besides one job per revision, core enqueues refreshes of the same type (no revision):
+ * one per 30 s window after RSVP changes, one at the RSVP close, one at the end, and one
+ * when a run stores objects it rendered from an older revision.
  *
- * Discord permissions: Manage Events (create/edit scheduled events); in the announcement
- * channel View Channel, Send Messages, Embed Links; for a channel location, View Channel
- * and Connect on that voice/stage channel.
+ * Discord permissions: Manage Events (create/edit/delete scheduled events); in the
+ * announcement channel View Channel, Send Messages, Embed Links (deleting its own message
+ * needs nothing more); for a channel location, View Channel and Connect on that
+ * voice/stage channel.
  */
 export const DISCORD_EVENTS_PUBLISH_JOB = 'discord.events.publish';
-export const discordEventsPublishPayloadSchema = jobPayload;
+export const discordEventsPublishPayloadSchema = publishPayload;
 export type DiscordEventsPublishPayload = z.infer<typeof discordEventsPublishPayloadSchema>;
 
 /**
@@ -73,16 +87,17 @@ export type DiscordEventsPublishPayload = z.infer<typeof discordEventsPublishPay
  *    cancelled events count as success).
  * 3. Edit the announcement (when `announcementChannelId`/`announcementMessageId` are set) to a
  *    CANCELLED panel with `cancelReason`, and remove the RSVP buttons.
- * 4. No callback is required; attendees are notified by core, not by the bot.
+ * 4. No callback is required; attendees are notified by core, not by the bot. When a publish
+ *    run stores new objects after the cancellation, core enqueues another cancel job.
  *
  * Discord permissions: Manage Events; in the announcement channel View Channel, Send
  * Messages, Embed Links (editing its own message needs nothing more).
  */
 export const DISCORD_EVENTS_CANCEL_JOB = 'discord.events.cancel';
-export const discordEventsCancelPayloadSchema = jobPayload;
+export const discordEventsCancelPayloadSchema = cancelPayload;
 export type DiscordEventsCancelPayload = z.infer<typeof discordEventsCancelPayloadSchema>;
 
-/** Bump the revision (caller holds the row) and enqueue a publish for it. */
+/** Publish the revision the caller just wrote (caller holds the row). */
 export async function enqueueEventPublish(ctx: ServiceContext, event: EventRecord): Promise<void> {
   const payload: DiscordEventsPublishPayload = { eventId: event.id, revision: event.revision };
   await enqueueJob(ctx, DISCORD_EVENTS_PUBLISH_JOB, payload, {
@@ -90,22 +105,82 @@ export async function enqueueEventPublish(ctx: ServiceContext, event: EventRecor
   });
 }
 
-/** Debounced announcement refresh after RSVP changes: at most one pending per event. */
+/**
+ * Debounced announcement refresh after RSVP changes: one job per event per
+ * window, due at the window's end. No revision — a refresh is never skipped.
+ */
 export async function enqueueAnnouncementRefresh(
   ctx: ServiceContext,
   event: EventRecord,
 ): Promise<void> {
-  const payload: DiscordEventsPublishPayload = { eventId: event.id, revision: event.revision };
+  const dueAt = countsRefreshDueAt(ctx.clock.now(), ANNOUNCEMENT_REFRESH_WINDOW_MS);
+  const payload: DiscordEventsPublishPayload = { eventId: event.id };
   await enqueueJob(ctx, DISCORD_EVENTS_PUBLISH_JOB, payload, {
-    dedupeKey: `${DISCORD_EVENTS_PUBLISH_JOB}:${event.id}:counts`,
-    delayMs: ANNOUNCEMENT_REFRESH_DELAY_MS,
+    dedupeKey: `${DISCORD_EVENTS_PUBLISH_JOB}:${event.id}:counts:${dueAt.getTime()}`,
+    runAt: dueAt,
   });
 }
 
-export async function enqueueEventCancel(ctx: ServiceContext, event: EventRecord): Promise<void> {
+const windowRefreshKey = (eventId: string, at: Date) =>
+  `${DISCORD_EVENTS_PUBLISH_JOB}:${eventId}:at:${at.getTime()}`;
+
+/** Refresh the announcement when its buttons change on their own (RSVP close, end). */
+export async function scheduleWindowRefreshes(
+  ctx: ServiceContext,
+  event: EventRecord,
+): Promise<void> {
+  const now = ctx.clock.now().getTime();
+  for (const at of announcementRefreshTimes(event)) {
+    if (at.getTime() <= now) continue;
+    const payload: DiscordEventsPublishPayload = { eventId: event.id };
+    await enqueueJob(ctx, DISCORD_EVENTS_PUBLISH_JOB, payload, {
+      dedupeKey: windowRefreshKey(event.id, at),
+      runAt: at,
+    });
+  }
+}
+
+/** Cancel the pending window refreshes planned for the event's (previous) times. */
+export async function cancelWindowRefreshes(
+  ctx: ServiceContext,
+  event: EventRecord,
+): Promise<void> {
+  for (const at of announcementRefreshTimes(event)) {
+    await cancelJob(ctx, windowRefreshKey(event.id, at));
+  }
+}
+
+/**
+ * Re-sync objects a publish run created from an older revision: the job for
+ * the newer revision may have run before they were stored. Keyed by the new
+ * object ids, so it never collides with a live publish job.
+ */
+export async function enqueueLateObjectSync(
+  ctx: ServiceContext,
+  event: EventRecord,
+  lateObjectIds: readonly string[],
+): Promise<void> {
+  const payload: DiscordEventsPublishPayload = { eventId: event.id };
+  await enqueueJob(ctx, DISCORD_EVENTS_PUBLISH_JOB, payload, {
+    dedupeKey: `${DISCORD_EVENTS_PUBLISH_JOB}:${event.id}:late:${lateObjectIds.join(':')}`,
+  });
+}
+
+/**
+ * Enqueue the Discord cleanup for a cancelled event. `lateObjectIds` are
+ * objects a publish run stored after the cancellation: they make the key
+ * unique, so the job is never dropped behind a cancel run that is still in
+ * flight and saw no objects.
+ */
+export async function enqueueEventCancel(
+  ctx: ServiceContext,
+  event: EventRecord,
+  lateObjectIds: readonly string[] = [],
+): Promise<void> {
   const payload: DiscordEventsCancelPayload = { eventId: event.id, revision: event.revision };
+  const late = lateObjectIds.length > 0 ? `:late:${lateObjectIds.join(':')}` : '';
   await enqueueJob(ctx, DISCORD_EVENTS_CANCEL_JOB, payload, {
-    dedupeKey: `${DISCORD_EVENTS_CANCEL_JOB}:${event.id}:r${event.revision}`,
+    dedupeKey: `${DISCORD_EVENTS_CANCEL_JOB}:${event.id}:r${event.revision}${late}`,
   });
 }
 
@@ -121,85 +196,4 @@ export async function bumpRevision(
     .where(eq(events.id, eventId))
     .returning();
   return row!;
-}
-
-export interface EventPublication {
-  eventId: string;
-  revision: number;
-  title: string;
-  description: string | null;
-  kind: EventKind;
-  status: EventStatus;
-  startsAt: Date;
-  endsAt: Date;
-  location: LocationView | null;
-  capacity: number | null;
-  counts: RsvpCounts;
-  rsvpOpen: boolean;
-  cancelReason: string | null;
-  discordScheduledEventId: string | null;
-  announcementChannelId: string | null;
-  announcementMessageId: string | null;
-  /** settings.channels.events — where a new announcement goes (null: no announcement). */
-  announceChannelId: string | null;
-}
-
-/** Everything the bot needs to mirror an event to Discord. System actor only. */
-export async function getEventPublication(
-  ctx: ServiceContext,
-  eventId: string,
-): Promise<EventPublication> {
-  requireSystemActor(ctx);
-  const event = await loadEvent(ctx, parseInput(z.uuid(), eventId));
-  const counts = (await rsvpCounts(ctx, [event.id])).get(event.id)!;
-  const channels = await getSettings(ctx, 'channels');
-  return {
-    eventId: event.id,
-    revision: event.revision,
-    title: event.title,
-    description: event.description,
-    kind: event.kind,
-    status: event.status,
-    startsAt: event.startsAt,
-    endsAt: event.endsAt,
-    location: toLocationView(event.location),
-    capacity: event.capacity,
-    counts,
-    rsvpOpen: OPEN_EVENT_STATUSES.includes(event.status) && isRsvpOpen(event, ctx.clock.now()),
-    cancelReason: event.cancelReason,
-    discordScheduledEventId: event.discordScheduledEventId,
-    announcementChannelId: event.announcementChannelId,
-    announcementMessageId: event.announcementMessageId,
-    announceChannelId: channels.events ?? null,
-  };
-}
-
-/**
- * Callback for `discord.events.publish`: store the Discord ids. Only fields
- * present in the input are written. If the event was cancelled while the bot
- * was publishing, a cancel job is enqueued so the fresh Discord objects are
- * cancelled too.
- */
-export async function markEventPublished(
-  ctx: ServiceContext,
-  input: z.input<typeof markEventPublishedSchema>,
-): Promise<{ status: EventStatus }> {
-  requireSystemActor(ctx);
-  const data = parseInput(markEventPublishedSchema, input);
-  const event = await loadEvent(ctx, data.eventId);
-  const changes: Partial<typeof events.$inferInsert> = {};
-  if (data.discordScheduledEventId !== undefined) {
-    changes.discordScheduledEventId = data.discordScheduledEventId;
-  }
-  if (data.announcementChannelId !== undefined) {
-    changes.announcementChannelId = data.announcementChannelId;
-  }
-  if (data.announcementMessageId !== undefined) {
-    changes.announcementMessageId = data.announcementMessageId;
-  }
-  if (Object.keys(changes).length > 0) {
-    await ctx.db.update(events).set(changes).where(eq(events.id, event.id));
-  }
-  if (event.status === 'cancelled') await enqueueEventCancel(ctx, event);
-  return { status: event.status };
 }

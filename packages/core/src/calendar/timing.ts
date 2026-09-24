@@ -72,6 +72,30 @@ export function isDeclineOpen(event: { endsAt: Date }, now: Date): boolean {
   return now.getTime() < event.endsAt.getTime();
 }
 
+/**
+ * Instants at which the RSVP buttons change on their own: going/maybe close
+ * at `rsvpClosesAt` (or the end), decline closes at the end. Ascending, unique.
+ */
+export function announcementRefreshTimes(event: {
+  endsAt: Date;
+  rsvpClosesAt: Date | null;
+}): Date[] {
+  const instants = new Set([
+    (event.rsvpClosesAt ?? event.endsAt).getTime(),
+    event.endsAt.getTime(),
+  ]);
+  return [...instants].sort((a, b) => a - b).map((ms) => new Date(ms));
+}
+
+/**
+ * The debounced RSVP-count refresh runs at the end of the fixed window
+ * containing `now` (always strictly after `now`). Each window has its own
+ * job, so an RSVP made while one refresh runs is picked up by the next.
+ */
+export function countsRefreshDueAt(now: Date, windowMs: number): Date {
+  return new Date((Math.floor(now.getTime() / windowMs) + 1) * windowMs);
+}
+
 export interface CheckInWindow {
   opensAt: Date;
   closesAt: Date;

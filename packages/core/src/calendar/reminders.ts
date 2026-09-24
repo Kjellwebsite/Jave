@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { eventRsvps, members } from '@jave/database';
-import type { ServiceContext } from '../kernel/context';
+import { type ServiceContext, withTransaction } from '../kernel/context';
 import { cancelJob, enqueueJob } from '../jobs/queue';
 import { type JobHandler, PermanentJobError } from '../jobs/worker';
 import type { NotificationType } from '../notifications/catalog';
@@ -86,7 +86,10 @@ export function eventUrl(ctx: ServiceContext, eventId: string): string | undefin
     : undefined;
 }
 
-/** One notification per recipient, deduplicated per member on `factKey`. */
+/**
+ * One notification per recipient, deduplicated per member on `factKey`.
+ * Writes several rows per recipient: call it with a transaction.
+ */
 export async function notifyRecipients(
   ctx: ServiceContext,
   event: EventRecord,
@@ -112,6 +115,11 @@ export async function notifyRecipients(
 /**
  * `calendar.reminder`: notify members who are going. Skips events that were
  * cancelled, completed or moved since the reminder was planned.
+ *
+ * Each recipient's notification (inbox row, deliveries, delivery job) commits
+ * in its own transaction: a failure rolls back that recipient completely, so
+ * the retry is not swallowed by the notification's dedupe key, and recipients
+ * already notified stay deduplicated.
  */
 export const reminderJobHandler: JobHandler = async (ctx, rawPayload) => {
   const parsed = reminderPayloadSchema.safeParse(rawPayload);
@@ -123,12 +131,17 @@ export const reminderJobHandler: JobHandler = async (ctx, rawPayload) => {
     return { skipped: 'rescheduled' };
   }
   const definition = EVENT_REMINDERS.find((reminder) => reminder.key === payload.reminder)!;
-  const recipients = await rsvpRecipients(ctx, event.id, ['going']);
-  const notified = await notifyRecipients(ctx, event, recipients, {
+  const message = {
     type: 'event.reminder',
     title: definition.title,
     body: `${event.title} — ${formatEventTime(event.startsAt)}. You're confirmed.`,
     factKey: `reminder:${payload.reminder}:${event.startsAt.getTime()}`,
-  });
+  } as const;
+  let notified = 0;
+  for (const recipient of await rsvpRecipients(ctx, event.id, ['going'])) {
+    notified += await withTransaction(ctx, (tx) =>
+      notifyRecipients(tx, event, [recipient], message),
+    );
+  }
   return { notified };
 };

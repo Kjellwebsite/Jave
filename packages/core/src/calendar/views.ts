@@ -13,7 +13,7 @@ import {
   type RsvpStatus,
   waitlistPosition,
 } from './records';
-import { isRsvpOpen } from './timing';
+import { isDeclineOpen, isRsvpOpen } from './timing';
 
 export interface MyRsvpView {
   status: RsvpStatus;
@@ -39,7 +39,10 @@ export interface EventView {
   capacity: number | null;
   spotsLeft: number | null;
   rsvpClosesAt: Date | null;
+  /** Going/maybe are accepted. */
   rsvpOpen: boolean;
+  /** Declining is accepted (until the end: it frees a spot for the waitlist). */
+  declineOpen: boolean;
   checkInCodeIssued: boolean;
   hostMemberId: string | null;
   discordScheduledEventId: string | null;
@@ -57,6 +60,7 @@ export function toEventView(
   myRsvp: MyRsvpView | null,
   now: Date,
 ): EventView {
+  const open = OPEN_EVENT_STATUSES.includes(event.status);
   return {
     id: event.id,
     title: event.title,
@@ -69,7 +73,8 @@ export function toEventView(
     capacity: event.capacity,
     spotsLeft: event.capacity === null ? null : Math.max(0, event.capacity - counts.going),
     rsvpClosesAt: event.rsvpClosesAt,
-    rsvpOpen: OPEN_EVENT_STATUSES.includes(event.status) && isRsvpOpen(event, now),
+    rsvpOpen: open && isRsvpOpen(event, now),
+    declineOpen: open && isDeclineOpen(event, now),
     checkInCodeIssued: event.checkInCodeHash !== null,
     hostMemberId: event.hostMemberId,
     discordScheduledEventId: event.discordScheduledEventId,

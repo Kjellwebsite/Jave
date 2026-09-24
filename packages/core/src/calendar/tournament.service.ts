@@ -19,11 +19,24 @@ import {
 import { MAX_BRACKET_TEAMS, MIN_BRACKET_TEAMS } from './constants';
 import { completeEventInTx } from './events.service';
 import { requireViewer } from './guards';
-import { assertEventStatus, type EventRecord, loadEvent, OPEN_EVENT_STATUSES } from './records';
+import {
+  assertEventStatus,
+  type EventRecord,
+  type EventStatus,
+  loadEvent,
+  OPEN_EVENT_STATUSES,
+} from './records';
 import { eventIdSchema, generateBracketSchema, reportMatchSchema } from './schemas';
 import { hasBracket, type TeamRecord } from './teams.service';
 
 type MatchRecord = typeof tournamentMatches.$inferSelect;
+
+/**
+ * Results can be reported until the final, including after the event itself
+ * was completed (by staff or the sweep): the gathering may end before the
+ * bracket does. Only a cancelled event freezes its bracket.
+ */
+const BRACKET_REPORTABLE_STATUSES: readonly EventStatus[] = ['scheduled', 'live', 'completed'];
 
 export interface BracketTeamView {
   id: string;
@@ -197,7 +210,8 @@ async function finishTournament(tx: ServiceContext, event: EventRecord, final: M
 
 /**
  * Staff: record a result. The winner advances; reporting the final
- * completes the tournament and its event. Results are final once recorded.
+ * completes the tournament and, if still open, its event. Results are final
+ * once recorded.
  */
 export async function reportMatch(
   ctx: ServiceContext,
@@ -221,7 +235,7 @@ export async function reportMatch(
     if (!peek) throw new NotFoundError('Match');
     // Lock order: event, then matches — the same order every writer uses.
     const event = await loadEvent(tx, peek.eventId, { lock: true });
-    assertEventStatus(event, OPEN_EVENT_STATUSES, 'This event has already ended.');
+    assertEventStatus(event, BRACKET_REPORTABLE_STATUSES, 'This event was cancelled.');
     const match = await lockMatch(tx, data.matchId);
     if (match.status === 'completed' || match.status === 'bye') {
       throw new InvalidStateError('This match already has a result.');

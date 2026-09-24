@@ -2,7 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { domainEvents } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
-import { DAY } from '../kernel/clock';
+import { DAY, HOUR } from '../kernel/clock';
 import {
   ConflictError,
   ForbiddenError,
@@ -11,11 +11,18 @@ import {
   ValidationError,
 } from '../kernel/errors';
 import type { UserActor } from '../permissions/actor';
-import { getEvent, scheduleEvent, updateEvent } from './events.service';
+import { AUTO_COMPLETE_GRACE_MS } from './constants';
+import { cancelEvent, completeEvent, getEvent, scheduleEvent, updateEvent } from './events.service';
+import { sweepStaleEvents } from './jobs';
 import { rsvp } from './rsvp.service';
 import { createRandomTeams, createTeam, deleteTeam, listTeams } from './teams.service';
 import { generateBracket, getBracket, reportMatch, type BracketView } from './tournament.service';
-import { SNAPSHOT_BUILD_TIMEOUT_MS, warmUpTestDatabase } from './test-support';
+import {
+  recordingContext,
+  SNAPSHOT_BUILD_TIMEOUT_MS,
+  statementIndex,
+  warmUpTestDatabase,
+} from './test-support';
 
 describe('teams and tournaments', () => {
   let kit: TestKit;
@@ -230,6 +237,51 @@ describe('teams and tournaments', () => {
       expect(view.champion?.name).toBe('Squad 3');
     });
 
+    it('BREAK: an event completed mid-bracket still finishes its bracket; a cancelled one freezes', async () => {
+      const completionsOf = async (type: string) =>
+        (await kit.db.select().from(domainEvents).where(eq(domainEvents.type, type))).length;
+      const event = await tournament();
+      await teams(event.id, 4);
+      let bracket = await generateBracket(kit.as(staff), { eventId: event.id });
+      const [m1, m2] = matchesIn(bracket, 1);
+      await reportMatch(kit.as(staff), { matchId: m1!.id, scoreA: 1, scoreB: 0 });
+      // The evening ends before the bracket does.
+      kit.clock.advance(DAY);
+      await completeEvent(kit.as(staff), { eventId: event.id });
+      bracket = await reportMatch(kit.as(staff), { matchId: m2!.id, scoreA: 2, scoreB: 0 });
+      bracket = await reportMatch(kit.as(staff), {
+        matchId: matchesIn(bracket, 2)[0]!.id,
+        winner: 'b',
+      });
+      expect(bracket.state).toBe('completed');
+      expect(bracket.champion?.name).toBe('Squad 2');
+      expect(await completionsOf('tournament.completed')).toBe(4);
+      // The event was completed once, by staff — the final does not complete it again.
+      expect(await completionsOf('event.completed')).toBe(1);
+      expect((await getEvent(kit.system, { eventId: event.id })).status).toBe('completed');
+
+      // The sweep completes a long tournament; its final can still be reported.
+      const long = await tournament();
+      await teams(long.id, 2);
+      const longBracket = await generateBracket(kit.as(staff), { eventId: long.id });
+      kit.clock.advance(DAY + 2 * HOUR + AUTO_COMPLETE_GRACE_MS + 1);
+      expect(await sweepStaleEvents(kit.system)).toBe(1);
+      const finished = await reportMatch(kit.as(staff), {
+        matchId: matchesIn(longBracket, 1)[0]!.id,
+        winner: 'a',
+      });
+      expect(finished.state).toBe('completed');
+      expect(await completionsOf('event.completed')).toBe(2);
+
+      const dropped = await tournament();
+      await teams(dropped.id, 2);
+      const droppedBracket = await generateBracket(kit.as(staff), { eventId: dropped.id });
+      await cancelEvent(kit.as(staff), { eventId: dropped.id, reason: 'Venue lost.' });
+      await expect(
+        reportMatch(kit.as(staff), { matchId: matchesIn(droppedBracket, 1)[0]!.id, winner: 'a' }),
+      ).rejects.toThrow(/cancelled/);
+    });
+
     it('supports random seeding deterministically', async () => {
       const event = await tournament();
       await teams(event.id, 6);
@@ -295,7 +347,8 @@ describe('teams and tournaments', () => {
       );
     });
 
-    it('BREAK: concurrent reports of the same match record one result', async () => {
+    it('BREAK: duplicate reports of the same match record one result (sequential invariant)', async () => {
+      // PGlite serializes these transactions; the locks are covered below.
       const event = await tournament();
       await teams(event.id, 2);
       const bracket = await generateBracket(kit.as(staff), { eventId: event.id });
@@ -309,6 +362,20 @@ describe('teams and tournaments', () => {
       expect((rejected as PromiseRejectedResult).reason).toBeInstanceOf(InvalidStateError);
       const done = await getBracket(kit.system, { eventId: event.id });
       expect(done.state).toBe('completed');
+    });
+
+    it('BREAK: a report locks the event, then the match, before checking the result slot', async () => {
+      const event = await tournament();
+      await teams(event.id, 2);
+      const bracket = await generateBracket(kit.as(staff), { eventId: event.id });
+      const { ctx, statements } = recordingContext(kit, staff);
+      await reportMatch(ctx, { matchId: matchesIn(bracket, 1)[0]!.id, winner: 'a' });
+      const eventLock = statementIndex(statements, /from "events" where .* for update/);
+      const matchLock = statementIndex(statements, /from "tournament_matches" where .* for update/);
+      const write = statementIndex(statements, /^update "tournament_matches"/);
+      expect(eventLock).toBeGreaterThanOrEqual(0);
+      expect(matchLock).toBeGreaterThan(eventLock);
+      expect(write).toBeGreaterThan(matchLock);
     });
   });
 });

@@ -14,7 +14,7 @@ and single-elimination tournaments. Schema: `packages/database/src/schema/events
 event:  scheduled ──markEventLive──► live ──completeEvent──► completed
             │  └──────────────completeEvent (after start)──────►│
             └──cancelEvent──► cancelled ◄──cancelEvent── live
-        (tournament final reported ⇒ completed; sweep completes events 12 h past their end)
+        (tournament final reported ⇒ completed if still open; sweep completes events 12 h past their end)
 
 rsvp:   (none) ─► going | maybe | declined
         going beyond capacity ─► waitlist ─(spot frees, FIFO)─► going
@@ -30,6 +30,9 @@ match:  pending ─(both teams known)─► ready ─reportMatch─► completed
   open until the end because it frees a spot.
 - Lowering capacity never removes anyone; raising it promotes from the waitlist.
 - Teams are locked once a bracket exists; results are final once recorded.
+- Match results can be reported until the final, also after the event itself was
+  completed (by staff or the sweep): the evening may end before the bracket does.
+  Only a cancelled event freezes its bracket.
 
 ## Services
 
@@ -39,7 +42,7 @@ match:  pending ─(both teams known)─► ready ─reportMatch─► completed
 | `updateEvent`                                                   | `canManageEvents`              | Field-level audit diff; revision bump; reminders re-planned by dedupe key.                                                                                 |
 | `cancelEvent`                                                   | `canManageEvents`              | Reason required; notifies going/maybe/waitlist; enqueues Discord cleanup.                                                                                  |
 | `markEventLive` / `completeEvent`                               | `canManageEvents`              | Live from start − 30 min; complete once started.                                                                                                           |
-| `getEvent` / `listEvents`                                       | any member, system             | `upcoming` (open, not ended, soonest first) or `past`; includes counts and the viewer's RSVP. Never exposes the check-in hash.                             |
+| `getEvent` / `listEvents`                                       | any member, system             | `upcoming` (open, not ended, soonest first) or `past`; includes counts, `rsvpOpen`/`declineOpen` and the viewer's RSVP. Never exposes the check-in hash.   |
 | `rsvp`                                                          | member in good standing        | `going`/`maybe`/`declined`; serialized by the event row lock; 20 changes/min per member.                                                                   |
 | `listParticipants`                                              | `canManageEvents`              | Includes Discord ids — staff only.                                                                                                                         |
 | `listMemberEventHistory`                                        | self or `canManageEvents`      | Denials audited (`access.denied`).                                                                                                                         |
@@ -47,11 +50,12 @@ match:  pending ─(both teams known)─► ready ─reportMatch─► completed
 | `checkIn`                                                       | member in good standing        | Window `[start − 30 min, end]` inclusive; idempotent; 5 attempts / 10 min per member and event; failures audited.                                          |
 | `createTeam` / `createRandomTeams` / `deleteTeam` / `listTeams` | staff / staff / staff / member | One team per member per event (unique index). Random draw from unassigned `going` RSVPs, deterministic per seed (default: event id), sizes differ by ≤ 1.  |
 | `generateBracket`                                               | `canManageEvents`              | Tournament events, 2–128 teams, `seeded` (team seed, then name) or `random` (seeded shuffle).                                                              |
-| `reportMatch`                                                   | `canManageEvents`              | Scores 0–1 000 000; ties and forfeits need `winner`. The final completes the tournament and the event.                                                     |
+| `reportMatch`                                                   | `canManageEvents`              | Scores 0–1 000 000; ties and forfeits need `winner`. The final completes the tournament (and the event, if still open). Refused for cancelled events.      |
 | `getBracket`                                                    | any member                     | Rounds named Round n / Quarterfinals / Semifinals / Final; champion when done.                                                                             |
 
 Pure helpers (unit-tested): `buildSingleElimination`, `seedOrder`, `decideWinner`,
-`drawTeams`, `checkInWindow`, `isRsvpOpen`, `classifyLocation`.
+`drawTeams`, `checkInWindow`, `isRsvpOpen`, `isDeclineOpen`, `announcementRefreshTimes`,
+`classifyLocation`, `discordObjectVerdict`.
 
 ## Capabilities
 
@@ -75,46 +79,76 @@ Uses existing `canManageEvents` (operations and above). No new capabilities.
 
 | Type                     | Recipients                                   | Dedupe                                                                        |
 | ------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------- |
-| `event.reminder`         | going members, at start − 24 h and − 1 h     | `event:<id>:reminder:<24h                                                     | 1h>:<startMs>:<member>` |
+| `event.reminder`         | going members, at start − 24 h and − 1 h     | `event:<id>:reminder:<key>:<startMs>:<member>` (key `24h` or `1h`)            |
 | `event.updated` _(new)_  | going/maybe/waitlist on reschedule or cancel | `event:<id>:rescheduled:<startMs>:<member>` / `event:<id>:cancelled:<member>` |
 | `event.waitlist` _(new)_ | promoted member                              | `event:<id>:promoted:<nowMs>:<member>`                                        |
 
 ## Jobs
 
-| Type                | Schedule                                              | Behaviour                                                                                                                                                            |
-| ------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `calendar.reminder` | at start − 24 h / − 1 h (only if still in the future) | Skips cancelled/live/completed events and stale payloads (start moved). Dedupe key includes the planned start, so a reschedule never collides with an in-flight job. |
-| `calendar.sweep`    | recurring, every 15 min                               | Completes scheduled/live events more than 12 h past their end (batch 100). System actor only.                                                                        |
+| Type                | Schedule                                              | Behaviour                                                                                                                                                                                                                                                                                                                                        |
+| ------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `calendar.reminder` | at start − 24 h / − 1 h (only if still in the future) | Skips cancelled/live/completed events and stale payloads (start moved). Dedupe key includes the planned start, so a reschedule never collides with an in-flight job. Each recipient's notification (inbox row, deliveries, delivery job) commits in its own transaction, so a failed attempt leaves nothing half-written and the retry delivers. |
+| `calendar.sweep`    | recurring, every 15 min                               | Completes scheduled/live events more than 12 h past their end (batch 100). System actor only.                                                                                                                                                                                                                                                    |
 
 ## Discord job contracts
 
-Payloads are zod-validated (`discordEventsPublishPayloadSchema`, `discordEventsCancelPayloadSchema`):
-`{ eventId, revision }`. Every change the mirror must reflect bumps `events.revision`;
-one job per revision (`discord.events.publish:<id>:r<rev>`), so a handler that sees a
-newer revision skips (`superseded`).
+Payloads are zod-validated (`discordEventsPublishPayloadSchema`, `discordEventsCancelPayloadSchema`).
+Every job is an idempotent full sync from `getEventPublication`, and several can be due
+for one event:
+
+| Publish job (dedupe key)                         | Payload                 | Enqueued                                                                                                        |
+| ------------------------------------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `discord.events.publish:<id>:r<rev>`             | `{ eventId, revision }` | every change the mirror must show (revision bump)                                                               |
+| `discord.events.publish:<id>:counts:<windowEnd>` | `{ eventId }`           | RSVP changes, one per event per 30 s window, at its end                                                         |
+| `discord.events.publish:<id>:at:<ms>`            | `{ eventId }`           | at the RSVP close and at the end (buttons change); re-planned when those times move, dropped on cancel/complete |
+| `discord.events.publish:<id>:late:<objectIds>`   | `{ eventId }`           | a run stored objects it rendered from an older revision (the newer revision's job may have missed them)         |
+
+A revision job whose revision is older than the publication's skips (`superseded`); a
+refresh has no revision and always runs. Count refreshes use one key per window, so an
+RSVP made while a refresh runs lands in the next window instead of being dropped.
+
+**Serialization and compare-and-set.** The bot runs at most one `discord.events.*`
+handler per event at a time (a per-event lock in the worker process). Core is the
+backstop when runs still overlap (two bot processes, `runNow` next to the poll loop):
+`markEventPublished` stores one object per slot. Each run reports only what it created,
+with the id the publication showed for that slot (`replaces`, null for a first create):
+
+- stored id equals the reported id → kept (a retried callback);
+- stored id equals `replaces` → stored;
+- otherwise → returned in `discard`: the bot deletes that duplicate and edits `stored`.
+
+The callback runs under the event row lock and takes the `revision` the bot rendered from
+(ahead of the event ⇒ `ValidationError`). Objects stored after a cancellation get their own
+`discord.events.cancel` job, keyed by the new object ids, so it is never dropped behind a
+cancel run that is still in flight and saw no objects; objects rendered from an older
+revision get a `:late:` sync job the same way.
 
 ### `discord.events.publish` — create or sync
 
-1. `getEventPublication(ctx, eventId)` (system only). Skip if `revision` is newer than the payload's.
+1. `getEventPublication(ctx, eventId)` (system only). If the payload has a `revision` and
+   the publication's is newer, return `{ skipped: 'superseded' }`.
 2. If `status === 'cancelled'`, do nothing (the cancel job owns that path).
-3. Create the Scheduled Event when `discordScheduledEventId` is null, else edit it: name,
-   description, start/end, voice/stage channel (`location.kind === 'channel'`) or external
-   location (`url`/`text`, "JAVELIN" if none). Status ACTIVE when live, COMPLETED when
-   completed (**gateway extension needed**: `editScheduledEvent` has no status yet).
-4. When `announceChannelId` (settings.channels.events) is set, post or edit the announcement
-   panel: title, time, location, capacity and spots left, RSVP buttons
-   `events:rsvp:<eventId>:going|maybe|declined` (disabled when `rsvpOpen` is false).
-   User text through `userText()`; `allowedMentions: { parse: [] }`. Clicks call
-   `calendar.rsvp` as the clicking user — the custom id never authorizes.
-5. Report ids with `markEventPublished(ctx, { eventId, discordScheduledEventId,
-announcementChannelId, announcementMessageId })`. If the event was cancelled meanwhile,
-   the callback enqueues a fresh cancel job.
+3. Edit the Scheduled Event when `discordScheduledEventId` is set: name, description,
+   start/end, voice/stage channel (`location.kind === 'channel'`) or external location
+   (`url`/`text`, "JAVELIN" if none). Status ACTIVE when live, COMPLETED when completed
+   (**gateway extension needed**: `editScheduledEvent` has no status yet). Create one when
+   it is null (or Unknown Scheduled Event) and the event is scheduled or live — never for
+   a completed event.
+4. Edit the announcement when `announcementMessageId` is set; otherwise, when
+   `announceChannelId` (settings.channels.events) is set and the event is scheduled or live,
+   post one (also after Unknown Message). Panel: title, time, location, capacity and spots
+   left, RSVP buttons `events:rsvp:<eventId>:going|maybe|declined` — going/maybe disabled
+   when `rsvpOpen` is false, declined disabled when `declineOpen` is false. User text
+   through `userText()`; `allowedMentions: { parse: [] }`. Clicks call `calendar.rsvp` as
+   the clicking user — the custom id never authorizes.
+5. Report created objects with the publication's revision: `markEventPublished(ctx,
+{ eventId, revision, scheduledEvent: { id, replaces }, announcement: { channelId,
+messageId, replaces } })` (either part optional, at least one). Delete everything in the
+   result's `discard`; apply the content to `result.stored`.
 
-RSVP changes also enqueue a debounced refresh of the same type
-(`discord.events.publish:<id>:counts`, 30 s delay, at most one pending per event).
-
-**Permissions**: Manage Events; in the announcement channel View Channel, Send Messages,
-Embed Links; for a channel location View Channel + Connect.
+**Permissions**: Manage Events (create/edit/delete scheduled events); in the announcement
+channel View Channel, Send Messages, Embed Links; for a channel location View Channel +
+Connect.
 
 ### `discord.events.cancel`
 
@@ -143,3 +177,32 @@ Embed Links; for a channel location View Channel + Connect.
 - The RSVP rate limit (Postgres-backed, shared across processes) also counts idempotent
   re-sends.
 - Reminders go to every `going` member regardless of standing; surfaces decide delivery.
+- Two publish runs that overlap across bot processes can finish out of order and leave an
+  older edit on Discord until the next sync (the compare-and-set prevents duplicate
+  objects, not stale edits). The per-event lock in the bot rules this out within a process.
+- The waitlist is FIFO by response time; responses in the same millisecond are ordered by
+  row id, not arrival. A position returned by `rsvp` during a burst is a snapshot and can
+  grow when a same-millisecond response commits later; the committed queue is always one
+  strict order.
+- **Blocked on shared code:** `consumeRateLimit` (`packages/core/src/rate-limit`) passes raw
+  `Date`s into a `sql` template, which the production postgres-js driver cannot serialize,
+  so `rsvp` and `checkIn` throw on real Postgres until it is fixed (PGlite hides it). The
+  real-Postgres RSVP test below fails for that reason alone.
+
+## Concurrency tests
+
+PGlite (the default test database) executes one transaction at a time, so `Promise.all`
+tests there check sequential invariants only; lock tests on PGlite assert that the row lock
+is taken before the read it protects (statement order). Real interleaving runs in the
+opt-in `*.pg.test.ts` suites against a real server — each run creates, migrates and drops
+its own `jave_locktest_*` database:
+
+```
+cd packages/core
+JAVE_TEST_POSTGRES_URL='postgres://jave:jave@localhost:5432/jave' \
+  npx vitest run src/calendar/concurrency.pg.test.ts src/games/concurrency.pg.test.ts --maxWorkers=1
+```
+
+They cover RSVP capacity under a burst, duplicate match reports, the per-host session cap
+and concurrent answers (version retries). Removing the RSVP event lock or the host-row lock
+makes them fail (verified).

@@ -10,7 +10,13 @@ import { publishEvent } from '../events/bus';
 import { actorMemberId, actorUserId } from '../permissions/actor';
 import { authorize } from '../permissions/authorize';
 import { GO_LIVE_EARLIEST_BEFORE_MS } from './constants';
-import { bumpRevision, enqueueEventCancel, enqueueEventPublish } from './discord-jobs';
+import {
+  bumpRevision,
+  cancelWindowRefreshes,
+  enqueueEventCancel,
+  enqueueEventPublish,
+  scheduleWindowRefreshes,
+} from './discord-jobs';
 import { formatEventTime } from './format';
 import { requireViewer } from './guards';
 import {
@@ -29,7 +35,7 @@ import {
   scheduleEventSchema,
   updateEventSchema,
 } from './schemas';
-import { resolveEventTimes, validateEventTimes } from './timing';
+import { announcementRefreshTimes, resolveEventTimes, validateEventTimes } from './timing';
 import { buildEventView, type EventView, loadMyRsvps, toEventView } from './views';
 
 async function assertMemberExists(ctx: ServiceContext, memberId: string): Promise<void> {
@@ -93,6 +99,7 @@ export async function scheduleEvent(
       },
     });
     await enqueueEventPublish(tx, created);
+    await scheduleWindowRefreshes(tx, created);
     await scheduleReminders(tx, created);
     return created;
   });
@@ -100,6 +107,9 @@ export async function scheduleEvent(
 }
 
 type EventChanges = Partial<typeof events.$inferInsert>;
+
+const sameInstants = (a: readonly Date[], b: readonly Date[]) =>
+  a.length === b.length && a.every((instant, i) => instant.getTime() === b[i]!.getTime());
 
 function fieldDiff(before: EventRecord, changes: EventChanges): Record<string, unknown> {
   const diff: Record<string, { from: unknown; to: unknown }> = {};
@@ -191,6 +201,10 @@ export async function updateEvent(
         factKey: `rescheduled:${next.startsAt.getTime()}`,
       });
     }
+    if (!sameInstants(announcementRefreshTimes(event), announcementRefreshTimes(next))) {
+      await cancelWindowRefreshes(tx, event);
+      await scheduleWindowRefreshes(tx, next);
+    }
     if (data.capacity !== undefined) await promoteFromWaitlist(tx, next);
     await enqueueEventPublish(tx, next);
     return next;
@@ -215,6 +229,7 @@ export async function cancelEvent(
       cancelReason: data.reason,
     });
     await cancelReminders(tx, event);
+    await cancelWindowRefreshes(tx, event);
     await recordAudit(tx, {
       action: 'event.cancelled',
       targetType: 'event',
@@ -286,6 +301,7 @@ export async function completeEventInTx(
   const now = tx.clock.now();
   const next = await bumpRevision(tx, event.id, { status: 'completed', completedAt: now });
   await cancelReminders(tx, event);
+  await cancelWindowRefreshes(tx, event);
   const counts = (await rsvpCounts(tx, [event.id])).get(event.id)!;
   await recordAudit(tx, {
     action: 'event.completed',

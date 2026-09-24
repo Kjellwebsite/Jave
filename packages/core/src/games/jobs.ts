@@ -2,6 +2,7 @@ import { and, asc, eq, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import { gameSessions } from '@jave/database';
 import { type ServiceContext, withTransaction } from '../kernel/context';
+import { ConflictError } from '../kernel/errors';
 import {
   type JobHandler,
   type JobHandlerMap,
@@ -23,7 +24,11 @@ import { loadSession, type SessionStatus } from './records';
 
 const tickPayloadSchema = z.object({ sessionId: z.uuid() });
 
-/** `games.tick`: advance a session's timers at a deadline the engine announced. */
+/**
+ * `games.tick`: advance a session's timers at a deadline the engine announced.
+ * A ConflictError from `advanceSession` is retryable: the job backs off and
+ * runs again instead of completing with the deadline unhandled.
+ */
 const tickJobHandler: JobHandler = async (ctx, payload) => {
   requireSystemActor(ctx);
   const parsed = tickPayloadSchema.safeParse(payload);
@@ -44,6 +49,16 @@ async function abandonIfIdle(
     if (session.status !== status || session.lastActivityAt >= idleBefore) return false;
     return (await abandonInTx(tx, session, reason)) !== null;
   });
+}
+
+/** Advance timers; null when concurrent writers kept winning (see `advanceSession`). */
+async function advanceUnlessBusy(ctx: ServiceContext, sessionId: string) {
+  try {
+    return await advanceSession(ctx, sessionId);
+  } catch (error) {
+    if (error instanceof ConflictError) return null;
+    throw error;
+  }
 }
 
 async function staleIds(ctx: ServiceContext, status: SessionStatus, idleBefore: Date) {
@@ -74,7 +89,9 @@ export async function sweepStaleSessions(
   }
   const activeCutoff = new Date(now - ACTIVE_IDLE_TTL_MS);
   for (const id of await staleIds(ctx, 'active', activeCutoff)) {
-    const session = await advanceSession(ctx, id);
+    const session = await advanceUnlessBusy(ctx, id);
+    // Busy: players are moving right now, so it is not stalled; the next sweep looks again.
+    if (!session) continue;
     if (session.status !== 'active' || session.lastActivityAt >= activeCutoff) {
       advanced++;
       continue;

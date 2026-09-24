@@ -5,6 +5,8 @@ import { type ServiceContext, withTransaction } from '../kernel/context';
 import { ValidationError } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { enqueueJob } from '../jobs/queue';
+import { recordAudit } from '../audit/audit.service';
+import { discordObjectVerdict } from '../calendar/discord-objects';
 import { requireSystemActor } from '../calendar/guards';
 import {
   compareAndSetSession,
@@ -41,16 +43,22 @@ import { type SessionView, toSessionView } from './views';
  *    - verify the HOST can View Channel and Send Messages in `discordChannelId` — non-Discord
  *      surfaces let a member name any channel id — and that the bot can post there; if not,
  *      call `markGameChannelUnavailable(ctx, { sessionId, reason })` and stop;
- *    - otherwise send the panel and report it with
- *      `markGameMessagePosted(ctx, { sessionId, channelId, messageId })`.
+ *    - otherwise send the panel and report it with `markGameMessagePosted(ctx, { sessionId,
+ *      channelId, messageId, replacesMessageId: null })`.
  *    If `discordMessageId` is set, edit that message. A deleted message (Unknown Message) is
- *    re-posted after the same checks and re-reported.
+ *    re-posted after the same checks and reported with `replacesMessageId` = the old id.
+ *    When the result's `discard` is set, another run stored its message first: delete the
+ *    `discard` message and edit `result.messageId` with the panel instead.
  * 4. Button clicks call `games.joinSession / leaveSession / startSession / submitMove`
  *    as the clicking user (ephemeral replies for errors). The custom id never authorizes;
  *    `submitMove` rejects non-players, closed rounds and duplicates.
  *
+ * Serialization: the bot runs at most one render per session at a time (a per-session lock
+ * in the worker process); the compare-and-set in `markGameMessagePosted` is the backstop
+ * when runs still overlap, so a session never keeps two live panels.
+ *
  * Discord permissions in the session channel: View Channel, Send Messages, Embed Links,
- * Read Message History (to edit its own message).
+ * Read Message History (to edit its own message; deleting its own message needs nothing more).
  */
 export const DISCORD_GAMES_RENDER_JOB = 'discord.games.render';
 export const discordGamesRenderPayloadSchema = z.object({
@@ -88,21 +96,45 @@ export async function getGameRender(ctx: ServiceContext, sessionId: string): Pro
   };
 }
 
-/** Callback for `discord.games.render`: remember the message the bot posted. */
+export interface GameMessageResult {
+  /** The session's message after the call — the one to edit from now on. */
+  messageId: string | null;
+  /** The reported message lost the compare-and-set: a duplicate the bot must delete. */
+  discard: string | null;
+}
+
+/**
+ * Callback for `discord.games.render`: remember the message the bot posted.
+ * Compare-and-set on the id the bot saw (`discordObjectVerdict`), under the
+ * session row lock.
+ */
 export async function markGameMessagePosted(
   ctx: ServiceContext,
   input: z.input<typeof markGameMessageSchema>,
-): Promise<void> {
+): Promise<GameMessageResult> {
   requireSystemActor(ctx);
   const data = parseInput(markGameMessageSchema, input);
-  const session = await loadSession(ctx, data.sessionId);
-  if (session.discordChannelId !== data.channelId) {
-    throw new ValidationError('The message is not in the session channel.');
-  }
-  await ctx.db
-    .update(gameSessions)
-    .set({ discordMessageId: data.messageId })
-    .where(eq(gameSessions.id, session.id));
+  return withTransaction(ctx, async (tx) => {
+    const session = await loadSession(tx, data.sessionId, { lock: true });
+    if (session.discordChannelId !== data.channelId) {
+      throw new ValidationError('The message is not in the session channel.');
+    }
+    const verdict = discordObjectVerdict(
+      session.discordMessageId,
+      data.messageId,
+      data.replacesMessageId,
+    );
+    if (verdict === 'discard') {
+      return { messageId: session.discordMessageId, discard: data.messageId };
+    }
+    if (verdict === 'store') {
+      await tx.db
+        .update(gameSessions)
+        .set({ discordMessageId: data.messageId })
+        .where(eq(gameSessions.id, session.id));
+    }
+    return { messageId: data.messageId, discard: null };
+  });
 }
 
 const CHANNEL_UNAVAILABLE_REASONS = {
@@ -113,7 +145,8 @@ const CHANNEL_UNAVAILABLE_REASONS = {
 /**
  * Callback for `discord.games.render`: the session channel failed the bot's
  * checks. Ends the session without enqueueing a render — nothing may be
- * posted there.
+ * posted there — and audits the refusal with the host and channel, so
+ * repeated probing of channels the host cannot use is visible to moderators.
  */
 export async function markGameChannelUnavailable(
   ctx: ServiceContext,
@@ -129,6 +162,20 @@ export async function markGameChannelUnavailable(
       endedAt: tx.clock.now(),
       endReason: CHANNEL_UNAVAILABLE_REASONS[data.reason],
     });
-    return { status: ended?.status ?? session.status };
+    if (!ended) return { status: session.status };
+    await recordAudit(tx, {
+      action: 'game.channel_rejected',
+      targetType: 'game_session',
+      targetId: session.id,
+      result: 'denied',
+      context: {
+        hostUserId: session.hostUserId,
+        channelId: session.discordChannelId,
+        surface: session.surface,
+        reason: data.reason,
+        previousStatus: session.status,
+      },
+    });
+    return { status: ended.status };
   });
 }

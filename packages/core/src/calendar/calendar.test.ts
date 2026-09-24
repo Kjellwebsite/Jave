@@ -27,7 +27,12 @@ import {
 import { generateCheckInCode } from './check-in.service';
 import { listMemberEventHistory, listParticipants, rsvp } from './rsvp.service';
 import { sweepStaleEvents } from './jobs';
-import { SNAPSHOT_BUILD_TIMEOUT_MS, warmUpTestDatabase } from './test-support';
+import {
+  recordingContext,
+  SNAPSHOT_BUILD_TIMEOUT_MS,
+  statementIndex,
+  warmUpTestDatabase,
+} from './test-support';
 
 /** Scheduling, editing, lifecycle, RSVPs and listings. */
 describe('calendar', () => {
@@ -67,8 +72,12 @@ describe('calendar', () => {
       expect(event.hostMemberId).toBe(staff.memberId);
 
       const publish = await jobsOf(DISCORD_EVENTS_PUBLISH_JOB);
-      expect(publish).toHaveLength(1);
-      expect(publish[0]!.payload).toEqual({ eventId: event.id, revision: 0 });
+      expect(publish.map((j) => j.payload)).toEqual([
+        { eventId: event.id, revision: 0 },
+        // No rsvpClosesAt: going/maybe and decline all close at the end.
+        { eventId: event.id },
+      ]);
+      expect(publish[1]!.runAt).toEqual(event.endsAt);
 
       const reminders = await jobsOf(CALENDAR_REMINDER_JOB);
       expect(reminders.map((j) => j.runAt.getTime()).sort()).toEqual([
@@ -169,12 +178,18 @@ describe('calendar', () => {
       expect(notice!.url).toBe(`https://jave.example/events/${event.id}`);
 
       const publishes = await jobsOf(DISCORD_EVENTS_PUBLISH_JOB);
-      const byRevision = publishes.filter((j) => !j.dedupeKey!.endsWith(':counts'));
+      const byRevision = publishes.filter((j) => j.payload.revision !== undefined);
       expect(byRevision.map((j) => j.payload.revision)).toEqual([0, 1]);
       // The RSVP queued one debounced announcement refresh.
-      const refreshes = publishes.filter((j) => j.dedupeKey!.endsWith(':counts'));
+      const refreshes = publishes.filter((j) => j.dedupeKey!.includes(':counts:'));
       expect(refreshes).toHaveLength(1);
       expect(refreshes[0]!.runAt.getTime()).toBeGreaterThan(refreshes[0]!.createdAt.getTime());
+      // The end moved with the start: the window refresh moved too.
+      const windows = publishes.filter((j) => j.dedupeKey!.includes(':at:'));
+      expect(windows.map((j) => [j.status, j.runAt.getTime()])).toEqual([
+        ['cancelled', event.endsAt.getTime()],
+        ['pending', updated.endsAt.getTime()],
+      ]);
     });
 
     it('no-op updates change nothing', async () => {
@@ -315,7 +330,8 @@ describe('calendar', () => {
       expect(view.myRsvp?.status).toBe('going');
     });
 
-    it('BREAK: concurrent RSVPs never exceed capacity', async () => {
+    it('BREAK: a burst of RSVPs never exceeds capacity (sequential invariant)', async () => {
+      // PGlite serializes these transactions; the lock itself is covered below.
       const event = await schedule({ capacity: 3 });
       const people = await Promise.all(Array.from({ length: 8 }, () => kit.member()));
       const results = await Promise.all(
@@ -325,11 +341,22 @@ describe('calendar', () => {
       expect(results.filter((r) => r.status === 'waitlist')).toHaveLength(5);
       const view = await getEvent(kit.system, { eventId: event.id });
       expect(view.counts.going).toBe(3);
-      // Eight RSVPs, one debounced announcement refresh.
+      // Eight RSVPs in one window, one debounced announcement refresh.
       const refreshes = (await jobsOf(DISCORD_EVENTS_PUBLISH_JOB)).filter((j) =>
-        j.dedupeKey!.endsWith(':counts'),
+        j.dedupeKey!.includes(':counts:'),
       );
       expect(refreshes).toHaveLength(1);
+    });
+
+    it('BREAK: RSVP locks the event row before counting capacity', async () => {
+      const event = await schedule({ capacity: 3 });
+      const member = await kit.member();
+      const { ctx, statements } = recordingContext(kit, member);
+      await rsvp(ctx, { eventId: event.id, status: 'going' });
+      const lock = statementIndex(statements, /from "events" where .* for update/);
+      const count = statementIndex(statements, /count\(\*\).* from "event_rsvps"/);
+      expect(lock).toBeGreaterThanOrEqual(0);
+      expect(count).toBeGreaterThan(lock);
     });
 
     it('BREAK: RSVP flipping is rate limited per member', async () => {

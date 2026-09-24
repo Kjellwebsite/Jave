@@ -53,12 +53,17 @@ export {
   DISCORD_EVENTS_CANCEL_JOB,
   discordEventsPublishPayloadSchema,
   discordEventsCancelPayloadSchema,
-  getEventPublication,
-  markEventPublished,
   type DiscordEventsPublishPayload,
   type DiscordEventsCancelPayload,
-  type EventPublication,
 } from './discord-jobs';
+export {
+  getEventPublication,
+  markEventPublished,
+  type EventPublication,
+  type EventPublishedResult,
+  type AnnouncementRef,
+} from './discord-callbacks';
+export { discordObjectVerdict, type DiscordObjectVerdict } from './discord-objects';
 export {
   buildSingleElimination,
   seedOrder,
@@ -69,7 +74,13 @@ export {
   type PlannedMatch,
 } from './bracket';
 export { drawTeams } from './team-draw';
-export { checkInWindow, isRsvpOpen, type CheckInWindow } from './timing';
+export {
+  announcementRefreshTimes,
+  checkInWindow,
+  isDeclineOpen,
+  isRsvpOpen,
+  type CheckInWindow,
+} from './timing';
 export { classifyLocation, type LocationKind, type LocationView } from './location';
 export type { EventView, MyRsvpView } from './views';
 export type { EventKind, EventStatus, RsvpStatus, RsvpCounts } from './records';

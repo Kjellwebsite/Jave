@@ -40,7 +40,8 @@ export async function getLeaderboard(
   requireViewer(ctx);
   const q = parseInput(leaderboardSchema, input);
   const game = getGame(q.gameKey);
-  const wins = sql<number>`count(*) filter (where ${gamePlayers.placement} = 1)::int`;
+  // Same rule as `isWin`; the ranked filter (player count) is in the WHERE clause.
+  const wins = sql<number>`count(*) filter (where ${gamePlayers.placement} = 1 and ${gamePlayers.score} > 0)::int`;
   const bestScore = sql<number>`max(${gamePlayers.score})::int`;
   const sessions = sql<number>`count(*)::int`;
   const metric = { wins, best_score: bestScore, sessions }[q.metric];

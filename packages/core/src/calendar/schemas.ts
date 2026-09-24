@@ -125,12 +125,25 @@ export const checkInSchema = z.object({
 
 const snowflakeInput = z.string().regex(/^\d{17,20}$/, 'must be a Discord ID');
 
-export const markEventPublishedSchema = z.object({
-  eventId: z.uuid(),
-  discordScheduledEventId: snowflakeInput.nullable().optional(),
-  announcementChannelId: snowflakeInput.nullable().optional(),
-  announcementMessageId: snowflakeInput.nullable().optional(),
-});
+/** The id the publication showed for the slot when the bot created: null for a first create. */
+const replacesInput = snowflakeInput.nullable();
+
+export const markEventPublishedSchema = z
+  .object({
+    eventId: z.uuid(),
+    /** events.revision of the publication the bot rendered the created objects from. */
+    revision: z.number().int().min(0),
+    scheduledEvent: z.object({ id: snowflakeInput, replaces: replacesInput }).strict().optional(),
+    announcement: z
+      .object({ channelId: snowflakeInput, messageId: snowflakeInput, replaces: replacesInput })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.scheduledEvent !== undefined || value.announcement !== undefined,
+    'nothing to report',
+  );
 
 // ─── Teams & tournaments ─────────────────────────────────────────────────────
 

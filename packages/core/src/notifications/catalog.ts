@@ -56,6 +56,19 @@ export const NOTIFICATION_TYPES = {
     severity: 'important',
     channels: ['discord_dm'],
   },
+  'trial.update': {
+    label: 'Trial update',
+    description: 'Selection, team assignment, closing or cancellation of a trial you joined.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
+  'trial.evaluation_requested': {
+    label: 'Trial evaluation',
+    description: 'A trial closed submissions and is ready for evaluation.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+    staff: true,
+  },
   'mission.assigned': {
     label: 'Mission assigned',
     description: 'You were assigned a mission.',

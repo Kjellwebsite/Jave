@@ -54,6 +54,15 @@ export const DOMAIN_EVENTS = {
   },
   'trial.passed': { description: 'A participant passed a trial.', external: true },
   'trial.cancelled': { description: 'A trial was cancelled.', external: false },
+  'trial.participant_withdrawn': {
+    description: 'A member withdrew from a trial.',
+    external: false,
+  },
+  'trial.evaluation_recorded': {
+    description: 'An evaluator scored a trial team or participant.',
+    external: false,
+  },
+  'trial.deadline_extended': { description: 'A trial deadline was extended.', external: false },
 
   'adversarial.revealed': {
     description: 'An adversarial role was revealed after a trial.',

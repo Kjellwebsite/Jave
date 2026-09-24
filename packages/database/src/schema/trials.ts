@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   doublePrecision,
   index,
   integer,
@@ -75,7 +76,14 @@ export const trialTemplates = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex('trial_templates_key_uq').on(t.key)],
+  (t) => [
+    uniqueIndex('trial_templates_key_uq').on(t.key),
+    check(
+      'trial_templates_team_size_ck',
+      sql`${t.teamSizeMin} >= 1 and ${t.teamSizeMax} >= ${t.teamSizeMin}`,
+    ),
+    check('trial_templates_duration_ck', sql`${t.durationMinutes} > 0`),
+  ],
 );
 
 export const trials = pgTable(
@@ -86,6 +94,8 @@ export const trials = pgTable(
     templateId: uuid('template_id').references(() => trialTemplates.id),
     title: varchar('title', { length: 120 }).notNull(),
     category: trialCategory('category').notNull(),
+    /** Public teaser shown while recruiting. The brief stays sealed until the trial starts. */
+    summary: varchar('summary', { length: 280 }).notNull().default(''),
     brief: text('brief').notNull(),
     rubric: jsonb('rubric').$type<RubricCriterion[]>().notNull(),
     facetKeys: text('facet_keys')
@@ -100,10 +110,16 @@ export const trials = pgTable(
     durationMinutes: integer('duration_minutes').notNull(),
     /** Set when the trial starts: started_at + duration. */
     deadlineAt: ts('deadline_at'),
+    /** Minutes after the deadline during which submissions are still accepted (flagged late). */
+    graceMinutes: smallint('grace_minutes').notNull().default(0),
+    /** Team assignment inputs, kept so an assignment can be reproduced and explained. */
+    assignmentStrategy: varchar('assignment_strategy', { length: 16 }),
+    assignmentSeed: varchar('assignment_seed', { length: 64 }),
     startedAt: ts('started_at'),
     submissionsClosedAt: ts('submissions_closed_at'),
     completedAt: ts('completed_at'),
     cancelledAt: ts('cancelled_at'),
+    cancelReason: text('cancel_reason'),
     /** Hidden from participants. See adversarial.ts. */
     adversarialEnabled: boolean('adversarial_enabled').notNull().default(false),
     discordCategoryId: snowflake('discord_category_id'),
@@ -113,7 +129,13 @@ export const trials = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex('trials_number_uq').on(t.number), index('trials_status_idx').on(t.status)],
+  (t) => [
+    uniqueIndex('trials_number_uq').on(t.number),
+    index('trials_status_idx').on(t.status),
+    check('trials_team_size_ck', sql`${t.teamSize} >= 1`),
+    check('trials_duration_ck', sql`${t.durationMinutes} > 0`),
+    check('trials_grace_ck', sql`${t.graceMinutes} >= 0`),
+  ],
 );
 
 export const trialTeams = pgTable(
@@ -127,6 +149,10 @@ export const trialTeams = pgTable(
     ordinal: smallint('ordinal').notNull(),
     discordChannelId: snowflake('discord_channel_id'),
     discordRoleId: snowflake('discord_role_id'),
+    /** The bot posted the mission brief in the team channel. */
+    briefedAt: ts('briefed_at'),
+    /** The bot locked the team channel after the trial ended. */
+    archivedAt: ts('archived_at'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('trial_teams_name_uq').on(t.trialId, t.name)],
@@ -162,6 +188,7 @@ export const trialParticipants = pgTable(
   (t) => [
     uniqueIndex('trial_participants_member_uq').on(t.trialId, t.memberId),
     index('trial_participants_team_idx').on(t.teamId),
+    index('trial_participants_member_idx').on(t.memberId),
   ],
 );
 
@@ -217,6 +244,7 @@ export const trialEvaluations = pgTable(
     uniqueIndex('trial_evaluations_member_uq')
       .on(t.trialId, t.memberId, t.evaluatorUserId)
       .where(sql`${t.memberId} is not null`),
+    check('trial_evaluations_score_ck', sql`${t.overallScore} between 0 and 10`),
   ],
 );
 
@@ -230,7 +258,10 @@ export const trialScores = pgTable(
     /** 0–10 */
     score: smallint('score').notNull(),
   },
-  (t) => [primaryKey({ columns: [t.evaluationId, t.criterionKey] })],
+  (t) => [
+    primaryKey({ columns: [t.evaluationId, t.criterionKey] }),
+    check('trial_scores_range_ck', sql`${t.score} between 0 and 10`),
+  ],
 );
 
 export const trialOutcome = pgEnum('trial_outcome', ['distinction', 'pass', 'fail', 'incomplete']);
@@ -258,5 +289,8 @@ export const trialResults = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex('trial_results_member_uq').on(t.trialId, t.memberId)],
+  (t) => [
+    uniqueIndex('trial_results_member_uq').on(t.trialId, t.memberId),
+    index('trial_results_member_idx').on(t.memberId),
+  ],
 );

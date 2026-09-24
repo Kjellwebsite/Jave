@@ -39,13 +39,29 @@ await achievements.awardAchievement(ctx, { memberId, key: 'team_leader', reason:
   when the member is the `subjectMemberId` of at least `threshold` events of that type.
 - `manual`: awarded by staff only.
 
-Eligible events are the catalog minus `EXCLUDED_ACHIEVEMENT_EVENTS`: Discord
-presence and activity (joins, RSVPs, games), self-reported or unreviewed actions
-(claims, submissions, profile edits), negative outcomes (rejections, expiries,
-moderation), ambiguous events whose outcome is only in the payload
-(`capability.verified`, `evidence.reviewed`, `research.reviewed`,
-`project.status_changed`), system events, and achievement events themselves (no
-feedback loops). Events appended to the catalog later are eligible by default.
+Eligible events are an explicit **allow-list** (`ACHIEVEMENT_EVENT_TYPES`) of
+verified outcomes decided by someone other than the member:
+`application.accepted`, `verification.approved`, `trial.result_published`,
+`trial.passed`, `adversarial.revealed`, `mission.completed`, `project.created`,
+`project.shipped`, `contribution.verified`, `research.verified`. Events appended
+to the catalog later drive nothing until they are added on purpose.
+
+Deliberately absent: Discord presence and activity (joins, RSVPs, event
+check-ins, games, tournament matches), self-reported or unreviewed actions
+(claims, submissions of any kind, profile edits, joining a project), negative
+outcomes (rejections, expiries, moderation), ambiguous events whose outcome is
+only in the payload (`capability.verified`, `evidence.reviewed`,
+`research.reviewed`, `project.status_changed`), staff and system operations
+(something created, scheduled, published, selected or closed), and achievement
+events themselves (no feedback loops).
+
+**First-step events** (`FIRST_STEP_ONLY_EVENTS`: `project.created`) are ones a
+member triggers alone. A rule on them must use threshold 1, so repeating the
+action can never farm an achievement.
+
+A stored rule that no longer validates (for example, one on an event that was
+removed from the allow-list) is inert: the engine never matches it and the
+retroactive evaluation skips it.
 
 ### Starter catalog
 
@@ -88,15 +104,23 @@ edited them) and queues a retroactive evaluation for each new rule.
 
 ## Rule engine
 
-Subscriber `achievements.engine`, `types = ACHIEVEMENT_EVENT_TYPES` — computed
-once at module load from the static catalog, not from the current definitions.
-Every eligible event is therefore delivered to the engine; the handler exits
-early (cached rule lookup, 30 s TTL per process) when no active rule counts that
-event type or the event has no `subjectMemberId`.
+Subscriber `achievements.engine`, `types = ACHIEVEMENT_EVENT_TYPES` — the static
+allow-list, not the current definitions. Every eligible event is therefore
+delivered to the engine; the handler exits early when the event has no
+`subjectMemberId` or no active rule counts that event type.
+
+Rules are **read from the database for every delivered event**, never from a
+per-process cache. Staff edit rules in the dashboard process while the bot's
+worker applies them; a cached rule set in the worker would miss events under a
+new rule (or keep awarding under a retired one) until it expired. The lookup is
+one query on the small definitions table.
 
 For a matching event the engine loads the member (skips deleted/banned), drops
 rules the member ever held, counts **all** of the member's events of that type,
-and awards every rule whose threshold is met, each in its own transaction.
+and awards every rule whose threshold is met, each in its own transaction. Inside
+that transaction the rule is re-read under a share lock (`lockCurrentRule`): a
+concurrent edit either commits first (and the award follows the edited rule) or
+waits until the award commits.
 
 Idempotency: the count is over history (not +1 per delivery) and the award
 insert is guarded by the partial unique index (`ON CONFLICT DO NOTHING`), so
@@ -107,7 +131,11 @@ Retroactive evaluation (`achievements.evaluate_definition`) runs when a rule is
 created, re-activated, or its criteria change. It awards everyone whose history
 already meets the rule, in batches of 200 (re-queuing itself), and does **not**
 post public announcements (a new rule must not flood the channel); members are
-still notified. It also catches events a stale rule cache missed.
+still notified. Each backfilled award re-reads the rule under the same share
+lock; when the rule was edited, deactivated or deleted since the run started,
+the run stops. The edit queued its own run: the dedupe key carries the rule
+version (`achievements:evaluate:<key>:<updatedAt>`), so an edit made while a run
+is in progress is never dropped.
 
 ## Capabilities
 
@@ -186,7 +214,10 @@ Bot:
    Escape all text with `userText()`.
 3. `markAchievementAnnounced(ctx, { memberAchievementId, channelId, messageId })`.
    `{ stored: false }` → another attempt won; delete the message just posted.
-   If the award was revoked meanwhile, the callback queues the retraction.
+   If the award was revoked meanwhile, the callback queues the retraction in
+   the same transaction as the report. If the callback **throws**, nothing was
+   stored: delete the message just posted, then fail the job so the retry starts
+   again at step 1.
 
 Permissions in the channel: **View Channel, Send Messages, Embed Links**.
 
@@ -205,8 +236,9 @@ Manage Messages).
 - `awardAchievementFromSystem` is the entry point for other modules that grant
   achievements as a consequence of their own verified outcomes (missions use it
   for rewards).
-- `EXCLUDED_ACHIEVEMENT_EVENTS` is the single list to edit when a new catalog
-  event must never count.
+- `ACHIEVEMENT_EVENT_TYPES` is the single list to edit when a new catalog event
+  records a verified outcome that should count (opt-in). Add it to
+  `FIRST_STEP_ONLY_EVENTS` too when the member triggers it alone.
 
 ## Known limitations
 
@@ -217,7 +249,9 @@ Manage Messages).
   each to count.
 - `adversary` assumes `adversarial.revealed` carries the adversary as
   `subjectMemberId` (the adversarial module owns that event).
-- The rule cache is per process (30 s TTL, invalidated locally on edits). A
-  rule edited in the dashboard reaches the bot's engine within 30 s; the
-  retroactive evaluation job covers events in between.
+- Every delivered eligible event costs one query on the definitions table, even
+  when no rule counts it (the price of never applying a stale rule).
+- The locking that orders awards against concurrent rule edits cannot be
+  exercised under PGlite, which runs one transaction at a time; the tests cover
+  the sequential behaviour.
 - Revoking does not decrement anything: counts are over immutable events.

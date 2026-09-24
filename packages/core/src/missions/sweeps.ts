@@ -39,14 +39,22 @@ const EXPIRY_COPY: Record<ExpiryReason, string> = {
 
 /**
  * Expire one in-progress assignment (inside the caller's transaction).
- * Guarded on status, so a concurrent submission wins. Returns whether it expired.
+ * Guarded on status, so a concurrent submission wins. A deadline expiry is
+ * also guarded on the due date, re-checked on the row as it is now: the
+ * sweep selects rows outside the transaction, and a row abandoned and
+ * re-assigned in between carries a fresh due date that must not be expired.
+ * Returns whether it expired.
  */
 export async function expireAssignment(
   tx: ServiceContext,
-  assignment: AssignmentRecord,
+  assignment: Pick<AssignmentRecord, 'id'>,
   mission: Pick<MissionRecord, 'id' | 'number' | 'title'>,
   reason: ExpiryReason,
 ): Promise<boolean> {
+  const stillOverdue =
+    reason === 'deadline'
+      ? and(isNotNull(missionAssignments.dueAt), lte(missionAssignments.dueAt, tx.clock.now()))
+      : undefined;
   const [expired] = await tx.db
     .update(missionAssignments)
     .set({ status: 'expired' })
@@ -54,27 +62,28 @@ export async function expireAssignment(
       and(
         eq(missionAssignments.id, assignment.id),
         inArray(missionAssignments.status, [...WORKING_STATUSES]),
+        stillOverdue,
       ),
     )
-    .returning({ id: missionAssignments.id });
+    .returning();
   if (!expired) return false;
   await publishEvent(tx, {
     type: 'mission.expired',
     aggregateType: 'mission',
     aggregateId: mission.id,
-    subjectMemberId: assignment.memberId,
-    payload: { assignmentId: assignment.id, reason },
+    subjectMemberId: expired.memberId,
+    payload: { assignmentId: expired.id, reason },
   });
-  const recipients = await recipientUserIds(tx, [assignment.memberId]);
-  const userId = recipients.get(assignment.memberId);
+  const recipients = await recipientUserIds(tx, [expired.memberId]);
+  const userId = recipients.get(expired.memberId);
   if (userId) {
     await notify(tx, {
       recipientUserId: userId,
       type: 'mission.deadline',
       title: 'MISSION EXPIRED',
       body: `${formatMissionNumber(mission.number)} — ${mission.title}. ${EXPIRY_COPY[reason]}`,
-      data: { missionId: mission.id, assignmentId: assignment.id },
-      dedupeKey: `mission-expired:${assignment.id}:${assignment.assignedAt.getTime()}`,
+      data: { missionId: mission.id, assignmentId: expired.id },
+      dedupeKey: `mission-expired:${expired.id}:${expired.assignedAt.getTime()}`,
     });
   }
   return true;

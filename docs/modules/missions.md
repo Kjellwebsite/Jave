@@ -35,7 +35,11 @@ draft ──publish──► open ──close──► closed ──archive─�
 - `close` stops new assignments; work in progress continues until due.
 - `reopen` requires the deadline (if any) to be in the future.
 - `archive` (draft or closed) is refused while submissions await review;
-  in-progress assignments expire with a notice.
+  in-progress assignments expire with a notice. The archive locks the mission
+  row for update before it counts pending submissions, and `submitMission`
+  holds a share lock on the same row while it moves work to SUBMITTED. A
+  submission therefore either commits first (and blocks the archive) or waits
+  and then sees the mission archived.
 - The expiry sweep closes open missions whose `deadlineAt` passed
   (`mission.auto_closed` audit, `mission.closed` event).
 - `updateMission` works in every state but archived; the type only changes in draft.
@@ -57,7 +61,15 @@ abandoned / expired ──staff re-assign──► assigned
 - Up to `MAX_SUBMISSION_ATTEMPTS` (3) submissions per assignment.
 - Submitted work never expires; it waits for review.
 - A member who abandoned or let a mission expire cannot self-assign it again;
-  staff can re-assign (the row restarts cleanly).
+  staff can re-assign (the row restarts cleanly). A re-assignment keeps the
+  team the member first joined; any other team key is skipped as `team_locked`.
+  The rows carrying a team key are the team's complete history, and that
+  history is what keeps former members from reviewing the team's work.
+- Staff never assign a mission to themselves (the whole call is refused and
+  audited durably as `mission.self_assign_blocked`). They take a mission like
+  any member, through `selfAssignMission`, or another staff member assigns them.
+- The expiry sweep re-checks the due date on the row as it is when it expires
+  it, so a row abandoned and re-assigned after the sweep read it is left alone.
 
 ### Due dates
 
@@ -80,7 +92,9 @@ assignment time; later deadline edits do not move existing assignments.
 | `getMissionCard`, `markMissionAnnounced`                | system actor (bot worker)                                                         |
 
 - Self-review is blocked for anyone in the unit (the whole team, in any
-  assignment state) and audited durably as `mission.self_review_blocked`.
+  assignment state, including members who walked away) and audited durably as
+  `mission.self_review_blocked`. Team membership cannot be shed: staff cannot
+  re-assign themselves, and nobody can move a former member to another team.
 - Someone else's assignment is reported as NOT_FOUND (no IDOR, no id probing),
   including for staff: capabilities never open another member's assignment.
 
@@ -108,14 +122,17 @@ assignment time; later deadline edits do not move existing assignments.
 
 Dedupe keys: `mission-assigned:<assignment>:<time>`,
 `mission-deadline:<assignment>:<dueAt>`, `mission-expired:<assignment>:<assignedAt>`,
-`mission-review:<assignment>:<attempt>`.
+`mission-review:<assignment>:<assignedAt>:<attempt>`. A staff re-assignment reuses
+the row and resets the attempt count, so the expiry and review keys carry the
+assignment cycle (`assignedAt`): every review of every cycle is delivered.
 
 ## Audit
 
 `mission.created`, `mission.updated` (fields), `mission.published`,
 `mission.closed`, `mission.reopened`, `mission.archived`, `mission.auto_closed`,
 `mission.assigned` (member ids, skipped), `mission.verified`, `mission.rejected`
-(feedback), `mission.self_review_blocked` (denied, durable).
+(feedback), `mission.self_review_blocked` and `mission.self_assign_blocked`
+(denied, durable).
 
 ## Jobs
 
@@ -153,6 +170,9 @@ Bot:
    `card.acceptEnabled`.
 3. `markMissionAnnounced(ctx, { missionId, channelId, messageId })`.
    `{ stored: false }` → delete the message just posted (another attempt won).
+   The report and any card refresh it queues commit together. If the callback
+   **throws**, nothing was stored: delete the message just posted, then fail the
+   job so the retry starts again at step 1.
 
 ACCEPT button: call `selfAssignMission(ctx, { missionId })` as the clicking
 user and reply ephemerally. The custom id routes; it never authorizes.
@@ -206,3 +226,9 @@ refused. Unknown fields are refused (`strict`).
 - A due date is fixed at assignment. Moving the mission deadline does not move
   existing assignments; staff can re-assign after expiry.
 - The review queue scans at most 500 submitted rows per call.
+- A guild with a single staff member cannot put that person on a staff-assigned
+  or team mission: someone else must assign them. Individual missions can be
+  made self-assignable instead.
+- The locking between submissions and archiving cannot be exercised under
+  PGlite, which runs one transaction at a time. A test asserts that the lock is
+  taken (the mission row's `xmax` inside the submitting transaction).

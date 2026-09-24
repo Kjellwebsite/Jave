@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import {
   achievementDefinitions,
@@ -27,14 +27,19 @@ import {
   updateAchievementDefinition,
 } from './index';
 import {
+  DATABASE_SUITE_TIMEOUTS,
   ACHIEVEMENTS_CHANNEL,
   achievementTestHandlers,
   activeKeys,
   awardsOf,
   emitEvents,
   enableAnnouncements,
+  failJobInserts,
   jobsOfType,
+  otherProcessWorker,
 } from './testing/fixtures';
+
+vi.setConfig(DATABASE_SUITE_TIMEOUTS);
 
 describe('achievements — engine and announcements', () => {
   let kit: TestKit;
@@ -221,6 +226,55 @@ describe('achievements — engine and announcements', () => {
     });
   });
 
+  describe('rules edited in another process', () => {
+    // Staff edit rules from the dashboard; the bot's worker applies them. The
+    // worker below has its own in-process cache, as that separate process would.
+    const SHORTLY_AFTER_MS = 5_000;
+    const firstRun = {
+      key: 'first_run',
+      title: 'First Run',
+      summary: 'First mission verified.',
+      description: 'One mission, verified.',
+      category: 'missions',
+      criteria: { type: 'event_count', event: 'mission.completed', threshold: 1 },
+    } as const;
+
+    it('BREAK: the worker applies a rule the dashboard just created, raised or retired', async () => {
+      const drainAsWorker = otherProcessWorker(kit, achievementTestHandlers);
+      const veteran = await kit.member();
+      await emit('mission.completed', veteran.memberId);
+      await drainAsWorker();
+      expect(await keysOf(veteran.memberId!)).toEqual([]);
+
+      await createAchievementDefinition(kit.as(core), firstRun);
+      await drainAsWorker();
+      expect(await keysOf(veteran.memberId!)).toEqual(['first_run']);
+
+      kit.clock.advance(SHORTLY_AFTER_MS);
+      const newcomer = await kit.member();
+      await emit('mission.completed', newcomer.memberId);
+      await drainAsWorker();
+      expect(await keysOf(newcomer.memberId!)).toEqual(['first_run']);
+
+      await updateAchievementDefinition(kit.as(core), {
+        key: 'first_run',
+        patch: { criteria: { ...firstRun.criteria, threshold: 2 } },
+      });
+      const late = await kit.member();
+      await emit('mission.completed', late.memberId);
+      await drainAsWorker();
+      expect(await keysOf(late.memberId!)).toEqual([]);
+
+      await updateAchievementDefinition(kit.as(core), {
+        key: 'first_run',
+        patch: { active: false },
+      });
+      await emit('mission.completed', late.memberId);
+      await drainAsWorker();
+      expect(await keysOf(late.memberId!)).toEqual([]);
+    });
+  });
+
   describe('retroactive evaluation', () => {
     it('awards members whose history already meets a new rule, without public announcements', async () => {
       await announceOn();
@@ -293,6 +347,36 @@ describe('achievements — engine and announcements', () => {
         channelId: ACHIEVEMENTS_CHANNEL,
         messageId: '223456789012345678',
       });
+    });
+
+    it('BREAK: a failed retraction enqueue rolls the report back, so the retry can store it', async () => {
+      await announceOn();
+      const m = await kit.member();
+      await emit('project.created', m.memberId);
+      await kit.drain(achievementTestHandlers);
+      const [job] = await jobsOf(DISCORD_ACHIEVEMENT_ANNOUNCE_JOB);
+      const memberAchievementId = String(job?.payload.memberAchievementId);
+      await revokeAchievement(kit.as(ops), {
+        memberId: m.memberId!,
+        key: 'first_project',
+        reason: 'Duplicate project record.',
+      });
+      expect(await jobsOf(DISCORD_ACHIEVEMENT_RETRACT_JOB)).toEqual([]);
+
+      const report = {
+        memberAchievementId,
+        channelId: ACHIEVEMENTS_CHANNEL,
+        messageId: '223456789012345678',
+      };
+      const restore = await failJobInserts(kit, DISCORD_ACHIEVEMENT_RETRACT_JOB);
+      await expect(markAchievementAnnounced(kit.system, report)).rejects.toThrow();
+      const [unreported] = await awards(m.memberId!);
+      expect(unreported?.announcementMessageId).toBeNull();
+
+      await restore();
+      expect(await markAchievementAnnounced(kit.system, report)).toEqual({ stored: true });
+      const [retract] = await jobsOf(DISCORD_ACHIEVEMENT_RETRACT_JOB);
+      expect(retract?.payload).toEqual(report);
     });
 
     it('does not announce hidden awards, private profiles, or when disabled', async () => {

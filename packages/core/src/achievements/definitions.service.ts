@@ -13,12 +13,7 @@ import {
   updateDefinitionSchema,
 } from './schemas';
 import { STARTER_ACHIEVEMENTS } from './starter';
-import {
-  type AchievementDefinitionRecord,
-  invalidateDefinitionCache,
-  loadDefinition,
-  scheduleEvaluation,
-} from './store';
+import { type AchievementDefinitionRecord, loadDefinition, scheduleEvaluation } from './store';
 
 async function assertFacet(ctx: ServiceContext, facetKey: string | null | undefined) {
   if (!facetKey) return;
@@ -48,7 +43,7 @@ export async function createAchievementDefinition(
   const data = parseInput(createDefinitionSchema, input);
   await assertFacet(ctx, data.facetKey);
   const now = ctx.clock.now();
-  const created = await withTransaction(ctx, async (tx) => {
+  return withTransaction(ctx, async (tx) => {
     const [row] = await tx.db
       .insert(achievementDefinitions)
       .values({ ...data, createdAt: now, updatedAt: now })
@@ -64,8 +59,6 @@ export async function createAchievementDefinition(
     await scheduleEvaluation(tx, row);
     return row;
   });
-  invalidateDefinitionCache(ctx);
-  return created;
 }
 
 /**
@@ -83,7 +76,7 @@ export async function updateAchievementDefinition(
   const before = await loadDefinition(ctx, key);
   const changes = changedFields(before, patch);
   if (Object.keys(changes).length === 0) return before;
-  const updated = await withTransaction(ctx, async (tx) => {
+  return withTransaction(ctx, async (tx) => {
     const [row] = await tx.db
       .update(achievementDefinitions)
       .set({ ...patch, updatedAt: tx.clock.now() })
@@ -98,8 +91,6 @@ export async function updateAchievementDefinition(
     if ('criteria' in changes || 'active' in changes) await scheduleEvaluation(tx, row!);
     return row!;
   });
-  invalidateDefinitionCache(ctx);
-  return updated;
 }
 
 /**
@@ -133,7 +124,6 @@ export async function deleteAchievementDefinition(
       context: { title: definition.title },
     });
   });
-  invalidateDefinitionCache(ctx);
 }
 
 /** Raw definition for editing (staff). */
@@ -171,7 +161,7 @@ export async function seedStarterAchievements(ctx: ServiceContext): Promise<Seed
   const definitions = STARTER_ACHIEVEMENTS.map((starter) =>
     parseInput(createDefinitionSchema, starter),
   );
-  const result = await withTransaction(ctx, async (tx) => {
+  return withTransaction(ctx, async (tx) => {
     const now = tx.clock.now();
     const created: string[] = [];
     const existing: string[] = [];
@@ -197,6 +187,4 @@ export async function seedStarterAchievements(ctx: ServiceContext): Promise<Seed
     }
     return { created, existing };
   });
-  invalidateDefinitionCache(ctx);
-  return result;
 }

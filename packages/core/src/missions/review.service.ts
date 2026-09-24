@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { evidence, missionAssignments } from '@jave/database';
 import { type ServiceContext, withActor, withTransaction } from '../kernel/context';
@@ -20,6 +20,7 @@ import {
   formatMissionNumber,
   isPast,
   MAX_SUBMISSION_ATTEMPTS,
+  reviewNotificationKey,
   SUBMITTABLE_STATUSES,
   WORKING_STATUSES,
 } from './rules';
@@ -33,6 +34,7 @@ import {
   type AssignmentRecord,
   type AssignmentWithMission,
   loadAssignment,
+  loadMission,
   loadOwnAssignment,
   type MissionRecord,
   recipientUserIds,
@@ -42,7 +44,8 @@ import {
 
 /**
  * Lock the unit of work an assignment belongs to (the whole team for team
- * missions) in the given states.
+ * missions) in the given states. Rows are locked in id order, so teammates
+ * submitting or being reviewed at the same moment queue instead of deadlocking.
  */
 async function lockUnit(
   tx: ServiceContext,
@@ -59,6 +62,7 @@ async function lockUnit(
     .select()
     .from(missionAssignments)
     .where(and(scope, inArray(missionAssignments.status, [...statuses])))
+    .orderBy(asc(missionAssignments.id))
     .for('update');
 }
 
@@ -87,6 +91,11 @@ export async function submitMission(
     throw new ValidationError('evidence: this mission requires evidence (title and URL)');
 
   return withTransaction(ctx, async (tx) => {
+    // Conflicts with archiveMission's update lock: a submission never slips in
+    // between the archive's "nothing awaits review" check and the archive
+    // itself. A share lock, so submissions on one mission do not queue.
+    const current = await loadMission(tx, mission.id, { lock: 'share' });
+    if (current.status === 'archived') throw new InvalidStateError('This mission is archived.');
     const unit = await lockUnit(tx, assignment, WORKING_STATUSES);
     const own = unit.find((row) => row.id === assignment.id);
     if (!own || !(SUBMITTABLE_STATUSES as readonly string[]).includes(own.status))
@@ -254,7 +263,7 @@ export async function verifySubmission(
           title: 'MISSION VERIFIED',
           body: `${formatMissionNumber(mission.number)} — ${mission.title}. Verified and on your record.${data.feedback ? ` Feedback: ${data.feedback}` : ''}`,
           data: { missionId: mission.id, assignmentId: target.id, outcome: 'verified' },
-          dedupeKey: `mission-review:${target.id}:${target.attempts}`,
+          dedupeKey: reviewNotificationKey(target),
         });
       }
       if (mission.rewardAchievementKey) {
@@ -331,7 +340,7 @@ export async function rejectSubmission(
         title: 'MISSION RETURNED',
         body: `${formatMissionNumber(mission.number)} — ${mission.title}. Feedback: ${data.feedback} ${attemptsLeft > 0 ? `${attemptsLeft} attempt(s) left.` : 'No attempts left.'}`,
         data: { missionId: mission.id, assignmentId: target.id, outcome: 'rejected' },
-        dedupeKey: `mission-review:${target.id}:${target.attempts}`,
+        dedupeKey: reviewNotificationKey(target),
       });
     }
     await recordAudit(tx, {

@@ -98,6 +98,23 @@ export function formatMissionNumber(value: number): string {
   return formatNumber('M', value);
 }
 
+/** The parts of an assignment that identify one review of one submission. */
+export interface ReviewedSubmission {
+  id: string;
+  assignedAt: Date;
+  attempts: number;
+}
+
+/**
+ * Dedupe key of a review notification. A staff re-assignment reuses the row
+ * and resets `attempts`, so the key is scoped to the assignment cycle
+ * (`assignedAt`) as well as the attempt: every review of every cycle gets
+ * its own notification, and a replayed review of the same attempt does not.
+ */
+export function reviewNotificationKey(submission: ReviewedSubmission): string {
+  return `mission-review:${submission.id}:${submission.assignedAt.getTime()}:${submission.attempts}`;
+}
+
 export interface DueDateInput {
   now: Date;
   explicitDueAt: Date | null;

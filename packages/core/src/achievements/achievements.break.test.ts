@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { auditLogs, memberAchievements, members } from '@jave/database';
+import { achievementDefinitions, auditLogs, memberAchievements, members } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
-import { createEventHandlers, publishEvent } from '../events/bus';
+import { createEventHandlers, EVENT_DELIVER_JOB, publishEvent } from '../events/bus';
+import { enqueueJob } from '../jobs/queue';
 import {
   ForbiddenError,
   NotFoundError,
@@ -12,6 +13,7 @@ import {
 import { resolveUserActor } from '../identity/users.service';
 import { anonymousActor, type UserActor } from '../permissions/actor';
 import {
+  ACHIEVEMENT_EVALUATE_JOB,
   awardAchievement,
   awardAchievementFromSystem,
   createAchievementDefinition,
@@ -25,8 +27,11 @@ import {
   updateAchievementDefinition,
   verifyMemberAchievement,
 } from './index';
+import { DATABASE_SUITE_TIMEOUTS } from './testing/fixtures';
 
 const handlers = { ...jobHandlers, ...createEventHandlers(subscribers) };
+
+vi.setConfig(DATABASE_SUITE_TIMEOUTS);
 
 describe('achievements — adversarial', () => {
   let kit: TestKit;
@@ -317,5 +322,37 @@ describe('achievements — adversarial', () => {
     await expect(
       getAchievementCatalog(kit.as(member), { includeInactive: true }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('BREAK: a rule on Discord activity is inert, even when written straight to the database', async () => {
+    const now = kit.clock.now();
+    await kit.db.insert(achievementDefinitions).values({
+      key: 'regular',
+      title: 'Regular',
+      summary: 'Checked in once.',
+      description: 'Showed up.',
+      category: 'events',
+      criteria: { type: 'event_count', event: 'event.checked_in', threshold: 1 },
+      createdAt: now,
+      updatedAt: now,
+    });
+    await enqueueJob(kit.system, ACHIEVEMENT_EVALUATE_JOB, { key: 'regular' });
+    const member = await kit.member();
+    await publishEvent(kit.system, {
+      type: 'event.checked_in',
+      aggregateType: 'event',
+      aggregateId: 'event-1',
+      subjectMemberId: member.memberId,
+    });
+    const outcomes = await kit.drain(handlers);
+    expect(outcomes.filter((o) => o.status !== 'completed')).toEqual([]);
+    expect(outcomes.filter((o) => o.type === EVENT_DELIVER_JOB)).toEqual([]);
+    const [evaluation] = outcomes.filter((o) => o.type === ACHIEVEMENT_EVALUATE_JOB);
+    expect(evaluation?.result).toEqual({ skipped: 'not an active event_count rule' });
+    const rows = await kit.db
+      .select()
+      .from(memberAchievements)
+      .where(eq(memberAchievements.memberId, member.memberId!));
+    expect(rows).toEqual([]);
   });
 });

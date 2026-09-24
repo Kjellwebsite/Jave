@@ -6,8 +6,10 @@ import {
   achievementAnnouncementLine,
   achievementCriteriaSchema,
   achievementHeadline,
-  EXCLUDED_ACHIEVEMENT_EVENTS,
+  FIRST_STEP_ONLY_EVENTS,
+  FIRST_STEP_THRESHOLD,
   holderPercent,
+  isAchievementEventType,
   MAX_EVENT_THRESHOLD,
   parseStoredCriteria,
   thresholdsMet,
@@ -48,26 +50,82 @@ describe('achievement criteria', () => {
     }
   });
 
-  it('derives eligible events from the catalog minus the exclusions', () => {
-    for (const excluded of EXCLUDED_ACHIEVEMENT_EVENTS) {
-      expect(DOMAIN_EVENT_TYPES).toContain(excluded);
-      expect(ACHIEVEMENT_EVENT_TYPES).not.toContain(excluded);
-    }
-    expect(ACHIEVEMENT_EVENT_TYPES.length).toBe(
-      DOMAIN_EVENT_TYPES.length - EXCLUDED_ACHIEVEMENT_EVENTS.size,
+  it('is an explicit allow-list of verified-outcome catalog events', () => {
+    for (const eligible of ACHIEVEMENT_EVENT_TYPES) expect(DOMAIN_EVENT_TYPES).toContain(eligible);
+    expect([...ACHIEVEMENT_EVENT_TYPES].sort()).toEqual(
+      [
+        'adversarial.revealed',
+        'application.accepted',
+        'contribution.verified',
+        'mission.completed',
+        'project.created',
+        'project.shipped',
+        'research.verified',
+        'trial.passed',
+        'trial.result_published',
+        'verification.approved',
+      ].sort(),
     );
-    for (const starterEvent of [
-      'mission.completed',
-      'project.created',
-      'project.shipped',
-      'contribution.verified',
-      'trial.result_published',
-      'trial.passed',
-      'research.verified',
-      'adversarial.revealed',
-    ]) {
-      expect(ACHIEVEMENT_EVENT_TYPES).toContain(starterEvent);
+    for (const starter of STARTER_ACHIEVEMENTS) {
+      if (starter.criteria.type !== 'event_count') continue;
+      expect(isAchievementEventType(starter.criteria.event), starter.key).toBe(true);
     }
+    // Everything else in the catalog drives nothing, including events appended later.
+    const ineligible = DOMAIN_EVENT_TYPES.filter((type) => !isAchievementEventType(type));
+    expect(ineligible.length).toBe(DOMAIN_EVENT_TYPES.length - ACHIEVEMENT_EVENT_TYPES.length);
+    expect(isAchievementEventType('game.won')).toBe(false);
+    expect(isAchievementEventType('message.sent')).toBe(false);
+  });
+
+  it('BREAK: Discord activity, unreviewed work and staff operations never drive achievements', () => {
+    for (const event of [
+      'tournament.match_completed',
+      'game.completed',
+      'event.checked_in',
+      'event.rsvp',
+      'member.joined',
+      'member.onboarded',
+      'trial.submission_received',
+      'trial.participant_selected',
+      'mission.submitted',
+      'research.submitted',
+      'contribution.submitted',
+      'project.member_added',
+      'trial.created',
+      'event.created',
+      'mission.published',
+      'achievement.unlocked',
+    ]) {
+      const parsed = achievementCriteriaSchema.safeParse({
+        type: 'event_count',
+        event,
+        threshold: 20,
+      });
+      expect(parsed.success, event).toBe(false);
+      expect(ACHIEVEMENT_EVENT_TYPES as readonly string[], event).not.toContain(event);
+    }
+  });
+
+  it('BREAK: first-step events count once only, so repeating them farms nothing', () => {
+    expect(FIRST_STEP_ONLY_EVENTS.has('project.created')).toBe(true);
+    expect(
+      achievementCriteriaSchema.safeParse({
+        type: 'event_count',
+        event: 'project.created',
+        threshold: FIRST_STEP_THRESHOLD,
+      }).success,
+    ).toBe(true);
+    for (const threshold of [2, 10, MAX_EVENT_THRESHOLD]) {
+      expect(
+        achievementCriteriaSchema.safeParse({
+          type: 'event_count',
+          event: 'project.created',
+          threshold,
+        }).success,
+        String(threshold),
+      ).toBe(false);
+    }
+    for (const event of FIRST_STEP_ONLY_EVENTS) expect(ACHIEVEMENT_EVENT_TYPES).toContain(event);
   });
 
   it('treats stored rules that no longer validate as inert', () => {

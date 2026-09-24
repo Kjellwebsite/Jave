@@ -222,6 +222,11 @@ export async function reopenMission(
 /**
  * DRAFT or CLOSED → ARCHIVED (final). Refused while submissions await
  * review; assignments still in progress expire with a notice.
+ *
+ * The mission row is locked for update before submissions are counted.
+ * submitMission holds a share lock on the same row while it moves work to
+ * SUBMITTED, so a submission either commits before the count (and blocks the
+ * archive) or waits for it and then sees the mission archived.
  */
 export async function archiveMission(
   ctx: ServiceContext,
@@ -229,9 +234,11 @@ export async function archiveMission(
 ): Promise<MissionRecord> {
   const { missionId } = parseInput(missionIdSchema, input);
   await authorize(ctx, 'canManageMissions', { type: 'mission', id: missionId });
-  const mission = await loadMission(ctx, missionId);
-  assertTransition(mission, 'archived', 'Close the mission before archiving it.');
+  const before = await loadMission(ctx, missionId);
+  assertTransition(before, 'archived', 'Close the mission before archiving it.');
   return withTransaction(ctx, async (tx) => {
+    const mission = await loadMission(tx, missionId, { lock: 'update' });
+    assertTransition(mission, 'archived', 'Close the mission before archiving it.');
     const [pending] = await tx.db
       .select({ value: count() })
       .from(missionAssignments)
@@ -256,12 +263,15 @@ export async function archiveMission(
           inArray(missionAssignments.status, [...WORKING_STATUSES]),
         ),
       );
-    for (const assignment of working) await expireAssignment(tx, assignment, archived, 'archived');
+    let expired = 0;
+    for (const assignment of working) {
+      if (await expireAssignment(tx, assignment, archived, 'archived')) expired++;
+    }
     await recordAudit(tx, {
       action: 'mission.archived',
       targetType: 'mission',
       targetId: missionId,
-      context: { expiredAssignments: working.length },
+      context: { expiredAssignments: expired },
     });
     await publishEvent(tx, {
       type: 'mission.closed',

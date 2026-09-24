@@ -2,12 +2,17 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { z } from 'zod';
 import { missionAssignments, members } from '@jave/database';
 import { type ServiceContext, withTransaction } from '../kernel/context';
-import { ConflictError, InvalidStateError, ValidationError } from '../kernel/errors';
+import {
+  ConflictError,
+  ForbiddenError,
+  InvalidStateError,
+  ValidationError,
+} from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
 import { notify } from '../notifications/notifications.service';
-import { actorUserId } from '../permissions/actor';
+import { actorMemberId, actorUserId } from '../permissions/actor';
 import { authorize } from '../permissions/authorize';
 import {
   type AssignmentStatus,
@@ -29,7 +34,7 @@ import {
 } from './store';
 
 export type AssignSkipReason =
-  'not_found' | 'ineligible' | 'already_assigned' | 'completed' | 'mission_full';
+  'not_found' | 'ineligible' | 'already_assigned' | 'completed' | 'mission_full' | 'team_locked';
 
 export interface AssignResult {
   assigned: AssignmentRecord[];
@@ -78,10 +83,41 @@ function assignedCopy(mission: MissionRecord, dueAt: Date | null): string {
 }
 
 /**
- * Staff assign an OPEN mission to members (canManageMissions). Team missions
- * need a team key; members sharing it submit together. Members that cannot
- * take the mission are reported in `skipped` rather than failing the batch.
- * Previously abandoned or expired assignments are restarted.
+ * Staff may not put themselves on a mission: they take missions like any
+ * member (selfAssignMission, which enforces selfAssignable and the cap), or
+ * another staff member assigns them. Blocked and audited durably.
+ */
+async function blockSelfAssignment(
+  ctx: ServiceContext,
+  missionId: string,
+  memberIds: readonly string[],
+): Promise<void> {
+  const self = actorMemberId(ctx.actor);
+  if (!self || !memberIds.includes(self)) return;
+  await recordAudit(
+    ctx,
+    {
+      action: 'mission.self_assign_blocked',
+      targetType: 'mission',
+      targetId: missionId,
+      result: 'denied',
+      context: { memberId: self },
+    },
+    { durable: true },
+  );
+  throw new ForbiddenError(
+    'You cannot assign a mission to yourself. Take it from the mission card, or ask another staff member.',
+  );
+}
+
+/**
+ * Staff assign an OPEN mission to members (canManageMissions), never to
+ * themselves. Team missions need a team key; members sharing it submit
+ * together. Members that cannot take the mission are reported in `skipped`
+ * rather than failing the batch. Previously abandoned or expired assignments
+ * are restarted, always on the team they first joined (`team_locked`
+ * otherwise): the rows carrying a team key are the team's complete history,
+ * which is what keeps former members from reviewing its work.
  */
 export async function assignMission(
   ctx: ServiceContext,
@@ -89,6 +125,7 @@ export async function assignMission(
 ): Promise<AssignResult> {
   const data = parseInput(assignMissionSchema, input);
   await authorize(ctx, 'canManageMissions', { type: 'mission', id: data.missionId });
+  await blockSelfAssignment(ctx, data.missionId, data.memberIds);
   const mission = await loadMission(ctx, data.missionId);
   if (mission.status !== 'open')
     throw new InvalidStateError('Publish the mission before assigning it.');
@@ -101,7 +138,7 @@ export async function assignMission(
 
   return withTransaction(ctx, async (tx) => {
     // Re-read under lock: a concurrent close or cap change must win over this batch.
-    const locked = await loadMission(tx, mission.id, { forUpdate: true });
+    const locked = await loadMission(tx, mission.id, { lock: 'update' });
     if (locked.status !== 'open')
       throw new InvalidStateError('Publish the mission before assigning it.');
     const dueAt = resolveDueAt({
@@ -144,6 +181,10 @@ export async function assignMission(
       }
       if (previous && !(REASSIGNABLE_STATUSES as readonly string[]).includes(previous.status)) {
         skip(previous.status === 'verified' ? 'completed' : 'already_assigned');
+        continue;
+      }
+      if (previous && previous.teamKey !== (data.teamKey ?? null)) {
+        skip('team_locked');
         continue;
       }
       if (locked.maxAssignees !== null && taken >= locked.maxAssignees) {
@@ -228,7 +269,7 @@ export async function selfAssignMission(
     throw new InvalidStateError('The mission deadline has passed.');
 
   return withTransaction(ctx, async (tx) => {
-    const locked = await loadMission(tx, mission.id, { forUpdate: true });
+    const locked = await loadMission(tx, mission.id, { lock: 'update' });
     if (locked.status !== 'open') throw new InvalidStateError('This mission is not open.');
     if (locked.type === 'team' || !locked.selfAssignable)
       throw new InvalidStateError('This mission is assigned by staff.');

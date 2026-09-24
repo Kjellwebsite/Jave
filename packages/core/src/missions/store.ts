@@ -29,13 +29,20 @@ export function requireParticipant(ctx: ServiceContext): UserActor & { memberId:
   return actor;
 }
 
+/**
+ * Row lock taken on the mission inside a transaction. `update` is for changes
+ * to the mission itself or to its roster (assign, archive); `share` is for
+ * work that must not overlap those changes but may overlap itself (submissions).
+ */
+export type MissionLock = 'update' | 'share';
+
 export async function loadMission(
   ctx: ServiceContext,
   missionId: string,
-  options: { forUpdate?: boolean } = {},
+  options: { lock?: MissionLock } = {},
 ): Promise<MissionRecord> {
   const query = ctx.db.select().from(missions).where(eq(missions.id, missionId));
-  const [row] = options.forUpdate ? await query.for('update') : await query;
+  const [row] = options.lock ? await query.for(options.lock) : await query;
   if (!row) throw new NotFoundError('Mission');
   return row;
 }

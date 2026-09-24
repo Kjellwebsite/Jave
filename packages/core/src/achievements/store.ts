@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { achievementDefinitions, memberAchievements, members } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
 import { NotFoundError } from '../kernel/errors';
@@ -15,14 +15,6 @@ export interface EventCountDefinition extends AchievementDefinitionRecord {
 
 /** Retroactive evaluation of one definition (job handler in engine.ts). */
 export const ACHIEVEMENT_EVALUATE_JOB = 'achievements.evaluate_definition';
-
-const EVENT_DEFINITIONS_CACHE_KEY = 'achievements:event-definitions';
-/**
- * Rules change rarely; a short TTL bounds how long another process keeps a
- * stale rule set. Missed events are caught up by the evaluation job, which
- * counts history rather than single events.
- */
-const EVENT_DEFINITIONS_TTL_MS = 30_000;
 
 export async function loadDefinition(
   ctx: ServiceContext,
@@ -44,26 +36,65 @@ export function asEventCountDefinition(
   return { ...definition, criteria };
 }
 
-/** Active event_count definitions, cached per process. */
-export async function activeEventCountDefinitions(
+/**
+ * Active event_count rules that count `eventType`.
+ *
+ * Read from the database for every delivered event and never from the
+ * per-process cache: rules are edited in the dashboard process but applied
+ * in the bot's worker, where a cached rule set would miss events (or keep
+ * awarding under a retired rule) until it expired. It is one small query
+ * per delivered event.
+ */
+export async function activeRulesForEvent(
   ctx: ServiceContext,
+  eventType: string,
 ): Promise<EventCountDefinition[]> {
-  return ctx.cache.getOrLoad(EVENT_DEFINITIONS_CACHE_KEY, EVENT_DEFINITIONS_TTL_MS, async () => {
-    const rows = await ctx.db
-      .select()
-      .from(achievementDefinitions)
-      .where(eq(achievementDefinitions.active, true));
-    return rows
-      .map(asEventCountDefinition)
-      .filter((row): row is EventCountDefinition => row !== null);
-  });
+  const rows = await ctx.db
+    .select()
+    .from(achievementDefinitions)
+    .where(
+      and(
+        eq(achievementDefinitions.active, true),
+        sql`${achievementDefinitions.criteria}->>'type' = 'event_count'`,
+        sql`${achievementDefinitions.criteria}->>'event' = ${eventType}`,
+      ),
+    );
+  return rows
+    .map(asEventCountDefinition)
+    .filter((row): row is EventCountDefinition => row !== null && row.criteria.event === eventType);
 }
 
-export function invalidateDefinitionCache(ctx: ServiceContext): void {
-  ctx.cache.delete(EVENT_DEFINITIONS_CACHE_KEY);
+/**
+ * Re-read a rule inside the award transaction under a share lock. The lock
+ * waits for a concurrent edit to commit and then sees the edited rule, and
+ * it holds off further edits until the award commits, so an award is only
+ * ever made under the rule as it currently stands. Returns null when the
+ * rule is gone, inactive, or no longer an event_count rule.
+ */
+export async function lockCurrentRule(
+  tx: ServiceContext,
+  key: string,
+): Promise<EventCountDefinition | null> {
+  const [row] = await tx.db
+    .select()
+    .from(achievementDefinitions)
+    .where(eq(achievementDefinitions.key, key))
+    .for('share');
+  if (!row?.active) return null;
+  return asEventCountDefinition(row);
 }
 
-/** Queue a retroactive evaluation when an event_count rule becomes (or stays) active. */
+/** Whether two versions of a rule award for the same thing (same event, same threshold). */
+export function sameRule(a: EventCountDefinition, b: EventCountDefinition): boolean {
+  return a.criteria.event === b.criteria.event && a.criteria.threshold === b.criteria.threshold;
+}
+
+/**
+ * Queue a retroactive evaluation when an event_count rule becomes (or stays)
+ * active. The dedupe key carries the rule version: an edit made while an
+ * evaluation of the previous version is running still gets its own run
+ * (the running one stops as soon as it sees the rule changed).
+ */
 export async function scheduleEvaluation(
   ctx: ServiceContext,
   definition: AchievementDefinitionRecord,
@@ -73,7 +104,7 @@ export async function scheduleEvaluation(
     ctx,
     ACHIEVEMENT_EVALUATE_JOB,
     { key: definition.key },
-    { dedupeKey: `achievements:evaluate:${definition.key}` },
+    { dedupeKey: `achievements:evaluate:${definition.key}:${definition.updatedAt.getTime()}` },
   );
   return id !== null;
 }

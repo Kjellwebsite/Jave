@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import {
   auditLogs,
@@ -9,6 +9,7 @@ import {
 } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import { HOUR } from '../kernel/clock';
+import { withTransaction } from '../kernel/context';
 import { ConflictError, InvalidStateError, NotFoundError, ValidationError } from '../kernel/errors';
 import type { UserActor } from '../permissions/actor';
 import { updateSettings } from '../settings/settings.service';
@@ -39,7 +40,9 @@ import {
   updateMission,
   verifySubmission,
 } from './index';
+import { expireAssignment } from './sweeps';
 import {
+  DATABASE_SUITE_TIMEOUTS,
   EVIDENCE,
   eventsOfType,
   inboxOf,
@@ -52,6 +55,8 @@ import {
 
 const MISSIONS_CHANNEL = '423456789012345678';
 const ANNOUNCEMENTS_CHANNEL = '523456789012345678';
+
+vi.setConfig(DATABASE_SUITE_TIMEOUTS);
 
 describe('missions', () => {
   let kit: TestKit;
@@ -379,6 +384,44 @@ describe('missions', () => {
         attempts: 0,
       });
     });
+    it('notifies every review of every assignment cycle, including after a staff re-assignment', async () => {
+      const mission = await openMission(kit, ops);
+      const member = await kit.member();
+      const first = await selfAssignMission(kit.as(member), { missionId: mission.id });
+      await submitMission(kit.as(member), { assignmentId: first.id, submission: 'First pass.' });
+      await rejectSubmission(kit.as(reviewer), {
+        assignmentId: first.id,
+        feedback: 'Needs a working demo.',
+      });
+      await abandonMission(kit.as(member), { assignmentId: first.id });
+
+      kit.clock.advance(HOUR);
+      const { assigned } = await assignMission(kit.as(ops), {
+        missionId: mission.id,
+        memberIds: [member.memberId!],
+      });
+      expect(assigned[0]).toMatchObject({ id: first.id, attempts: 0 });
+      await acceptMission(kit.as(member), { assignmentId: first.id });
+      await submitMission(kit.as(member), { assignmentId: first.id, submission: 'Second pass.' });
+      await rejectSubmission(kit.as(reviewer), {
+        assignmentId: first.id,
+        feedback: 'Close. Add the benchmark.',
+      });
+      await submitMission(kit.as(member), { assignmentId: first.id, submission: 'Third pass.' });
+      await verifySubmission(kit.as(reviewer), { assignmentId: first.id });
+
+      const reviews = (await inboxOf(kit, member)).filter((n) => n.type === 'mission.reviewed');
+      expect(reviews.map((n) => n.title).sort()).toEqual([
+        'MISSION RETURNED',
+        'MISSION RETURNED',
+        'MISSION VERIFIED',
+      ]);
+      const bodies = reviews.map((n) => n.body);
+      expect(bodies.some((body) => body.includes('Feedback: Needs a working demo.'))).toBe(true);
+      expect(bodies.some((body) => body.includes('Feedback: Close. Add the benchmark.'))).toBe(
+        true,
+      );
+    });
   });
 
   describe('team missions', () => {
@@ -480,6 +523,30 @@ describe('missions', () => {
       expect((await inboxOf(kit, member)).map((n) => n.title)).toContain('MISSION EXPIRED');
       await runJob(kit, MISSION_EXPIRE_JOB);
       expect(await eventsOfType(kit, 'mission.expired')).toHaveLength(1);
+    });
+
+    it('BREAK: a sweep working from a stale snapshot never expires a re-assigned row', async () => {
+      const mission = await openMission(kit, ops, { durationHours: 24 });
+      const member = await kit.member();
+      const assignment = await selfAssignMission(kit.as(member), { missionId: mission.id });
+      kit.clock.advance(25 * HOUR);
+      const [snapshot] = await kit.db
+        .select()
+        .from(missionAssignments)
+        .where(eq(missionAssignments.id, assignment.id));
+      await abandonMission(kit.as(member), { assignmentId: assignment.id });
+      await assignMission(kit.as(ops), { missionId: mission.id, memberIds: [member.memberId!] });
+
+      const expired = await withTransaction(kit.system, (tx) =>
+        expireAssignment(tx, snapshot!, mission, 'deadline'),
+      );
+      expect(expired).toBe(false);
+      const [row] = await kit.db
+        .select()
+        .from(missionAssignments)
+        .where(eq(missionAssignments.id, assignment.id));
+      expect(row?.status).toBe('assigned');
+      expect(await eventsOfType(kit, 'mission.expired')).toEqual([]);
     });
 
     it('never expires work that was submitted in time', async () => {

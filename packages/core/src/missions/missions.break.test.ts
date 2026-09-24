@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq, sql } from 'drizzle-orm';
 import { auditLogs, missionAssignments, members } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import { HOUR } from '../kernel/clock';
@@ -32,7 +32,15 @@ import {
   updateMission,
   verifySubmission,
 } from './index';
-import { EVIDENCE, openMission, VALID_BRIEF } from './testing/fixtures';
+import { DATABASE_SUITE_TIMEOUTS, EVIDENCE, openMission, VALID_BRIEF } from './testing/fixtures';
+
+vi.setConfig(DATABASE_SUITE_TIMEOUTS);
+
+/** Message of an error and of its cause (driver errors arrive wrapped). */
+function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  return `${error.message} ${error.cause instanceof Error ? error.cause.message : ''}`;
+}
 
 describe('missions — adversarial', () => {
   let kit: TestKit;
@@ -97,6 +105,126 @@ describe('missions — adversarial', () => {
       assignmentId: mateAssignment.id,
     });
     expect(verified?.memberId).toBe(mate.memberId);
+  });
+
+  it('BREAK: leaving a team for another does not make a staff member an outsider who may review it', async () => {
+    const mission = await openMission(kit, reviewer, { type: 'team' });
+    const mate = await kit.member();
+    const { assigned } = await assignMission(kit.as(reviewer), {
+      missionId: mission.id,
+      memberIds: [ops.memberId!, mate.memberId!],
+      teamKey: 'red',
+    });
+    const mateAssignment = assigned.find((a) => a.memberId === mate.memberId)!;
+    const opsAssignment = assigned.find((a) => a.memberId === ops.memberId)!;
+    await abandonMission(kit.as(ops), { assignmentId: opsAssignment.id });
+    await acceptMission(kit.as(mate), { assignmentId: mateAssignment.id });
+    await submitMission(kit.as(mate), { assignmentId: mateAssignment.id, submission: 'Team red.' });
+
+    await expect(
+      assignMission(kit.as(ops), {
+        missionId: mission.id,
+        memberIds: [ops.memberId!],
+        teamKey: 'blue',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    const [blocked] = await audits('mission.self_assign_blocked');
+    expect(blocked).toMatchObject({ result: 'denied', actorUserId: ops.userId });
+
+    const moved = await assignMission(kit.as(reviewer), {
+      missionId: mission.id,
+      memberIds: [ops.memberId!],
+      teamKey: 'blue',
+    });
+    expect(moved).toEqual({
+      assigned: [],
+      skipped: [{ memberId: ops.memberId, reason: 'team_locked' }],
+    });
+    const [opsRow] = await kit.db
+      .select()
+      .from(missionAssignments)
+      .where(eq(missionAssignments.id, opsAssignment.id));
+    expect(opsRow).toMatchObject({ status: 'abandoned', teamKey: 'red' });
+    await expect(
+      verifySubmission(kit.as(ops), { assignmentId: mateAssignment.id }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+
+    const rejoined = await assignMission(kit.as(reviewer), {
+      missionId: mission.id,
+      memberIds: [ops.memberId!],
+      teamKey: 'red',
+    });
+    expect(rejoined.assigned[0]).toMatchObject({ id: opsAssignment.id, status: 'assigned' });
+  });
+
+  it('BREAK: staff cannot assign a mission to themselves, alone or inside a batch', async () => {
+    const mission = await openMission(kit, reviewer, { selfAssignable: false });
+    const other = await kit.member();
+    await expect(
+      assignMission(kit.as(ops), {
+        missionId: mission.id,
+        memberIds: [other.memberId!, ops.memberId!],
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    const rows = await kit.db
+      .select()
+      .from(missionAssignments)
+      .where(eq(missionAssignments.missionId, mission.id));
+    expect(rows).toEqual([]);
+    expect(await audits('mission.self_assign_blocked')).toHaveLength(1);
+
+    const { assigned } = await assignMission(kit.as(reviewer), {
+      missionId: mission.id,
+      memberIds: [ops.memberId!],
+    });
+    expect(assigned.map((a) => a.memberId)).toEqual([ops.memberId]);
+  });
+
+  it('BREAK: a submission holds the mission lock archiving takes, so it cannot slip past the archive check', async () => {
+    // PGlite runs one transaction at a time, so the READ COMMITTED race
+    // (archive finds nothing pending, a submission commits, the archive goes
+    // ahead) cannot be replayed here. Assert the mechanism instead: a trigger
+    // refuses any move to SUBMITTED by a transaction that does not hold a row
+    // lock on the mission (a locked row's xmax is the locking transaction).
+    await kit.db.execute(
+      sql.raw(`create function test_require_mission_lock() returns trigger
+        language plpgsql as $$ begin
+          if not exists (
+            select 1 from missions where id = new.mission_id and xmax = pg_current_xact_id()::xid
+          ) then
+            raise exception 'mission % not locked by this transaction', new.mission_id;
+          end if;
+          return new;
+        end $$`),
+    );
+    await kit.db.execute(
+      sql.raw(`create trigger test_require_mission_lock before update on mission_assignments
+        for each row when (new.status = 'submitted' and old.status <> 'submitted')
+        execute function test_require_mission_lock()`),
+    );
+    const mission = await openMission(kit, ops);
+    const member = await kit.member();
+    const own = await selfAssignMission(kit.as(member), { missionId: mission.id });
+    await closeMission(kit.as(ops), { missionId: mission.id });
+
+    const unlocked = await kit.db
+      .update(missionAssignments)
+      .set({ status: 'submitted' })
+      .where(eq(missionAssignments.id, own.id))
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(describeError(unlocked)).toContain('not locked by this transaction');
+
+    const submitted = await submitMission(kit.as(member), {
+      assignmentId: own.id,
+      submission: 'Done before the archive.',
+    });
+    expect(submitted.status).toBe('submitted');
+    await expect(archiveMission(kit.as(ops), { missionId: mission.id })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
   });
 
   it('BREAK: members and moderators cannot create, assign, publish or review missions', async () => {

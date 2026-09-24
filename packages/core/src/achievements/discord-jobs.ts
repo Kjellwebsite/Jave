@@ -1,7 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { achievementDefinitions, memberAchievements, members, users } from '@jave/database';
-import type { ServiceContext } from '../kernel/context';
+import { type ServiceContext, withTransaction } from '../kernel/context';
 import { parseInput } from '../kernel/validation';
 import { enqueueJob } from '../jobs/queue';
 import { getSettings } from '../settings/settings.service';
@@ -34,7 +34,9 @@ import type {
  *  3. Report the message with `markAchievementAnnounced(ctx, {
  *     memberAchievementId, channelId, messageId })`. When it returns
  *     `{ stored: false }` another attempt already announced: delete the
- *     message just posted.
+ *     message just posted. When it throws, nothing was stored (the report
+ *     and any retraction commit together): delete the message just posted,
+ *     then fail the job so the retry starts again at step 1.
  *
  * Discord permissions (in `channelId`): View Channel, Send Messages, Embed Links.
  * Failures: missing channel or permission is permanent (dead-letter);
@@ -181,7 +183,8 @@ const markAnnouncedSchema = z
 /**
  * Bot callback after posting the card. Idempotent: only the first report is
  * stored. If the award was revoked while the card was being posted, the
- * retraction is queued immediately.
+ * retraction is queued in the same transaction, so a failed enqueue rolls
+ * the report back and the bot's retry can store it again.
  */
 export async function markAchievementAnnounced(
   ctx: ServiceContext,
@@ -189,21 +192,23 @@ export async function markAchievementAnnounced(
 ): Promise<{ stored: boolean }> {
   requireSystemActor(ctx);
   const data = parseInput(markAnnouncedSchema, input);
-  const [updated] = await ctx.db
-    .update(memberAchievements)
-    .set({
-      announcementChannelId: data.channelId,
-      announcementMessageId: data.messageId,
-      announcedAt: ctx.clock.now(),
-    })
-    .where(
-      and(
-        eq(memberAchievements.id, data.memberAchievementId),
-        isNull(memberAchievements.announcementMessageId),
-      ),
-    )
-    .returning();
-  if (!updated) return { stored: false };
-  if (updated.revokedAt !== null) await scheduleAchievementRetraction(ctx, updated);
-  return { stored: true };
+  return withTransaction(ctx, async (tx) => {
+    const [updated] = await tx.db
+      .update(memberAchievements)
+      .set({
+        announcementChannelId: data.channelId,
+        announcementMessageId: data.messageId,
+        announcedAt: tx.clock.now(),
+      })
+      .where(
+        and(
+          eq(memberAchievements.id, data.memberAchievementId),
+          isNull(memberAchievements.announcementMessageId),
+        ),
+      )
+      .returning();
+    if (!updated) return { stored: false };
+    if (updated.revokedAt !== null) await scheduleAchievementRetraction(tx, updated);
+    return { stored: true };
+  });
 }

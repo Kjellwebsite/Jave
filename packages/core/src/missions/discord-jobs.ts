@@ -1,7 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { achievementDefinitions, missions } from '@jave/database';
-import type { ServiceContext } from '../kernel/context';
+import { type ServiceContext, withTransaction } from '../kernel/context';
 import { parseInput } from '../kernel/validation';
 import { enqueueJob } from '../jobs/queue';
 import { getSettings } from '../settings/settings.service';
@@ -42,7 +42,10 @@ export function missionAcceptCustomId(missionId: string): string {
  *     `card.acceptEnabled`.
  *  3. Report the message with `markMissionAnnounced(ctx, { missionId,
  *     channelId, messageId })`. When it returns `{ stored: false }` another
- *     attempt already posted: delete the message just posted.
+ *     attempt already posted: delete the message just posted. When it
+ *     throws, nothing was stored (the report and any card refresh commit
+ *     together): delete the message just posted, then fail the job so the
+ *     retry starts again at step 1.
  *
  * ACCEPT button handler: parse the mission id from the custom id and call
  * `selfAssignMission(ctx, { missionId })` as the clicking user (never trust
@@ -198,7 +201,8 @@ const markAnnouncedSchema = z
 /**
  * Bot callback after posting the card. Idempotent: only the first report is
  * stored. If the mission changed state while the card was being posted, a
- * refresh is queued so the card reflects it.
+ * refresh is queued in the same transaction, so a failed enqueue rolls the
+ * report back and the bot's retry can store it again.
  */
 export async function markMissionAnnounced(
   ctx: ServiceContext,
@@ -206,12 +210,14 @@ export async function markMissionAnnounced(
 ): Promise<{ stored: boolean }> {
   requireSystemActor(ctx);
   const data = parseInput(markAnnouncedSchema, input);
-  const [updated] = await ctx.db
-    .update(missions)
-    .set({ announcementChannelId: data.channelId, announcementMessageId: data.messageId })
-    .where(and(eq(missions.id, data.missionId), isNull(missions.announcementMessageId)))
-    .returning();
-  if (!updated) return { stored: false };
-  if (updated.status !== 'open') await scheduleMissionCardRefresh(ctx, updated);
-  return { stored: true };
+  return withTransaction(ctx, async (tx) => {
+    const [updated] = await tx.db
+      .update(missions)
+      .set({ announcementChannelId: data.channelId, announcementMessageId: data.messageId })
+      .where(and(eq(missions.id, data.missionId), isNull(missions.announcementMessageId)))
+      .returning();
+    if (!updated) return { stored: false };
+    if (updated.status !== 'open') await scheduleMissionCardRefresh(tx, updated);
+    return { stored: true };
+  });
 }

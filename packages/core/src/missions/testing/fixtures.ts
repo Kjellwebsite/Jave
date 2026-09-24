@@ -11,6 +11,8 @@ import { createMission, publishMission } from '../missions.service';
 import type { createMissionSchema } from '../schemas';
 import type { z } from 'zod';
 
+export { DATABASE_SUITE_TIMEOUTS } from '../../achievements/testing/fixtures';
+
 /** Mission + achievement job handlers, with the achievement engine subscribed. */
 export const missionTestHandlers = {
   ...jobHandlers,

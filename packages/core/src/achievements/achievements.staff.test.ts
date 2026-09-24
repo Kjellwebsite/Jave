@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { auditLogs, members, notifications } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
@@ -21,11 +21,14 @@ import {
   verifyMemberAchievement,
 } from './index';
 import {
+  DATABASE_SUITE_TIMEOUTS,
   achievementTestHandlers,
   emitEvents,
   enableAnnouncements,
   jobsOfType,
 } from './testing/fixtures';
+
+vi.setConfig(DATABASE_SUITE_TIMEOUTS);
 
 describe('achievements — staff actions and views', () => {
   let kit: TestKit;
@@ -238,17 +241,17 @@ describe('achievements — staff actions and views', () => {
   describe('definitions', () => {
     it('creates, updates with an audited diff, and deletes only unused definitions', async () => {
       const created = await createAchievementDefinition(kit.as(core), {
-        key: 'night_shift',
-        title: 'Night Shift',
-        summary: 'Five events checked in.',
-        description: 'Showed up, five times.',
-        category: 'events',
-        criteria: { type: 'event_count', event: 'event.checked_in', threshold: 5 },
+        key: 'verifier_proof',
+        title: 'Proven',
+        summary: 'Five verifications approved.',
+        description: 'Five claims held up under independent verification.',
+        category: 'verification',
+        criteria: { type: 'event_count', event: 'verification.approved', threshold: 5 },
       });
       expect(created).toMatchObject({ rarity: 'standard', visibility: 'public', active: true });
       await expect(
         createAchievementDefinition(kit.as(core), {
-          key: 'night_shift',
+          key: 'verifier_proof',
           title: 'Dup',
           summary: 'Dup.',
           description: 'Dup.',
@@ -257,10 +260,10 @@ describe('achievements — staff actions and views', () => {
         }),
       ).rejects.toBeInstanceOf(ConflictError);
       await updateAchievementDefinition(kit.as(core), {
-        key: 'night_shift',
+        key: 'verifier_proof',
         patch: {
           rarity: 'rare',
-          criteria: { type: 'event_count', event: 'event.checked_in', threshold: 7 },
+          criteria: { type: 'event_count', event: 'verification.approved', threshold: 7 },
         },
       });
       const [audit] = await kit.db
@@ -270,10 +273,10 @@ describe('achievements — staff actions and views', () => {
       expect(audit?.context).toMatchObject({
         changes: { rarity: { from: 'standard', to: 'rare' } },
       });
-      await deleteAchievementDefinition(kit.as(core), { key: 'night_shift' });
+      await deleteAchievementDefinition(kit.as(core), { key: 'verifier_proof' });
       await expect(
         updateAchievementDefinition(kit.as(core), {
-          key: 'night_shift',
+          key: 'verifier_proof',
           patch: { rarity: 'rare' },
         }),
       ).rejects.toBeInstanceOf(NotFoundError);
@@ -307,12 +310,21 @@ describe('achievements — staff actions and views', () => {
           facetKey: 'mind.telepathy',
         }),
       ).rejects.toThrow('Unknown capability.');
+      for (const event of ['member.joined', 'event.checked_in', 'tournament.match_completed']) {
+        await expect(
+          createAchievementDefinition(kit.as(core), {
+            ...base,
+            criteria: { type: 'event_count', event, threshold: 1 },
+          }),
+          event,
+        ).rejects.toThrow(/criteria\.event/);
+      }
       await expect(
         createAchievementDefinition(kit.as(core), {
           ...base,
-          criteria: { type: 'event_count', event: 'member.joined', threshold: 1 },
+          criteria: { type: 'event_count', event: 'project.created', threshold: 5 },
         }),
-      ).rejects.toThrow(/criteria\.event/);
+      ).rejects.toThrow(/criteria\.threshold/);
     });
   });
 });

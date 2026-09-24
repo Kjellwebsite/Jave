@@ -9,11 +9,14 @@ import { ACHIEVEMENT_EVENT_TYPES, thresholdsMet } from './criteria';
 import { grantAchievement } from './grant';
 import {
   ACHIEVEMENT_EVALUATE_JOB,
-  activeEventCountDefinitions,
+  activeRulesForEvent,
   asEventCountDefinition,
+  type AwardableMember,
   type EventCountDefinition,
   loadAwardableMember,
   loadDefinition,
+  lockCurrentRule,
+  sameRule,
 } from './store';
 
 /**
@@ -24,6 +27,10 @@ import {
  * Idempotency: counting is over the whole event history (not +1 per
  * delivery), and the award insert is guarded by the partial unique index, so
  * duplicate or concurrent deliveries of the same event award at most once.
+ *
+ * Rules are read fresh for every event and re-read under a share lock inside
+ * each award transaction, so an award always follows the rule as it stands
+ * (see store.ts: activeRulesForEvent, lockCurrentRule).
  *
  * Revocation is sticky: once an award was revoked, the engine never awards
  * that definition to that member again. Only a manual staff award restores it.
@@ -72,6 +79,32 @@ export interface EvaluationResult {
   awarded: string[];
 }
 
+/**
+ * Award `candidate` for a delivered event if the rule, re-read under lock,
+ * still counts this event type and its (possibly edited) threshold is met.
+ */
+async function awardForEvent(
+  ctx: ServiceContext,
+  member: AwardableMember,
+  candidate: EventCountDefinition,
+  event: DomainEventRecord,
+  total: number,
+): Promise<boolean> {
+  const award = await withTransaction(ctx, async (tx) => {
+    const current = await lockCurrentRule(tx, candidate.key);
+    if (current?.criteria.event !== event.type) return null;
+    if (thresholdsMet([current], total).length === 0) return null;
+    return grantAchievement(tx, {
+      member,
+      definition: current,
+      source: 'engine',
+      sourceEventId: event.id,
+      announce: true,
+    });
+  });
+  return award !== null;
+}
+
 /** Evaluate one delivered event. Safe to call any number of times for the same event. */
 export async function evaluateEventForAchievements(
   ctx: ServiceContext,
@@ -79,26 +112,15 @@ export async function evaluateEventForAchievements(
 ): Promise<EvaluationResult> {
   const awarded: string[] = [];
   if (!event.subjectMemberId) return { awarded };
-  const rules = (await activeEventCountDefinitions(ctx)).filter(
-    (definition) => definition.criteria.event === event.type,
-  );
+  const rules = await activeRulesForEvent(ctx, event.type);
   if (rules.length === 0) return { awarded };
   const member = await loadAwardableMember(ctx, event.subjectMemberId);
   if (!member) return { awarded };
   const open = await unheldDefinitions(ctx, member.id, rules);
   if (open.length === 0) return { awarded };
   const total = await countMemberEvents(ctx, member.id, event.type);
-  for (const definition of thresholdsMet(open, total)) {
-    const award = await withTransaction(ctx, (tx) =>
-      grantAchievement(tx, {
-        member,
-        definition,
-        source: 'engine',
-        sourceEventId: event.id,
-        announce: true,
-      }),
-    );
-    if (award) awarded.push(definition.key);
+  for (const candidate of thresholdsMet(open, total)) {
+    if (await awardForEvent(ctx, member, candidate, event, total)) awarded.push(candidate.key);
   }
   return { awarded };
 }
@@ -148,6 +170,31 @@ async function qualifyingMembers(
   return rows.map((row) => row.memberId);
 }
 
+type BackfillOutcome = 'awarded' | 'held' | 'superseded';
+
+/**
+ * Backfill one member under lock. 'superseded' means the rule was edited,
+ * deactivated or deleted since the evaluation started: the edit queued its
+ * own evaluation (or none is due), so this one must stop.
+ */
+async function backfillMember(
+  ctx: ServiceContext,
+  member: AwardableMember,
+  definition: EventCountDefinition,
+): Promise<BackfillOutcome> {
+  return withTransaction(ctx, async (tx) => {
+    const current = await lockCurrentRule(tx, definition.key);
+    if (!current || !sameRule(current, definition)) return 'superseded';
+    const award = await grantAchievement(tx, {
+      member,
+      definition: current,
+      source: 'backfill',
+      announce: false,
+    });
+    return award ? 'awarded' : 'held';
+  });
+}
+
 /**
  * `achievements.evaluate_definition` — retroactive evaluation after a rule is
  * created, re-activated or changed. Backfilled awards notify the member but
@@ -167,12 +214,12 @@ export const evaluateDefinitionJob: JobHandler = async (ctx, payload, job) => {
   for (const memberId of candidates) {
     const member = await loadAwardableMember(ctx, memberId);
     if (!member) continue;
-    const award = await withTransaction(ctx, (tx) =>
-      grantAchievement(tx, { member, definition, source: 'backfill', announce: false }),
-    );
-    if (award) awarded++;
+    const outcome = await backfillMember(ctx, member, definition);
+    if (outcome === 'superseded') return { awarded, superseded: true };
+    if (outcome === 'awarded') awarded++;
   }
-  if (candidates.length === EVALUATION_BATCH_SIZE) {
+  const continued = candidates.length === EVALUATION_BATCH_SIZE;
+  if (continued) {
     await enqueueJob(
       ctx,
       ACHIEVEMENT_EVALUATE_JOB,
@@ -180,5 +227,5 @@ export const evaluateDefinitionJob: JobHandler = async (ctx, payload, job) => {
       { dedupeKey: `achievements:evaluate:${key}:after:${job.id}` },
     );
   }
-  return { awarded, continued: candidates.length === EVALUATION_BATCH_SIZE };
+  return { awarded, continued };
 };

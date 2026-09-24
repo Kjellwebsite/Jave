@@ -16,7 +16,8 @@ import {
 } from './icons';
 import { horizontalLockupSvg, stackedLockupSvg, wordmarkSvg } from './lockups';
 import { roleIconSvg } from './role-icons';
-import { inviteSplashSvg, ogImageSvg, serverBannerSvg } from './scenes';
+import { inviteSplashSvg } from './invite-splash';
+import { ogImageSvg, serverBannerSvg } from './scenes';
 import type { BrandTypography } from './typography';
 
 type RoleAssetId = `role-${RoleIconKey}`;

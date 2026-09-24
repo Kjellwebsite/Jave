@@ -36,12 +36,13 @@ export const EMBLEM_FINISHES = {
   },
   /**
    * Polished chrome for sitting on brushed aluminium. Chrome mirrors its
-   * surroundings, so the lit side is near white and the shaded side falls to
-   * steel: the mark reads against mid silver from both sides.
+   * surroundings, so the lit side is almost pure white and the shaded side
+   * falls from deep steel to graphite: the mark reads against mid silver from
+   * both sides, down to 16 px.
    */
   chrome: {
-    light: ramp(BRAND_COLORS.white, BRAND_COLORS.chrome),
-    shade: ramp(METAL_TONES.aluminiumLow, BRAND_COLORS.steel),
+    light: ramp(BRAND_COLORS.white, METAL_TONES.aluminiumHighlight),
+    shade: ramp(METAL_TONES.steelDeep, METAL_TONES.graphiteLift),
   },
 } as const satisfies Record<string, EmblemFinish>;
 
@@ -145,6 +146,7 @@ function reliefLayers(id: string, relief: EmblemRelief, scale: number): Fragment
   const shadowId = `${id}-shadow`;
   const shadows = relief.shadows.map((layer) => ({
     blur: layer.blur / scale,
+    offsetX: layer.offsetX === undefined ? undefined : layer.offsetX / scale,
     offsetY: layer.offsetY / scale,
     opacity: layer.opacity,
   }));
@@ -199,11 +201,20 @@ export function emblemArt(options: EmblemArtOptions): Fragment {
   return fragment(defs, body);
 }
 
-/** Single-colour silhouette that inherits `currentColor`. */
-export function emblemSilhouette(placement?: EmblemPlacement, fill = 'currentColor'): Fragment {
-  const path = el('path', { d: EMBLEM_SILHOUETTE, fill });
+/** Chosen emblem paths in one flat colour (default `currentColor`), optionally placed. */
+export function emblemFacets(
+  paths: readonly string[],
+  placement?: EmblemPlacement,
+  fill = 'currentColor',
+): Fragment {
+  const shapes = paths.map((d) => el('path', { d, fill }));
   return fragment(
     [],
-    [placement ? el('g', { transform: placementTransform(placement) }, path) : path],
+    placement ? [el('g', { transform: placementTransform(placement) }, ...shapes)] : shapes,
   );
+}
+
+/** Single-colour silhouette that inherits `currentColor`. */
+export function emblemSilhouette(placement?: EmblemPlacement, fill = 'currentColor'): Fragment {
+  return emblemFacets([EMBLEM_SILHOUETTE], placement, fill);
 }

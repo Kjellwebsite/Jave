@@ -21,7 +21,7 @@ export {
   type BrandAccentName,
   type BrandColorName,
 } from './colors';
-export { BRAND_MOTTO, BRAND_NAME } from './copy';
+export { BRAND_MOTTO, BRAND_MOTTO_LINES, BRAND_NAME } from './copy';
 export {
   BRAND_ASSETS,
   BRAND_ASSET_IDS,

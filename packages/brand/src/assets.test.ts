@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { loadBrandTypography } from '../scripts/lib/brand-typography';
 import { PNG_BUDGET_BYTES, packagePath } from '../scripts/lib/paths';
 import { readPngHeader } from '../scripts/lib/png';
+import { auditSvgPaint } from '../scripts/lib/svg-audit';
 import { BRAND_ACCENTS, BRAND_COLORS, METAL_TONES } from './colors';
 import {
   BRAND_ASSETS,
@@ -18,7 +19,6 @@ import {
 import { buildBrandSvgs } from './svg/catalog';
 
 const ASSET_DIRS = ['assets/svg', 'assets/png'] as const;
-const HEX_COLOR = /#[0-9A-Fa-f]{6}\b/g;
 
 function read(path: string): Buffer {
   return readFileSync(packagePath(path));
@@ -143,17 +143,16 @@ describe('svg sources', () => {
       ].map((c) => c.toUpperCase()),
     );
     for (const id of BRAND_ASSET_IDS) {
-      const colors = read(BRAND_ASSETS[id].svg).toString('utf8').match(HEX_COLOR) ?? [];
-      const strays = colors.map((c) => c.toUpperCase()).filter((c) => !palette.has(c));
-      expect(strays, id).toEqual([]);
+      expect(auditSvgPaint(read(BRAND_ASSETS[id].svg).toString('utf8'), palette), id).toEqual([]);
     }
   });
 
-  it('use currentColor for the monochrome variants', () => {
+  it('use currentColor, and no other colour, for the monochrome variants', () => {
+    const noColours = new Set<string>();
     for (const id of ['emblem-mono', 'wordmark-mono'] as const) {
       const svg = read(BRAND_ASSETS[id].svg).toString('utf8');
       expect(svg).toContain('fill="currentColor"');
-      expect(svg.match(HEX_COLOR)).toBeNull();
+      expect(auditSvgPaint(svg, noColours), id).toEqual([]);
     }
   });
 });

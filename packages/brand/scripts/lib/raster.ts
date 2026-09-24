@@ -4,7 +4,7 @@
  * filter in linear light produces each output size.
  */
 import { Resvg } from '@resvg/resvg-js';
-import type { RgbaImage } from './png';
+import { readPngHeader, type RgbaImage } from './png';
 
 /** Supersampled renders aim for at least this many pixels on the long side. */
 const SUPERSAMPLE_TARGET_PX = 2048;
@@ -54,6 +54,17 @@ export interface PremultipliedImage {
   readonly width: number;
   readonly height: number;
   readonly data: Uint8Array;
+}
+
+/**
+ * Decodes a PNG by letting resvg draw it 1:1, so the result is premultiplied
+ * like `renderSvg` output and can go through `downsample`.
+ */
+export function decodePng(png: Buffer): PremultipliedImage {
+  const { width, height } = readPngHeader(png);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image width="${width}" height="${height}" image-rendering="optimizeSpeed" href="data:image/png;base64,${png.toString('base64')}"/></svg>`;
+  const rendered = new Resvg(svg, { font: { loadSystemFonts: false }, logLevel: 'error' }).render();
+  return { width: rendered.width, height: rendered.height, data: rendered.pixels };
 }
 
 /** Renders an SVG so its width is exactly `width` px. */

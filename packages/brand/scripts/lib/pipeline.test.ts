@@ -1,6 +1,6 @@
 import { Resvg } from '@resvg/resvg-js';
 import { describe, expect, it } from 'vitest';
-import { BRAND_MOTTO, BRAND_NAME } from '../../src/copy';
+import { BRAND_MOTTO, BRAND_MOTTO_LINES, BRAND_NAME } from '../../src/copy';
 import {
   MOTTO_FONT_FILE,
   WORDMARK_FONT_FILE,
@@ -10,16 +10,17 @@ import {
 import { loadFont, outlineText } from './outline-text';
 import { packagePath } from './paths';
 import { encodePng, readPngHeader, type RgbaImage } from './png';
-import { downsample, rasterizeSizes, supersampleFactor } from './raster';
+import { decodePng, downsample, rasterizeSizes, supersampleFactor } from './raster';
 
 function image(width: number, height: number, pixels: readonly number[][]): RgbaImage {
   return { width, height, data: Uint8Array.from(pixels.flat()) };
 }
 
-/** Decodes a PNG by letting resvg draw it 1:1; returns premultiplied RGBA. */
+/** Decodes a PNG 1:1 with resvg; returns premultiplied RGBA. */
 function decodeWithResvg(png: Buffer, width: number, height: number): number[] {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image width="${width}" height="${height}" image-rendering="optimizeSpeed" href="data:image/png;base64,${png.toString('base64')}"/></svg>`;
-  return [...new Resvg(svg, { font: { loadSystemFonts: false } }).render().pixels];
+  const decoded = decodePng(png);
+  expect({ width: decoded.width, height: decoded.height }).toEqual({ width, height });
+  return [...decoded.data];
 }
 
 describe('png encoder', () => {
@@ -134,8 +135,8 @@ describe('outlined type', () => {
   it('outlines the brand strings with ink starting at x = 0', () => {
     const typography = loadBrandTypography();
     expect(typography.wordmark.text).toBe(BRAND_NAME);
-    expect(typography.motto.text).toBe(BRAND_MOTTO);
-    for (const outlined of [typography.wordmark, typography.motto]) {
+    expect(typography.mottoLines.map((line) => line.text)).toEqual([...BRAND_MOTTO_LINES]);
+    for (const outlined of [typography.wordmark, ...typography.mottoLines]) {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><path d="${outlined.d}"/></svg>`;
       const box = new Resvg(svg).getBBox();
       expect(box?.x).toBeCloseTo(0, 0);
@@ -149,6 +150,10 @@ describe('outlined type', () => {
     const wide = outlineText(font, 'JAVELIN', { trackingEm: 0.2 });
     expect(wide.width - tight.width).toBeCloseTo(6 * 0.2 * 1000, 6);
     expect(outlineText(font, 'JAVELIN', { trackingEm: 0.2 })).toEqual(wide);
+  });
+
+  it('sets the motto lines to exactly the canonical motto', () => {
+    expect(BRAND_MOTTO_LINES.join(' ')).toBe(BRAND_MOTTO);
   });
 
   it('uses the same committed font for the motto', () => {

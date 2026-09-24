@@ -33,10 +33,13 @@ export const METAL_TONES = {
   aluminiumLight: '#DDE0E4',
   aluminiumLow: '#9CA2A9',
   aluminiumDeep: '#848A92',
-  /** Brushed face of the server icon: mid silver, so a white emblem reads on it. */
-  aluminiumFaceTop: '#D2D6DB',
-  aluminiumFaceMid: '#B9BEC4',
-  aluminiumFaceLow: '#9EA4AB',
+  /**
+   * Brushed face of the server icon: mid silver, dark enough that a white
+   * facet still stands off it when the icon is reduced to 16 px.
+   */
+  aluminiumFaceTop: '#C4C9CE',
+  aluminiumFaceMid: '#AEB4BA',
+  aluminiumFaceLow: '#959BA2',
   /** Steel and graphite ramp for dark surfaces and on-light marks. */
   steelDeep: '#4E545B',
   gunmetal: '#3A3E44',

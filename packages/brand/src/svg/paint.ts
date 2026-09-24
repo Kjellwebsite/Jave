@@ -66,6 +66,8 @@ export function ramp(from: string, to: string): GradientStop[] {
 export interface ShadowLayer {
   /** Blur radius (standard deviation) in user units. */
   readonly blur: number;
+  /** Horizontal offset; omit for a shadow cast straight down. */
+  readonly offsetX?: number;
   readonly offsetY: number;
   readonly opacity: number;
 }
@@ -82,7 +84,12 @@ export function shadowFilter(
 ): string {
   const primitives = layers.flatMap((layer, index) => [
     el('feGaussianBlur', { in: 'SourceAlpha', stdDeviation: layer.blur, result: `blur${index}` }),
-    el('feOffset', { in: `blur${index}`, dy: layer.offsetY, result: `offset${index}` }),
+    el('feOffset', {
+      in: `blur${index}`,
+      dx: layer.offsetX,
+      dy: layer.offsetY,
+      result: `offset${index}`,
+    }),
     el('feFlood', {
       'flood-color': color,
       'flood-opacity': layer.opacity,

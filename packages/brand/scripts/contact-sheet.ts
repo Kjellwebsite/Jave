@@ -12,6 +12,14 @@ import { METAL_TONES } from '../src/colors';
 import { BRAND_ASSETS, type BrandAssetId } from '../src/manifest';
 import { ROLE_ICON_KEYS } from '../src/role-marks';
 import { buildBrandSvgs } from '../src/svg/catalog';
+import {
+  INVITE_CARD_WIDTH_PX,
+  INVITE_SPLASH_SIZE,
+  INVITE_SPLASH_VIEWPORTS,
+  coverView,
+  type Viewport,
+} from '../src/svg/invite-splash';
+import { SERVER_BANNER_SIDEBAR_WIDTH, SERVER_BANNER_SIZE } from '../src/svg/scenes';
 import { el, fragment, svgDocument, url } from '../src/svg/xml';
 import { placeText, type OutlinedText } from '../src/svg/typography';
 import { MOTTO_FONT_FILE, fontPath, loadBrandTypography } from './lib/brand-typography';
@@ -36,6 +44,8 @@ type Surface = 'dark' | 'light';
 
 /** Discord client surfaces (server list, light sidebar), to judge assets in context. */
 const DISCORD_DARK_SURFACE = '#1E1F22';
+/** Discord's dark-theme card surface, for the invite card stand-in. */
+const DISCORD_CARD_SURFACE = '#313338';
 const DISCORD_LIGHT_SURFACE = '#F2F3F5';
 
 const SURFACES: Readonly<Record<Surface, { readonly fill: string; readonly ink: string }>> = {
@@ -297,6 +307,120 @@ function markRows(): Row[] {
   ];
 }
 
+/** Width of each simulated browser window on the sheet. */
+const VIEWPORT_PREVIEW_WIDTH = 360;
+/**
+ * Approximate height of Discord's invite card, CSS px — review aid only; the
+ * layout itself depends on the card's width, not its height.
+ */
+const INVITE_CARD_PREVIEW_HEIGHT_PX = 340;
+const INVITE_CARD_PREVIEW_RADIUS_PX = 8;
+/** The previewed windows: the extremes of the supported set. */
+const PREVIEW_VIEWPORTS = ['16:9 1280x720', '16:10 1440x900', '4:3 1024x768', '21:9 2560x1080'];
+
+/**
+ * The splash as a browser window shows it: cover-scaled, cropped, with a
+ * stand-in for the invite card on top.
+ */
+function splashInWindow(viewport: Viewport, splash: RgbaImage): RgbaImage {
+  const view = coverView(viewport);
+  const k = VIEWPORT_PREVIEW_WIDTH / viewport.width;
+  const scale = view.scale * k;
+  const width = VIEWPORT_PREVIEW_WIDTH;
+  const height = Math.round(viewport.height * k);
+  const card = {
+    width: INVITE_CARD_WIDTH_PX * k,
+    height: INVITE_CARD_PREVIEW_HEIGHT_PX * k,
+  };
+  const svg = svgDocument({
+    width,
+    height,
+    title: viewport.label,
+    content: fragment(
+      [],
+      [
+        el('image', {
+          x: -view.visible.left * scale,
+          y: -view.visible.top * scale,
+          width: splash.width * scale,
+          height: splash.height * scale,
+          href: dataUri(splash),
+          'image-rendering': 'optimizeQuality',
+        }),
+        el('rect', {
+          x: (width - card.width) / 2,
+          y: (height - card.height) / 2,
+          width: card.width,
+          height: card.height,
+          rx: INVITE_CARD_PREVIEW_RADIUS_PX * k,
+          fill: DISCORD_CARD_SURFACE,
+        }),
+      ],
+    ),
+  });
+  return toStraightAlpha(renderSvg(svg, width));
+}
+
+function splashViewportTiles(): Tile[] {
+  const splash = fitWidth('invite-splash', INVITE_SPLASH_SIZE.width);
+  return INVITE_SPLASH_VIEWPORTS.filter((viewport) =>
+    PREVIEW_VIEWPORTS.includes(viewport.label),
+  ).map((viewport) => ({ image: splashInWindow(viewport, splash), caption: viewport.label }));
+}
+
+/** Discord's server-name header over the sidebar banner: its height, CSS px, and peak shade. */
+const SIDEBAR_HEADER_PX = 48;
+const SIDEBAR_HEADER_OPACITY = 0.7;
+const SIDEBAR_MAGNIFY = 2;
+
+/**
+ * The banner as Discord's desktop sidebar shows it, `pixelRatio` device pixels
+ * per CSS px, with a stand-in for the name header's shade across the top.
+ */
+function bannerInSidebar(pixelRatio: number): RgbaImage {
+  const width = SERVER_BANNER_SIDEBAR_WIDTH * pixelRatio;
+  const height = Math.round((width * SERVER_BANNER_SIZE.height) / SERVER_BANNER_SIZE.width);
+  const banner = rasterize(svgs['server-banner'], width, height);
+  const shadeId = 'sidebar-header';
+  const svg = svgDocument({
+    width,
+    height,
+    title: 'banner in sidebar',
+    content: fragment(
+      [
+        el(
+          'linearGradient',
+          { id: shadeId, x1: 0, y1: 0, x2: 0, y2: 1 },
+          el('stop', {
+            offset: 0,
+            'stop-color': DISCORD_DARK_SURFACE,
+            'stop-opacity': SIDEBAR_HEADER_OPACITY,
+          }),
+          el('stop', { offset: 1, 'stop-color': DISCORD_DARK_SURFACE, 'stop-opacity': 0 }),
+        ),
+      ],
+      [
+        el('image', { width, height, href: dataUri(banner) }),
+        el('rect', { width, height: SIDEBAR_HEADER_PX * pixelRatio, fill: url(shadeId) }),
+      ],
+    ),
+  });
+  return toStraightAlpha(renderSvg(svg, width));
+}
+
+function bannerSidebarTiles(): Tile[] {
+  const standard = bannerInSidebar(1);
+  return [
+    { image: standard, caption: `sidebar ${SERVER_BANNER_SIDEBAR_WIDTH}px, 1x screen` },
+    {
+      image: standard,
+      scale: SIDEBAR_MAGNIFY,
+      caption: `1x screen at ${SIDEBAR_MAGNIFY}x (pixels)`,
+    },
+    { image: bannerInSidebar(SIDEBAR_MAGNIFY), caption: '2x screen (device pixels)' },
+  ];
+}
+
 function sceneRows(): Row[] {
   return [
     {
@@ -308,9 +432,19 @@ function sceneRows(): Row[] {
       ],
     },
     {
+      title: 'server banner in discord’s desktop sidebar (name header stand-in)',
+      surface: 'dark',
+      tiles: bannerSidebarTiles(),
+    },
+    {
       title: 'discord invite splash 1920x1080',
       surface: 'dark',
       tiles: [{ image: fitWidth('invite-splash', WIDE_PREVIEW_WIDTH), caption: 'invite splash' }],
+    },
+    {
+      title: 'invite splash in browser windows (cover scaling, invite card stand-in)',
+      surface: 'dark',
+      tiles: splashViewportTiles(),
     },
   ];
 }

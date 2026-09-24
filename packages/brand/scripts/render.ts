@@ -7,7 +7,7 @@
  *
  * Output is deterministic: same sources, same bytes.
  */
-import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { BRAND_ASSETS, BRAND_ASSET_IDS, type BrandAssetId } from '../src/manifest';
 import { buildBrandSvgs } from '../src/svg/catalog';
@@ -33,10 +33,16 @@ function selectedIds(args: readonly string[]): BrandAssetId[] {
   return args.filter(isAssetId);
 }
 
+/**
+ * Writes via a temporary file and a rename, so an interrupted run never leaves
+ * a truncated asset behind (a leftover temporary file fails the manifest test).
+ */
 function write(relativePath: string, contents: string | Buffer): number {
   const target = packagePath(relativePath);
+  const temporary = `${target}.${process.pid}.tmp`;
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, contents);
+  writeFileSync(temporary, contents);
+  renameSync(temporary, target);
   return Buffer.byteLength(contents);
 }
 
@@ -60,14 +66,15 @@ function main(args: readonly string[]): void {
   for (const id of ids) {
     const asset = BRAND_ASSETS[id];
     const svg = svgs[id];
-    console.log(`${asset.svg}  ${kib(write(asset.svg, svg))}`);
-    if (asset.rasters.length === 0) continue;
-    const images = rasterizeSizes(svg, asset.rasters);
+    const images = asset.rasters.length === 0 ? [] : rasterizeSizes(svg, asset.rasters);
+    // PNGs first, SVG last: if a run stops part-way, the SVG is the stale file,
+    // and the tests compare every SVG with its builder output.
     asset.rasters.forEach((raster, index) => {
       const image = images[index];
       if (!image) throw new Error(`Missing render for ${raster.path}.`);
       console.log(`${raster.path}  ${kib(write(raster.path, encodePng(image)))}`);
     });
+    console.log(`${asset.svg}  ${kib(write(asset.svg, svg))}`);
   }
   const total = totalPngBytes();
   console.log(`PNG total: ${kib(total)} (budget ${kib(PNG_BUDGET_BYTES)})`);

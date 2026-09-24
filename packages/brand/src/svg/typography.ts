@@ -17,7 +17,8 @@ export interface OutlinedText {
 /** The outlined strings every brand asset needs. */
 export interface BrandTypography {
   readonly wordmark: OutlinedText;
-  readonly motto: OutlinedText;
+  /** `BRAND_MOTTO_LINES`, one outline per line. */
+  readonly mottoLines: readonly OutlinedText[];
 }
 
 export type TextAlign = 'start' | 'center' | 'end';

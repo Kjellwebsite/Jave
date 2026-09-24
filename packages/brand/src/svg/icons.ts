@@ -6,8 +6,14 @@ import { BRAND_COLORS, METAL_TONES } from '../colors';
 import { EMBLEM_UNITS } from '../emblem-metrics';
 import { EMBLEM_FINISHES, emblemArt, emblemSilhouette, placementCentered } from './emblem-art';
 import { VERTICAL, linearGradient } from './paint';
-import { ALUMINIUM_PLATE, GRAPHITE_PLATE, plateArt, type PlateLayout } from './plates';
-import { combine, el, fragment, svgDocument, url } from './xml';
+import {
+  ALUMINIUM_PLATE,
+  GRAPHITE_PLATE,
+  plateArt,
+  type PlateLayout,
+  type PlateMaterial,
+} from './plates';
+import { combine, el, fragment, svgDocument, url, type Fragment } from './xml';
 
 /** Emblem files open at this size; the artwork itself is resolution independent. */
 const EMBLEM_DISPLAY_SIZE = 512;
@@ -24,7 +30,7 @@ export const PADDED_PLATE_LAYOUT: PlateLayout = {
   inset: 104,
   cornerRadius: 196,
   rimWidth: 12,
-  emblemRadius: 296,
+  emblemRadius: 316,
   emblemLift: 12,
 };
 
@@ -37,6 +43,25 @@ export const FULL_BLEED_PLATE_LAYOUT: PlateLayout = {
   emblemRadius: 330,
   emblemLift: 12,
 };
+
+export interface PlateIconSpec {
+  readonly layout: PlateLayout;
+  readonly material: PlateMaterial;
+}
+
+/** How each plate icon in the manifest is built. */
+export const PLATE_ICONS = {
+  'server-icon': { layout: PADDED_PLATE_LAYOUT, material: ALUMINIUM_PLATE },
+  'bot-avatar': { layout: PADDED_PLATE_LAYOUT, material: GRAPHITE_PLATE },
+  'apple-touch-icon': { layout: FULL_BLEED_PLATE_LAYOUT, material: ALUMINIUM_PLATE },
+} as const satisfies Record<string, PlateIconSpec>;
+
+export type PlateIconId = keyof typeof PLATE_ICONS;
+
+function plateIconArt(id: PlateIconId, prefix: string): Fragment {
+  const { layout, material } = PLATE_ICONS[id];
+  return plateArt(prefix, layout, material);
+}
 
 export function emblemSvg(): string {
   return svgDocument({
@@ -73,7 +98,7 @@ export function serverIconSvg(): string {
     width: PLATE_CANVAS,
     height: PLATE_CANVAS,
     title: 'JAVELIN server icon',
-    content: plateArt('icon', PADDED_PLATE_LAYOUT, ALUMINIUM_PLATE),
+    content: plateIconArt('server-icon', 'icon'),
   });
 }
 
@@ -82,7 +107,7 @@ export function botAvatarSvg(): string {
     width: PLATE_CANVAS,
     height: PLATE_CANVAS,
     title: 'JAVE bot avatar',
-    content: plateArt('avatar', PADDED_PLATE_LAYOUT, GRAPHITE_PLATE),
+    content: plateIconArt('bot-avatar', 'avatar'),
   });
 }
 
@@ -95,7 +120,7 @@ export function appleTouchIconSvg(): string {
     height: APPLE_TOUCH_ICON_SIZE,
     viewBox: `0 0 ${PLATE_CANVAS} ${PLATE_CANVAS}`,
     title: 'JAVELIN',
-    content: plateArt('touch', FULL_BLEED_PLATE_LAYOUT, ALUMINIUM_PLATE),
+    content: plateIconArt('apple-touch-icon', 'touch'),
   });
 }
 

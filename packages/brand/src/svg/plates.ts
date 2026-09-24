@@ -9,6 +9,7 @@ import {
   emblemArt,
   placementCentered,
   type EmblemFinish,
+  type EmblemPlacement,
   type EmblemRelief,
 } from './emblem-art';
 import {
@@ -23,6 +24,7 @@ import {
   type GrainOptions,
   type ShadowLayer,
 } from './paint';
+import type { Point } from '../geometry';
 import { combine, el, fragment, url, type Fragment } from './xml';
 
 export interface PlateMaterial {
@@ -41,6 +43,12 @@ export interface PlateMaterial {
     readonly shadow: string;
     readonly shadowOpacity: number;
   };
+  /**
+   * Soft darkening of the face behind the emblem, centred on it: the mark sits
+   * in a shallow, shaded well so its lit facets still read at 16 px. Radius is
+   * a fraction of the face size.
+   */
+  readonly well?: { readonly color: string; readonly opacity: number; readonly radius: number };
   /** Hairline that defines the plate against light backgrounds. */
   readonly edge: { readonly color: string; readonly opacity: number; readonly width: number };
   readonly castShadow: { readonly color: string; readonly layers: readonly ShadowLayer[] };
@@ -80,10 +88,11 @@ export const ALUMINIUM_PLATE: PlateMaterial = {
   grain: { ...BRUSHED_METAL_GRAIN, seed: 23, opacity: 0.12 },
   sheen: [
     { offset: 0, color: BRAND_COLORS.white, opacity: 0 },
-    { offset: 0.2, color: BRAND_COLORS.white, opacity: 0.3 },
+    { offset: 0.2, color: BRAND_COLORS.white, opacity: 0.2 },
     { offset: 0.42, color: BRAND_COLORS.white, opacity: 0 },
     { offset: 1, color: BRAND_COLORS.white, opacity: 0 },
   ],
+  well: { color: BRAND_COLORS.graphite, opacity: 0.3, radius: 0.55 },
   bevel: {
     width: 7,
     highlight: BRAND_COLORS.white,
@@ -102,12 +111,13 @@ export const ALUMINIUM_PLATE: PlateMaterial = {
   emblemFinish: EMBLEM_FINISHES.chrome,
   emblemRelief: {
     shadowColor: BRAND_COLORS.graphite,
+    // Cast down and to the right, away from the light: it deepens the shaded
+    // half at small sizes and leaves the lit edge clean.
     shadows: [
-      { blur: 16, offsetY: 12, opacity: 0.18 },
-      { blur: 5, offsetY: 6, opacity: 0.3 },
-      { blur: 1.2, offsetY: 1.5, opacity: 0.4 },
+      { blur: 18, offsetX: 16, offsetY: 20, opacity: 0.55 },
+      { blur: 4, offsetX: 5, offsetY: 6, opacity: 0.5 },
     ],
-    contour: { color: BRAND_COLORS.graphite, opacity: 0.5, width: 3.5 },
+    contour: { color: BRAND_COLORS.graphite, opacity: 0.45, width: 3.5 },
     rimLight: { color: BRAND_COLORS.white, opacity: 0.85, offsetY: -2.5 },
   },
 };
@@ -195,7 +205,30 @@ export function plateGeometry(layout: PlateLayout): { plate: Rect; face: Rect } 
   return { plate, face };
 }
 
-function faceLayers(id: string, material: PlateMaterial, face: Rect): Fragment {
+function wellLayer(id: string, material: PlateMaterial, face: Rect, center: Point): Fragment {
+  if (!material.well) return fragment([], []);
+  const wellId = `${id}-well`;
+  const { color, opacity, radius } = material.well;
+  return fragment(
+    [
+      el(
+        'radialGradient',
+        {
+          id: wellId,
+          cx: center.x,
+          cy: center.y,
+          r: face.size * radius,
+          gradientUnits: 'userSpaceOnUse',
+        },
+        el('stop', { offset: 0, 'stop-color': color, 'stop-opacity': opacity }),
+        el('stop', { offset: 1, 'stop-color': color, 'stop-opacity': 0 }),
+      ),
+    ],
+    [rect(face, { fill: url(wellId) })],
+  );
+}
+
+function faceLayers(id: string, material: PlateMaterial, face: Rect, center: Point): Fragment {
   const faceId = `${id}-face`;
   const clipId = `${id}-face-clip`;
   const grainId = `${id}-grain`;
@@ -208,11 +241,13 @@ function faceLayers(id: string, material: PlateMaterial, face: Rect): Fragment {
     { offset: BEVEL_SHADOW_ONSET, color: bevel.shadow, opacity: 0 },
     { offset: 1, color: bevel.shadow, opacity: bevel.shadowOpacity },
   ];
+  const well = wellLayer(id, material, face, center);
   return fragment(
     [
       linearGradient(faceId, VERTICAL, material.face),
       linearGradient(sheenId, DIAGONAL, material.sheen),
       linearGradient(bevelId, VERTICAL, bevelStops),
+      ...well.defs,
       brushedGrainFilter(grainId, material.grain),
       clipPath(clipId, rect(face, {})),
     ],
@@ -227,6 +262,7 @@ function faceLayers(id: string, material: PlateMaterial, face: Rect): Fragment {
           opacity: material.grain.opacity,
         }),
         rect(face, { fill: url(sheenId) }),
+        ...well.body,
         rect(face, { fill: 'none', stroke: url(bevelId), 'stroke-width': bevel.width * 2 }),
       ),
     ],
@@ -274,22 +310,40 @@ function edgeLayer(material: PlateMaterial, plate: Rect): Fragment {
   );
 }
 
+/** Where the emblem sits on a plate: centred, lifted by `emblemLift`. */
+export function plateEmblemPlacement(layout: PlateLayout): EmblemPlacement {
+  return placementCentered(
+    { x: layout.size / 2, y: layout.size / 2 - layout.emblemLift },
+    layout.emblemRadius,
+  );
+}
+
 /**
- * A complete plate with the emblem. Full-bleed layouts (inset 0) skip the rim,
+ * The plate without its emblem. Full-bleed layouts (inset 0) skip the rim,
  * cast shadow and edge — the host (for example iOS) applies its own mask.
  */
-export function plateArt(id: string, layout: PlateLayout, material: PlateMaterial): Fragment {
+export function plateSurfaceArt(
+  id: string,
+  layout: PlateLayout,
+  material: PlateMaterial,
+): Fragment {
   const { plate, face } = plateGeometry(layout);
-  const fullBleed = layout.inset === 0;
-  const center = { x: layout.size / 2, y: layout.size / 2 - layout.emblemLift };
+  const center = plateEmblemPlacement(layout).center;
+  if (layout.inset === 0) return faceLayers(id, material, plate, center);
+  return combine(
+    raisedPlateLayers(id, material, plate),
+    faceLayers(id, material, face, center),
+    edgeLayer(material, plate),
+  );
+}
+
+/** A complete plate with the emblem set into it. */
+export function plateArt(id: string, layout: PlateLayout, material: PlateMaterial): Fragment {
   const emblem = emblemArt({
     id: `${id}-emblem`,
     finish: material.emblemFinish,
-    placement: placementCentered(center, layout.emblemRadius),
+    placement: plateEmblemPlacement(layout),
     relief: material.emblemRelief,
   });
-  const surface = faceLayers(id, material, fullBleed ? plate : face);
-  return fullBleed
-    ? combine(surface, emblem)
-    : combine(raisedPlateLayers(id, material, plate), surface, edgeLayer(material, plate), emblem);
+  return combine(plateSurfaceArt(id, layout, material), emblem);
 }

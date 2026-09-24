@@ -20,7 +20,7 @@ fonts/                 Orbitron 600 (SIL OFL 1.1, see fonts/OFL.txt)
 | --------- | --------- | ------------------------------- |
 | Chrome    | `#E8EAED` | Lit metal, wordmark on dark     |
 | Aluminium | `#B8BDC3` | Brushed surfaces, motto         |
-| Steel     | `#737981` | Shaded facets, lower rail edges |
+| Steel     | `#737981` | Shaded facets, divider edges    |
 | Graphite  | `#181A1D` | Dark fields, wordmark on light  |
 | Black     | `#08090A` | Shadows only                    |
 | White     | `#FFFFFF` | Specular highlights, lit facets |
@@ -29,8 +29,11 @@ fonts/                 Orbitron 600 (SIL OFL 1.1, see fonts/OFL.txt)
 
 `METAL_TONES` holds the intermediate tones used to render metal (steps on the
 aluminium, steel and graphite ramps, two faint founder tints, and light/deep
-steps of each accent). A test fails if an SVG uses any colour outside the
-palette and these tones.
+steps of each accent). A test audits every SVG: each `fill`, `stroke`,
+`stop-color`, `flood-color` and `color` must be a palette or metal-tone
+`#RRGGBB`, `none`, `currentColor` or a local `url(#id)`; named colours, short
+hex, `rgb()`/`hsl()`, inline CSS, unknown elements, tinting colour matrices
+and raw (coloured) turbulence noise all fail it.
 No neon, no purple, no glow.
 
 ## Inventory
@@ -90,13 +93,23 @@ Nothing — text, edges, other marks — enters that space.
 
 **Minimum sizes.**
 
-| Mark                              | Minimum                                                         |
-| --------------------------------- | --------------------------------------------------------------- |
-| Emblem, two-tone                  | 24 px tall. Below that use the favicon (tile) or `emblem-mono`. |
-| Emblem on a tile (favicon, icons) | 16 px                                                           |
-| Wordmark                          | 80 px wide (cap height ≥ 9 px)                                  |
-| Horizontal lockup                 | 140 px wide                                                     |
-| Motto                             | cap height ≥ 8 px; below that, leave it out                     |
+| Mark                              | Minimum                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------- |
+| Emblem, two-tone                  | 24 px tall. Below that use the favicon (tile) or `emblem-mono`.           |
+| Emblem on a tile (favicon, icons) | 16 px (server icon and bot avatar: contrast tested at 16 and 32 px)       |
+| Wordmark                          | 80 px wide (cap height ≥ 9 px)                                            |
+| Horizontal lockup                 | 140 px wide                                                               |
+| Motto                             | cap height ≥ 8 device px in every context the asset is sized for (tested) |
+
+The motto contexts are: the invite splash in the smallest supported window on
+a 1× screen (8 px); the Open Graph image in a 400 px Discord embed on a 1×
+screen (8 px); the server banner in Discord's 240 px desktop sidebar on a 2×
+screen (9 device px) and in the ≈320 pt mobile channel list on a 3× phone
+(18 device px). **Known gap:** in the desktop sidebar on a standard-density
+(1×) screen the banner motto is 4.5 px tall — too small to read; there the
+lockup carries the banner. The motto stays on the banner because it is part of
+the banner's brief. In any new layout, leave the motto out rather than set it
+below the minimum.
 
 **Do**
 
@@ -118,15 +131,22 @@ Nothing — text, edges, other marks — enters that space.
 - Discord shows server icons and avatars as **circles** (48 px in the server
   list). The plate's corners stay inside the crop circle and the emblem stays
   within 72% of its radius; a test renders the icons and checks this.
-- The invite splash is scaled to cover the window with the invite card in the
-  middle, so the brand block stays inside the left 600 px (tested) and a faint
-  watermark balances the right.
-- The banner's top band is where Discord draws the server name, so the
-  composition sits in the lower two-thirds.
-- The icons are built for small sizes: at 32 px the lit and shaded halves of
-  the spear each stay at least 25 levels away from the plate (tested). At
-  16 px the thin emblem geometry is at its limit — it reads as the JAVELIN
-  mark, not as detail.
+- Discord scales the invite splash to cover the window (CSS `cover`: centred,
+  overflow cropped) and centres a ≈480 px invite card over it. The brand block
+  sits in the region that stays visible and clear of the card on every
+  supported window — 16:9 down to 1280×720, 16:10, 4:3, tablet landscape and
+  21:9 (`INVITE_SPLASH_VIEWPORTS`; tested per window). A faint watermark
+  balances the right. Portrait phones are out of scope: the card covers the
+  middle of any splash there.
+- The banner's top band (192 of 540 px) is where Discord draws the server
+  name, so the lockup, divider and motto sit centred in the band below it
+  (tested).
+- The icons are built for small sizes: at 16 and 32 px, every pixel that the
+  lit or the shaded half of the emblem dominates stays at least 30 luma levels
+  away from the bare plate (tested for the server icon and the bot avatar).
+  The server icon gets there with a mid-silver face, a shallow shaded well
+  behind the emblem, chrome that falls to graphite on its shaded side, and a
+  relief shadow cast down and to the right.
 
 ## Re-rendering
 
@@ -145,8 +165,14 @@ pnpm --filter @jave/brand preview server            # one sheet
   (RGB when opaque, RGBA otherwise), so identical sources give identical bytes.
 - The committed PNGs must stay under 6 MB in total (the render script and the
   tests enforce it).
-- The tests rebuild every SVG and compare it with the committed file: after
-  changing a builder, colour or layout, run `render` and commit the results.
+- Files are written through a temporary file and a rename, PNGs before their
+  SVG, so an interrupted run leaves whole files and a stale SVG (which the
+  tests catch), never a truncated asset.
+- The tests rebuild every SVG and compare it with the committed file, and
+  compare every committed PNG with a fresh render of its committed SVG
+  (perceptually, reduced to ≈32 px, so it catches a stale PNG after a merge
+  without depending on zlib bytes): after changing a builder, colour or layout,
+  run `render` and commit the results.
 
 ```sh
 cd packages/brand && npx vitest run --maxWorkers=2   # tests (project "brand")

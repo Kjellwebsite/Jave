@@ -10,7 +10,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { createdAt, id, ts, updatedAt } from './_shared';
+import { createdAt, id, snowflake, ts, updatedAt } from './_shared';
 import { capabilityDomains, users } from './identity';
 
 export const applicationStatus = pgEnum('application_status', [
@@ -54,11 +54,23 @@ export const applications = pgTable(
     decisionReason: text('decision_reason'),
     /** Message shared with the applicant on decision. */
     applicantMessage: text('applicant_message'),
+    /** Set once reviewers were reminded that this submission is waiting. */
+    reviewReminderSentAt: ts('review_reminder_sent_at'),
+    /**
+     * Staff review card in the applicationsReview channel. `reviewCardRevision`
+     * increases on every change the card shows; the bot records the revision it
+     * rendered so stale renders never overwrite newer ones.
+     */
+    reviewChannelId: snowflake('review_channel_id'),
+    reviewMessageId: snowflake('review_message_id'),
+    reviewCardRevision: integer('review_card_revision').notNull().default(0),
+    reviewCardRenderedRevision: integer('review_card_rendered_revision').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     uniqueIndex('applications_number_uq').on(t.number),
+    index('applications_user_idx').on(t.userId, t.createdAt),
     // One open application per person at a time.
     uniqueIndex('applications_open_per_user_uq')
       .on(t.userId)
@@ -107,6 +119,8 @@ export const applicationStatusChanges = pgTable(
     actorUserId: uuid('actor_user_id').references(() => users.id),
     note: text('note'),
     createdAt: createdAt(),
+    /** Insertion order; breaks ties between changes recorded at the same instant. */
+    sequence: integer('sequence').notNull().generatedAlwaysAsIdentity(),
   },
   (t) => [index('application_status_changes_app_idx').on(t.applicationId, t.createdAt)],
 );

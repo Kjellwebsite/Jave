@@ -104,6 +104,10 @@ export const settingsSchemas = {
     acceptedRole: orgRoleKey.default('trial'),
     minReviewsBeforeDecision: z.number().int().min(0).max(10).default(1),
     cooldownDaysAfterRejection: z.number().int().min(0).max(365).default(30),
+    /** Drafts untouched this long are withdrawn automatically. */
+    draftExpiryDays: z.number().int().min(1).max(365).default(30),
+    /** Reviewers are reminded once when a submission waits this long unclaimed. */
+    reviewReminderHours: z.number().int().min(1).max(720).default(72),
   }),
   trials: z.object({
     enabled: z.boolean().default(true),

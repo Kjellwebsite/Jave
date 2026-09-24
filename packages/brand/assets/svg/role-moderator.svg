@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="JAVELIN role icon — Moderator">
+<title>JAVELIN role icon — Moderator</title>
+<defs>
+<linearGradient id="moderator-light" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#737981"/><stop offset="1" stop-color="#4E545B"/></linearGradient>
+<linearGradient id="moderator-shade" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3A3E44"/><stop offset="1" stop-color="#181A1D"/></linearGradient>
+<linearGradient id="moderator-inlay" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#B8BDC3"/></linearGradient>
+</defs>
+<g opacity="0.65"><path d="M32 3 L32 61 L8 36 L8 11 Z M32 3 L56 11 L56 36 L32 61 Z M32 12 L37 30 L32 51 L27 30 Z" fill="none" stroke="#08090A" stroke-width="4.5" stroke-linejoin="round"/></g>
+<g opacity="0.75"><path d="M32 3 L32 61 L8 36 L8 11 Z M32 3 L56 11 L56 36 L32 61 Z M32 12 L37 30 L32 51 L27 30 Z" fill="none" stroke="#B8BDC3" stroke-width="3" stroke-linejoin="round"/></g>
+<path d="M32 3 L56 11 L56 36 L32 61 Z" fill="url(#moderator-shade)" stroke="url(#moderator-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M32 3 L32 61 L8 36 L8 11 Z" fill="url(#moderator-light)"/>
+<path d="M32 12 L37 30 L32 51 L27 30 Z" fill="url(#moderator-inlay)"/>
+</svg>

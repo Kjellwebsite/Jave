@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="JAVELIN role icon — Operations">
+<title>JAVELIN role icon — Operations</title>
+<defs>
+<linearGradient id="operations-light" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#DDE0E4"/><stop offset="1" stop-color="#B8BDC3"/></linearGradient>
+<linearGradient id="operations-shade" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9CA2A9"/><stop offset="1" stop-color="#4E545B"/></linearGradient>
+</defs>
+<g opacity="0.65"><path d="M32 4 L32 45 L3 59 Z M32 4 L61 59 L32 45 Z" fill="none" stroke="#08090A" stroke-width="4.5" stroke-linejoin="round"/></g>
+<path d="M32 4 L61 59 L32 45 Z" fill="url(#operations-shade)" stroke="url(#operations-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M32 4 L32 45 L3 59 Z" fill="url(#operations-light)"/>
+</svg>

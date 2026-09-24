@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="JAVELIN role icon — Supporter">
+<title>JAVELIN role icon — Supporter</title>
+<defs>
+<linearGradient id="supporter-light" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#E3D8BA"/><stop offset="1" stop-color="#C9B98F"/></linearGradient>
+<linearGradient id="supporter-shade" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#C9B98F"/><stop offset="1" stop-color="#9A8A62"/></linearGradient>
+</defs>
+<g opacity="0.65"><path d="M32 2 L25 25 L32 32 Z M62 32 L39 25 L32 32 Z M32 62 L25 39 L32 32 Z M2 32 L25 25 L32 32 Z M32 2 L39 25 L32 32 Z M62 32 L39 39 L32 32 Z M32 62 L39 39 L32 32 Z M2 32 L25 39 L32 32 Z" fill="none" stroke="#08090A" stroke-width="4.5" stroke-linejoin="round"/></g>
+<path d="M32 2 L39 25 L32 32 Z" fill="url(#supporter-shade)" stroke="url(#supporter-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M62 32 L39 39 L32 32 Z" fill="url(#supporter-shade)" stroke="url(#supporter-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M32 62 L39 39 L32 32 Z" fill="url(#supporter-shade)" stroke="url(#supporter-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M2 32 L25 39 L32 32 Z" fill="url(#supporter-shade)" stroke="url(#supporter-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M32 2 L25 25 L32 32 Z" fill="url(#supporter-light)"/>
+<path d="M62 32 L39 25 L32 32 Z" fill="url(#supporter-light)"/>
+<path d="M32 62 L25 39 L32 32 Z" fill="url(#supporter-light)"/>
+<path d="M2 32 L25 25 L32 32 Z" fill="url(#supporter-light)"/>
+</svg>

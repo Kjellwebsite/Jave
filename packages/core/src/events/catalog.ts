@@ -35,6 +35,10 @@ export const DOMAIN_EVENTS = {
   'verification.approved': { description: 'A verification was approved.', external: true },
   'verification.rejected': { description: 'A verification was rejected.', external: false },
   'verification.revoked': { description: 'A verification was revoked.', external: false },
+  'verification.expired': {
+    description: 'A verification expired without a decision.',
+    external: false,
+  },
 
   'trial.created': { description: 'A trial was created.', external: false },
   'trial.recruiting': { description: 'A trial opened recruitment.', external: true },

@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
@@ -36,12 +37,18 @@ export const gameSessions = pgTable(
     discordMessageId: snowflake('discord_message_id'),
     /** Discord Activity instance id when played inside an Activity. */
     activityInstanceId: varchar('activity_instance_id', { length: 128 }),
+    /** Never shown to players: with the engine code it would predict hidden state. */
     seed: varchar('seed', { length: 64 }).notNull(),
     config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
     /** Engine-owned state snapshot; lets sessions survive restarts. */
     state: jsonb('state').$type<Record<string, unknown>>().notNull().default({}),
     /** Optimistic concurrency guard for state updates. */
     version: integer('version').notNull().default(0),
+    /** Players at start; sessions with fewer than two are practice and never ranked. */
+    playerCount: smallint('player_count'),
+    /** Last join/leave/move/tick; drives the stale-session sweep. */
+    lastActivityAt: ts('last_activity_at').notNull().defaultNow(),
+    endReason: varchar('end_reason', { length: 200 }),
     startedAt: ts('started_at'),
     endedAt: ts('ended_at'),
     createdAt: createdAt(),
@@ -50,6 +57,13 @@ export const gameSessions = pgTable(
   (t) => [
     index('game_sessions_status_idx').on(t.gameKey, t.status),
     index('game_sessions_activity_idx').on(t.activityInstanceId),
+    index('game_sessions_sweep_idx').on(t.status, t.lastActivityAt),
+    uniqueIndex('game_sessions_live_channel_uq')
+      .on(t.discordChannelId)
+      .where(sql`${t.status} in ('lobby', 'active') and ${t.discordChannelId} is not null`),
+    uniqueIndex('game_sessions_live_activity_uq')
+      .on(t.activityInstanceId)
+      .where(sql`${t.status} in ('lobby', 'active') and ${t.activityInstanceId} is not null`),
   ],
 );
 
@@ -63,6 +77,8 @@ export const gamePlayers = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id),
+    /** 1-based join order, assigned under the session lock; the engine's player order. */
+    seat: integer('seat').notNull(),
     team: varchar('team', { length: 32 }),
     score: integer('score').notNull().default(0),
     placement: smallint('placement'),
@@ -70,6 +86,7 @@ export const gamePlayers = pgTable(
   },
   (t) => [
     uniqueIndex('game_players_uq').on(t.sessionId, t.userId),
+    uniqueIndex('game_players_seat_uq').on(t.sessionId, t.seat),
     index('game_players_user_idx').on(t.userId),
   ],
 );

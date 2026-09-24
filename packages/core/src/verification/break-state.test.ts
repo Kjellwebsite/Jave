@@ -15,8 +15,9 @@ import {
   revokeVerification,
   startReview,
 } from './index';
+import { KIT_SETUP_TIMEOUT_MS, KIT_TEST_OPTIONS } from './testing/fixtures';
 
-describe('verification — BREAK: input, state, concurrency, time', () => {
+describe('verification — BREAK: input, state, concurrency, time', KIT_TEST_OPTIONS, () => {
   let kit: TestKit;
   let subject: UserActor;
   let ops: UserActor;
@@ -24,7 +25,7 @@ describe('verification — BREAK: input, state, concurrency, time', () => {
     kit = await createTestKit();
     subject = await kit.member();
     ops = await kit.member({ roles: ['operations'] });
-  });
+  }, KIT_SETUP_TIMEOUT_MS);
   afterEach(async () => {
     await kit.close();
   });

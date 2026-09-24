@@ -154,7 +154,7 @@ export async function revokeVerification(
       reason: data.reason,
       reference,
     });
-    const evidenceRestored = await restoreLinkedEvidence(
+    const evidenceReview = await restoreLinkedEvidence(
       tx,
       current,
       outcome.kind === 'evidence' ? outcome.evidenceId : null,
@@ -176,7 +176,8 @@ export async function revokeVerification(
         reason: data.reason,
         reverted: reversal.reverted,
         detail: reversal.detail,
-        evidenceRestored,
+        evidenceRestored: evidenceReview.restored,
+        evidenceRetained: evidenceReview.retained,
       },
     });
     await publishEvent(tx, {

@@ -41,7 +41,7 @@ changed, and nothing a later decision changed.
 | Type           | Target input                | Request rule                                           | Approval                                                                                                                | Revocation                                                          | Extra decider capability |
 | -------------- | --------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------ |
 | `identity`     | —                           | see identity rule                                      | grants VERIFIED via `grantRoleUnchecked` (retires the previous progression role)                                        | revokes that VERIFIED grant, restores the previous progression role | —                        |
-| `skill`        | `facetKey`, `requestedRank` | known facet + tier; above the current verified rank    | `setVerifiedRank` (source `verification`, `sourceRef` = verification id); verifier may grant another rank above current | restores the previous verified rank if nobody changed it since      | `canModifyRanks`         |
+| `skill`        | `facetKey`, `requestedRank` | known facet + tier; above the current verified rank    | `setVerifiedRank` (source `verification`, `sourceRef` = verification id); verifier may grant another rank above current | reverts only while this approval holds the rank (see skill rule)    | `canModifyRanks`         |
 | `project`      | `projectId`                 | subject is an active member of a non-deleted project   | records accepted evidence of kind `project`                                                                             | that evidence → `rejected`                                          | —                        |
 | `contribution` | `contributionId`            | contribution belongs to the subject and is `submitted` | `contributions.status = verified` (+ `verifiedBy/At`), publishes `contribution.verified`                                | back to `submitted` if still verified by this decision              | `canVerifyContributions` |
 | `achievement`  | `memberAchievementId`       | row belongs to the subject, not revoked, `unverified`  | `verification = verified` (+ `verifiedBy/At`)                                                                           | back to `unverified` if still verified by this decision             | —                        |
@@ -55,9 +55,39 @@ a new request while an approved verification of the same target stands.
 
 On approval, evidence linked to the request that was still `submitted` becomes
 `accepted`. On revocation, exactly that evidence (same decision time and
-reviewer) returns to `submitted`.
+reviewer) returns to `submitted` — unless another still-approved verification
+of the subject also cites it. Then it stays `accepted` and is re-stamped with
+that verification's decision time and verifier (the earliest such decision),
+so revoking that one later returns it to `submitted`. The revocation audit
+records `evidenceRestored` and `evidenceRetained`. Evidence rows linked to one
+verification are locked in id order before either step.
 
 A rejection changes nothing but the verification: "not proven" is not "false".
+
+### Skill rule (stacked approvals)
+
+Skill approvals stack as layers on one member's verified rank for one facet
+(`strategies/rank-layers.ts`, pure and unit-tested). An approval must grant a
+rank above the current one, so the live (approved) layers have strictly
+increasing ranks and the verified rank is the highest of them. Any other
+verified-rank change (evaluator, trial, import) is a **barrier**: it replaces
+every layer approved before it (a change in the same millisecond counts as
+later).
+
+Revoking a skill verification:
+
+| Situation                                             | Result (`detail`)                                                                            |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| this layer is live and holds the current rank         | restore the next live layer below, else the barrier's rank, else unset (`rank_restored`)     |
+| a live layer at or above this rank still stands       | rank untouched (`rank_held_by_other_verification`); revoking that one later skips this layer |
+| a barrier came after this approval, or the rank moved | rank untouched (`rank_changed_after_approval`)                                               |
+
+Rank-history rows written by the facet's own skill verifications (approvals
+and revocations) are never barriers. So, while nothing else changes the rank,
+revoking every approval — in any order — unwinds to the rank that stood before
+the first one. Approval and revocation lock the member's capability row (and
+only one skill verification per member and facet can be open), so rank
+decisions on one facet run one at a time.
 
 ### Identity rule
 
@@ -167,18 +197,39 @@ The bot must:
 2. Call `verification.getQueueCard(ctx, verificationId)` with the worker's system context.
 3. If `channelId` is null, complete without acting.
 4. If `messageId` is set, edit that message in `channelId`; on Unknown Message,
-   post a new one. Otherwise post a new message in `channelId`.
+   post a new one. Otherwise post a new message in `channelId`. When posting,
+   send `nonce` = `vc` + job id with `enforce_nonce: true` so a retried job
+   does not post twice.
 5. Render with `panel()`: title `${reference} — ${typeLabel}`, status label,
    subject (display name + handle), target label, claim, evidence count,
    requested/expires timestamps, assigned verifier. `claim`, `targetLabel` and
    names are user-provided — pass them through `userText()`. Send with
    `allowedMentions: { parse: [] }`. Never put evidence URLs or notes on the card.
-6. Report with `verification.markQueueCardPosted(ctx, { verificationId, channelId, messageId })`
-   (system actor only).
+6. Report with `verification.markQueueCardPosted(ctx, input)` (system actor
+   only). `input` holds `verificationId`, `channelId` and `messageId` (the
+   message now showing the card), plus `previousMessageId` and `revision`:
+   the `messageId` and `revision` step 2 returned. The callback is a
+   compare-and-set on the recorded message id:
+   - `recorded: false` — another run's card is on record. If this run posted a
+     new message, delete it (ignore Unknown Message). Go to step 2.
+   - `recorded: true, stale: true` — the verification changed after this
+     render. Go to step 2 (the next pass edits the recorded card).
+   - `recorded: true, stale: false` — done.
+
+   Loop at most `QUEUE_CARD_MAX_RENDERS` (3) times, then throw a retryable
+   error so the job backs off and runs again.
+
+Several card jobs for one verification may run at once (the worker runs
+claimed jobs in parallel and the dedupe key includes the status). The
+compare-and-set keeps exactly one card; the freshness check makes the card
+converge to the latest state. `revision` is a 16-hex-character fingerprint of
+everything rendered. A development-only reference handler that follows these
+steps against an in-memory channel lives in `testing/fake-queue-card-bot.ts`
+(**MOCK / DEVELOPMENT ONLY**).
 
 Discord permissions (queue channel only): **View Channel, Send Messages, Embed
-Links, Read Message History.** Idempotent: re-runs edit the same message; the
-card renders the state at run time.
+Links, Read Message History.** Manage Messages is not needed: the bot deletes
+only its own messages.
 
 No other Discord side effects: subject notices travel through the notification
 system (`notifications.deliver`).
@@ -223,8 +274,19 @@ Migration: `drizzle/0001_verification.sql`.
   (the settings contract only allows new fields in existing sections).
 - Project verification does not check for conflicts of interest beyond the
   two-person rule (e.g. a project owner who is also staff may verify a teammate).
-- A queue-card job already running when the state changes again may render the
-  previous state; the next transition's job corrects it.
+- Evidence can be linked to several verifications at once (ownership is the
+  only check). Revocation handles this (see above), but the dashboard should
+  show which verifications cite a piece of evidence.
+- Card jobs dedupe on `<id>:<status>:<assignee>` against pending or running
+  jobs. If a transition returns to the key of a card job that has already
+  reported a fresh card but is not yet marked complete, that enqueue is
+  dropped; the card then lags until the next transition (a window of
+  milliseconds).
+- Every integration test file builds and migrates a fresh PGlite database in
+  `beforeEach`; under heavy machine load that can exceed the shared 60 s hook
+  timeout, so this module's suites raise it (`KIT_SETUP_TIMEOUT_MS`) and the
+  per-test timeout (`KIT_TEST_OPTIONS`). Building the migrated snapshot once
+  per run belongs in the shared test harness.
 - Staff are not notified of new requests (no staff inbox fan-out); the queue
   card and `listVerifications` are the intake surfaces.
 - Contribution, achievement and trial rows are read and minimally updated

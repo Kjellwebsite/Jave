@@ -161,8 +161,15 @@ export type ListVerificationsInput = z.input<typeof listVerificationsSchema>;
 
 const snowflakeSchema = z.string().refine(isSnowflake, 'must be a Discord ID');
 
+/** Hex characters in a queue card revision (a truncated SHA-256 of the rendered fields). */
+export const QUEUE_CARD_REVISION_LENGTH = 16;
+
 export const queueCardPostedSchema = z.object({
   verificationId: uuid(),
   channelId: snowflakeSchema,
   messageId: snowflakeSchema,
+  /** The `messageId` getQueueCard returned for this render; null when there was no card. */
+  previousMessageId: snowflakeSchema.nullable(),
+  /** The `revision` of the card the bot rendered. */
+  revision: z.string().regex(new RegExp(`^[0-9a-f]{${QUEUE_CARD_REVISION_LENGTH}}$`)),
 });

@@ -19,6 +19,23 @@ import type { TestKit } from '../../testing';
 let sequence = 0;
 const next = () => ++sequence;
 
+/**
+ * Hook timeout for building a test kit. The first kit in each test file
+ * migrates a fresh PGlite snapshot (vitest isolates files, so the per-worker
+ * cache does not survive between them), which took 70–112s on a machine with
+ * a load average of 30+; the shared 60s default flakes there. Local
+ * mitigation only: building the snapshot once per run belongs in the shared
+ * test harness.
+ */
+export const KIT_SETUP_TIMEOUT_MS = 240_000;
+
+/**
+ * Per-test timeout for this module's PGlite-backed suites. Each test runs
+ * several transactions; under the same load a single test took up to 26s,
+ * past the shared 20s default.
+ */
+export const KIT_TEST_OPTIONS = { timeout: 120_000 } as const;
+
 export async function createProject(
   kit: TestKit,
   ownerMemberId: string,

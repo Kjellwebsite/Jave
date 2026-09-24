@@ -13,9 +13,11 @@ import {
 } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import { DAY } from '../kernel/clock';
+import { UnauthenticatedError } from '../kernel/errors';
 import { enqueueJob } from '../jobs/queue';
 import { submitEvidence } from '../identity/capabilities.service';
 import { resolveUserActor } from '../identity/users.service';
+import { systemActor } from '../permissions/actor';
 import { coreJobHandlers, coreRecurringJobs } from '../registry';
 import {
   assignVerifier,
@@ -28,20 +30,25 @@ import {
   startReview,
   VERIFICATION_EXPIRE_JOB,
 } from './index';
+import { createTrialResult, KIT_SETUP_TIMEOUT_MS, KIT_TEST_OPTIONS } from './testing/fixtures';
 
 async function eventsOf(kit: TestKit, type: string) {
   return kit.db.select().from(domainEvents).where(eq(domainEvents.type, type));
+}
+
+async function auditCountOf(kit: TestKit, action: string) {
+  return (await kit.db.select().from(auditLogs).where(eq(auditLogs.action, action))).length;
 }
 
 async function notificationsFor(kit: TestKit, userId: string) {
   return kit.db.select().from(notifications).where(eq(notifications.recipientUserId, userId));
 }
 
-describe('verification lifecycle', () => {
+describe('verification lifecycle', KIT_TEST_OPTIONS, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTestKit();
-  });
+  }, KIT_SETUP_TIMEOUT_MS);
   afterEach(async () => {
     await kit.close();
   });
@@ -234,6 +241,49 @@ describe('verification lifecycle', () => {
     expect(own.items.map((i) => i.id)).toEqual([opened.id]);
   });
 
+  it('a system or integration actor opens a request; any user verifier decides it', async () => {
+    const member = await kit.member({ roles: ['trial'] });
+    const ops = await kit.member({ roles: ['operations'] });
+    const integration = kit.as({
+      kind: 'integration',
+      integrationId: 'trials-sync',
+      provider: 'internal',
+      capabilities: new Set(['canVerifyMembers'] as const),
+    });
+    const { trialResultId } = await createTrialResult(kit, member.memberId!);
+    const openers = [
+      {
+        ctx: kit.as(systemActor('trials')),
+        target: { type: 'trial' as const, trialResultId },
+      },
+      { ctx: integration, target: { type: 'identity' as const } },
+    ];
+    for (const { ctx, target } of openers) {
+      const opened = await requestVerification(ctx, { subjectMemberId: member.memberId!, target });
+      expect(opened.openedBy).toBe('system');
+      expect(opened.staff?.requestedBy).toBeNull();
+      const [row] = await kit.db
+        .select({ requestedByUserId: verifications.requestedByUserId })
+        .from(verifications)
+        .where(eq(verifications.id, opened.id));
+      expect(row!.requestedByUserId).toBeNull();
+      await startReview(kit.as(ops), { verificationId: opened.id });
+      const decided = await decideVerification(kit.as(ops), {
+        verificationId: opened.id,
+        decision: 'approve',
+        note: 'Result confirmed.',
+      });
+      expect(decided).toMatchObject({ status: 'approved', openedBy: 'system' });
+      expect(decided.staff?.verifier?.userId).toBe(ops.userId);
+    }
+    expect(await auditCountOf(kit, 'verification.two_person_blocked')).toBe(0);
+    expect((await resolveUserActor(kit.system, member.userId)).roles).toEqual(['verified']);
+    // Integrations are not people: requesting without a subject has no "self" to fall back on.
+    await expect(
+      requestVerification(integration, { target: { type: 'identity' } }),
+    ).rejects.toBeInstanceOf(UnauthenticatedError);
+  });
+
   it('unassigning an in-review verification returns it to pending', async () => {
     const member = await kit.member();
     const ops = await kit.member({ roles: ['operations'] });
@@ -276,11 +326,11 @@ describe('verification lifecycle', () => {
   });
 });
 
-describe('verification expiry', () => {
+describe('verification expiry', KIT_TEST_OPTIONS, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTestKit();
-  });
+  }, KIT_SETUP_TIMEOUT_MS);
   afterEach(async () => {
     await kit.close();
   });

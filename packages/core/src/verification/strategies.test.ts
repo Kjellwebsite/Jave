@@ -27,10 +27,12 @@ import {
   createMemberAchievement,
   createProject,
   createTrialResult,
+  KIT_SETUP_TIMEOUT_MS,
+  KIT_TEST_OPTIONS,
   leaveProject,
 } from './testing/fixtures';
 
-describe('verification strategies', () => {
+describe('verification strategies', KIT_TEST_OPTIONS, () => {
   let kit: TestKit;
   let ops: UserActor;
   let core: UserActor;
@@ -39,7 +41,7 @@ describe('verification strategies', () => {
     kit = await createTestKit();
     ops = await kit.member({ roles: ['operations'] });
     core = await kit.member({ roles: ['core'] });
-  });
+  }, KIT_SETUP_TIMEOUT_MS);
   afterEach(async () => {
     await kit.close();
   });

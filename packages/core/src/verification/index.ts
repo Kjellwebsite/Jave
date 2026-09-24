@@ -58,8 +58,10 @@ export {
 export {
   getQueueCard,
   markQueueCardPosted,
+  QUEUE_CARD_MAX_RENDERS,
   type QueueCard,
   type QueueCardJobPayload,
+  type QueueCardReport,
   queueCardJobPayloadSchema,
   VERIFICATION_QUEUE_CARD_JOB,
 } from './discord-jobs';

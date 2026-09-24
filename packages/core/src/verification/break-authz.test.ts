@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { auditLogs, evidence, members, memberRoles, verifications } from '@jave/database';
+import {
+  auditLogs,
+  contributions,
+  evidence,
+  members,
+  memberRoles,
+  verifications,
+} from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import {
   ForbiddenError,
@@ -8,7 +15,8 @@ import {
   UnauthenticatedError,
   ValidationError,
 } from '../kernel/errors';
-import { anonymousActor } from '../permissions/actor';
+import { anonymousActor, type IntegrationActor } from '../permissions/actor';
+import type { Capability } from '../permissions/capabilities';
 import { submitEvidence } from '../identity/capabilities.service';
 import { resolveUserActor } from '../identity/users.service';
 import {
@@ -20,7 +28,13 @@ import {
   revokeVerification,
   startReview,
 } from './index';
-import { createContribution, createMemberAchievement, createTrialResult } from './testing/fixtures';
+import {
+  createContribution,
+  createMemberAchievement,
+  createTrialResult,
+  KIT_SETUP_TIMEOUT_MS,
+  KIT_TEST_OPTIONS,
+} from './testing/fixtures';
 
 async function auditCount(kit: TestKit, action: string, actorUserId?: string) {
   const rows = await kit.db
@@ -34,11 +48,11 @@ async function auditCount(kit: TestKit, action: string, actorUserId?: string) {
   return rows.length;
 }
 
-describe('verification — BREAK: authorization', () => {
+describe('verification — BREAK: authorization', KIT_TEST_OPTIONS, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTestKit();
-  });
+  }, KIT_SETUP_TIMEOUT_MS);
   afterEach(async () => {
     await kit.close();
   });
@@ -319,5 +333,53 @@ describe('verification — BREAK: authorization', () => {
       .from(memberRoles)
       .where(and(eq(memberRoles.memberId, subject.memberId!), eq(memberRoles.role, 'verified')));
     expect(verifiedRoles).toHaveLength(0);
+  });
+
+  it('BREAK: an integration with canVerifyMembers alone cannot touch contribution verifications', async () => {
+    const subject = await kit.member({ roles: ['verified'] });
+    const { contributionId } = await createContribution(kit, subject.memberId!);
+    const requested = await requestVerification(kit.as(subject), {
+      target: { type: 'contribution', contributionId },
+    });
+    const integration = (capabilities: Capability[]): IntegrationActor => ({
+      kind: 'integration',
+      integrationId: 'ci-verifier',
+      provider: 'github',
+      capabilities: new Set(capabilities),
+    });
+    const partial = kit.as(integration(['canVerifyMembers']));
+    const approve = {
+      verificationId: requested.id,
+      decision: 'approve',
+      note: 'CI green.',
+    } as const;
+    await expect(decideVerification(partial, approve)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(startReview(partial, { verificationId: requested.id })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    const denials = await kit.db
+      .select({ context: auditLogs.context })
+      .from(auditLogs)
+      .where(eq(auditLogs.action, 'access.denied'));
+    const denied = { capability: 'canVerifyContributions', integrationId: 'ci-verifier' };
+    expect(denials.map((d) => d.context)).toEqual([denied, denied]);
+    const statusOf = async () =>
+      (
+        await kit.db
+          .select({ status: contributions.status })
+          .from(contributions)
+          .where(eq(contributions.id, contributionId))
+      )[0]!.status;
+    expect(await statusOf()).toBe('submitted');
+
+    // Holding both, the same integration decides (the automated-verification extension point).
+    const full = kit.as(integration(['canVerifyMembers', 'canVerifyContributions']));
+    const decided = await decideVerification(full, approve);
+    expect(decided).toMatchObject({ status: 'approved', staff: { verifier: null } });
+    expect(await statusOf()).toBe('verified');
+    await expect(
+      revokeVerification(partial, { verificationId: requested.id, reason: 'Flaky CI run.' }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await statusOf()).toBe('verified');
   });
 });

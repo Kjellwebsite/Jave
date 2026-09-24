@@ -19,17 +19,22 @@ import {
   startReview,
   VERIFICATION_QUEUE_CARD_JOB,
 } from './index';
-import { enableQueueChannel } from './testing/fixtures';
+import { enableQueueChannel, KIT_SETUP_TIMEOUT_MS, KIT_TEST_OPTIONS } from './testing/fixtures';
+import { createFakeQueueChannel, fakeQueueCardHandler } from './testing/fake-queue-card-bot';
+
+const CHANNEL_ID = '223456789012345678';
+const FIRST_MESSAGE_ID = '323456789012345678';
+const SECOND_MESSAGE_ID = '423456789012345678';
 
 async function cardJobs(kit: TestKit) {
   return kit.db.select().from(jobs).where(eq(jobs.type, VERIFICATION_QUEUE_CARD_JOB));
 }
 
-describe('discord.verification.queue_card contract', () => {
+describe('discord.verification.queue_card contract', KIT_TEST_OPTIONS, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTestKit();
-  });
+  }, KIT_SETUP_TIMEOUT_MS);
   afterEach(async () => {
     await kit.close();
   });
@@ -75,24 +80,126 @@ describe('discord.verification.queue_card contract', () => {
       channelId,
       messageId: null,
     });
+    expect(card.revision).toMatch(/^[0-9a-f]{16}$/);
     expect(card.subject.memberId).toBe(subject.memberId);
   });
 
-  it('the bot callback records the posted card; later cards edit that message', async () => {
-    await enableQueueChannel(kit, '223456789012345678');
+  it('the bot callback records the posted card; later renders edit that message', async () => {
+    await enableQueueChannel(kit, CHANNEL_ID);
     const subject = await kit.member();
     const requested = await requestVerification(kit.as(subject), { target: { type: 'identity' } });
     const worker = kit.as(systemActor('job'));
-    await markQueueCardPosted(worker, {
+    const first = await getQueueCard(worker, requested.id);
+    const report = await markQueueCardPosted(worker, {
       verificationId: requested.id,
-      channelId: '223456789012345678',
-      messageId: '323456789012345678',
+      channelId: CHANNEL_ID,
+      messageId: FIRST_MESSAGE_ID,
+      previousMessageId: first.messageId,
+      revision: first.revision,
     });
+    expect(report).toEqual({ recorded: true, stale: false });
     const card = await getQueueCard(worker, requested.id);
-    expect(card).toMatchObject({
-      channelId: '223456789012345678',
-      messageId: '323456789012345678',
+    expect(card).toMatchObject({ channelId: CHANNEL_ID, messageId: FIRST_MESSAGE_ID });
+    expect(card.revision).toBe(first.revision);
+  });
+
+  it('BREAK: two runs that both saw no card cannot both record one (compare-and-set)', async () => {
+    await enableQueueChannel(kit, CHANNEL_ID);
+    const subject = await kit.member();
+    const requested = await requestVerification(kit.as(subject), { target: { type: 'identity' } });
+    const worker = kit.as(systemActor('job'));
+    const seenByA = await getQueueCard(worker, requested.id);
+    const seenByB = await getQueueCard(worker, requested.id);
+    const common = { verificationId: requested.id, channelId: CHANNEL_ID };
+    expect(
+      await markQueueCardPosted(worker, {
+        ...common,
+        messageId: FIRST_MESSAGE_ID,
+        previousMessageId: seenByA.messageId,
+        revision: seenByA.revision,
+      }),
+    ).toEqual({ recorded: true, stale: false });
+    expect(
+      await markQueueCardPosted(worker, {
+        ...common,
+        messageId: SECOND_MESSAGE_ID,
+        previousMessageId: seenByB.messageId,
+        revision: seenByB.revision,
+      }),
+    ).toEqual({ recorded: false, stale: true });
+    expect((await getQueueCard(worker, requested.id)).messageId).toBe(FIRST_MESSAGE_ID);
+
+    // Discord lost the recorded message: the bot posts a replacement over it.
+    expect(
+      await markQueueCardPosted(worker, {
+        ...common,
+        messageId: SECOND_MESSAGE_ID,
+        previousMessageId: FIRST_MESSAGE_ID,
+        revision: seenByB.revision,
+      }),
+    ).toEqual({ recorded: true, stale: false });
+    expect((await getQueueCard(worker, requested.id)).messageId).toBe(SECOND_MESSAGE_ID);
+  });
+
+  it('BREAK: a render taken before a state change is reported stale', async () => {
+    await enableQueueChannel(kit, CHANNEL_ID);
+    const subject = await kit.member();
+    const ops = await kit.member({ roles: ['operations'] });
+    const requested = await requestVerification(kit.as(subject), { target: { type: 'identity' } });
+    const worker = kit.as(systemActor('job'));
+    const before = await getQueueCard(worker, requested.id);
+    await startReview(kit.as(ops), { verificationId: requested.id });
+    const report = await markQueueCardPosted(worker, {
+      verificationId: requested.id,
+      channelId: CHANNEL_ID,
+      messageId: FIRST_MESSAGE_ID,
+      previousMessageId: null,
+      revision: before.revision,
     });
+    expect(report).toEqual({ recorded: true, stale: true });
+    const after = await getQueueCard(worker, requested.id);
+    expect(after.revision).not.toBe(before.revision);
+    expect(
+      await markQueueCardPosted(worker, {
+        verificationId: requested.id,
+        channelId: CHANNEL_ID,
+        messageId: FIRST_MESSAGE_ID,
+        previousMessageId: FIRST_MESSAGE_ID,
+        revision: after.revision,
+      }),
+    ).toEqual({ recorded: true, stale: false });
+  });
+
+  it('BREAK: concurrent card jobs for one verification leave exactly one fresh card', async () => {
+    await enableQueueChannel(kit, CHANNEL_ID);
+    const subject = await kit.member();
+    const ops = await kit.member({ roles: ['operations'] });
+    const requested = await requestVerification(kit.as(subject), { target: { type: 'identity' } });
+    await assignVerifier(kit.as(ops), {
+      verificationId: requested.id,
+      verifierMemberId: ops.memberId!,
+    });
+    await startReview(kit.as(ops), { verificationId: requested.id });
+    expect(await cardJobs(kit)).toHaveLength(3);
+
+    const channel = createFakeQueueChannel();
+    const outcomes = await kit.drain({
+      [VERIFICATION_QUEUE_CARD_JOB]: fakeQueueCardHandler(channel),
+    });
+    expect(outcomes.map((o) => o.status)).toEqual(['completed', 'completed', 'completed']);
+    const card = await getQueueCard(kit.as(systemActor('job')), requested.id);
+    expect([...channel.messages.entries()]).toEqual([[card.messageId, card.revision]]);
+    expect(card.status).toBe('in_review');
+
+    await decideVerification(kit.as(ops), {
+      verificationId: requested.id,
+      decision: 'approve',
+      note: 'Confirmed.',
+    });
+    await kit.drain({ [VERIFICATION_QUEUE_CARD_JOB]: fakeQueueCardHandler(channel) });
+    const decided = await getQueueCard(kit.as(systemActor('job')), requested.id);
+    expect(decided.messageId).toBe(card.messageId);
+    expect([...channel.messages.entries()]).toEqual([[decided.messageId, decided.revision]]);
   });
 
   it('enqueues nothing when no channel is configured and no card exists', async () => {
@@ -105,10 +212,13 @@ describe('discord.verification.queue_card contract', () => {
     const subject = await kit.member();
     const ops = await kit.member({ roles: ['operations'] });
     const requested = await requestVerification(kit.as(subject), { target: { type: 'identity' } });
+    const { revision } = await getQueueCard(kit.as(ops), requested.id);
     const input = {
       verificationId: requested.id,
-      channelId: '223456789012345678',
-      messageId: '323456789012345678',
+      channelId: CHANNEL_ID,
+      messageId: FIRST_MESSAGE_ID,
+      previousMessageId: null,
+      revision,
     };
     await expect(markQueueCardPosted(kit.as(ops), input)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(markQueueCardPosted(kit.as(subject), input)).rejects.toBeInstanceOf(
@@ -118,9 +228,16 @@ describe('discord.verification.queue_card contract', () => {
       ForbiddenError,
     );
     const worker = kit.as(systemActor('job'));
-    await expect(
-      markQueueCardPosted(worker, { ...input, messageId: '<@&everyone>' }),
-    ).rejects.toBeInstanceOf(ValidationError);
+    for (const hostile of [
+      { messageId: '<@&everyone>' },
+      { previousMessageId: '<@&everyone>' },
+      { revision: 'ABCDEF0123456789' },
+      { revision: `${revision}0` },
+    ]) {
+      await expect(markQueueCardPosted(worker, { ...input, ...hostile })).rejects.toBeInstanceOf(
+        ValidationError,
+      );
+    }
     await expect(
       markQueueCardPosted(worker, { ...input, verificationId: crypto.randomUUID() }),
     ).rejects.toBeInstanceOf(NotFoundError);

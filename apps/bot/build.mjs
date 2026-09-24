@@ -17,6 +17,7 @@ const external = [
 await build({
   entryPoints: {
     main: 'src/main.ts',
+    migrate: '../../packages/database/src/scripts/migrate.ts',
     'deploy-commands': 'src/scripts/deploy-commands.ts',
     'print-commands': 'src/scripts/print-commands.ts',
   },

@@ -19,7 +19,10 @@ async function main(): Promise<void> {
   }
   const client = postgres(url, { max: 1, onnotice: () => undefined });
   const db = drizzle(client, { schema });
-  const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
+  // Bundled deployments (the bot container) point this at the copied migrations folder.
+  const migrationsFolder =
+    process.env.JAVE_MIGRATIONS_DIR ??
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
   const started = Date.now();
   try {
     await migrate(db, { migrationsFolder });

@@ -72,14 +72,32 @@ Rules that hold everywhere:
 ## SLA
 
 - First response due = opened + `settings.tickets.slaMinutes[priority]`.
-- First response = the first thread message from a handler who is not the
-  opener, or `setWaiting` (its reason is addressed to the requester).
+- First response = the earliest thread message (by its Discord send time)
+  from a handler who is not the opener, sent while the ticket was active or
+  before its close; or `setWaiting` (its reason is addressed to the requester).
+  Messages may arrive late or out of order: an earlier-sent handler message
+  moves `firstResponseAt` back.
+- The outcome depends only on timestamps (`provenBreach` in `sla.ts`):
+  breached iff the first response — or, for a ticket closed unanswered, the
+  close — came strictly after the deadline. `slaBreachedAt` (= the deadline)
+  is the stored outcome and the single source for views, the `breached` list
+  filter and statistics. Three writers converge on it:
+  - `recordMessage` / `setWaiting` stamp the first response and record a late
+    one as breached at once (`decidedBy: 'response'`), even before the sweep;
+  - `closeTicket` records an unanswered close after the deadline
+    (`decidedBy: 'close'`); an unanswered close before it records nothing;
+  - sweep `tickets.sla_sweep` (every 5 min) flags active, unanswered tickets
+    past due and alerts staff (`decidedBy: 'sweep'`). Each ticket flips in its
+    own conditional update, so a breach is reported once even with concurrent
+    sweeps.
+- Retraction: when an on-time reply reaches core after the sweep (or a close)
+  already recorded a breach — the bot was backlogged — the breach is cleared,
+  a staff-only `sla_breach_retracted` ticket event is appended and
+  `ticket.sla_breach_retracted` is published. Staff already alerted are not
+  re-notified.
 - `setPriority` recomputes the due time from the opening time while the
-  ticket is unanswered and unbreached. A recorded breach is permanent.
-- Sweep `tickets.sla_sweep` (every 5 min): an active, unanswered ticket whose
-  due time is strictly in the past is marked breached. `slaBreachedAt` is the
-  deadline itself (independent of sweep latency). Each ticket flips in its own
-  conditional update, so a breach is reported once even with concurrent sweeps.
+  ticket is unanswered and unbreached. A priority change never erases a
+  recorded breach (the deadline freezes once breached).
 - Views expose `sla.state` (`pending met breached none`), `overdue` (past due
   before the sweep ran) and `firstResponseMinutes`.
 - `getTicketStats`: backlog, median minutes to first response, breach rate
@@ -88,14 +106,15 @@ Rules that hold everywhere:
 
 ## Events (`events/catalog.ts`)
 
-| Type                  | Subject member | When                     |
-| --------------------- | -------------- | ------------------------ |
-| `ticket.opened`       | opener         | `openTicket`             |
-| `ticket.claimed`      | new assignee   | `claimTicket`            |
-| `ticket.transferred`  | new assignee   | `transferTicket` (added) |
-| `ticket.closed`       | opener         | `closeTicket`            |
-| `ticket.reopened`     | opener         | `reopenTicket`           |
-| `ticket.sla_breached` | opener         | SLA sweep (added)        |
+| Type                          | Subject member | When                                                                     |
+| ----------------------------- | -------------- | ------------------------------------------------------------------------ |
+| `ticket.opened`               | opener         | `openTicket`                                                             |
+| `ticket.claimed`              | new assignee   | `claimTicket`                                                            |
+| `ticket.transferred`          | new assignee   | `transferTicket` (added)                                                 |
+| `ticket.closed`               | opener         | `closeTicket`                                                            |
+| `ticket.reopened`             | opener         | `reopenTicket`                                                           |
+| `ticket.sla_breached`         | opener         | breach recorded; payload `decidedBy: sweep \| response \| close` (added) |
+| `ticket.sla_breach_retracted` | opener         | a recorded breach withdrawn: on-time reply delivered late (added)        |
 
 All are `external: false`.
 
@@ -155,13 +174,23 @@ Permissions (tickets channel): View Channel, Create Private Threads, Send Messag
 
 ### `discord.tickets.update_card`
 
-Payload `{ ticketId, change, note }`, `change ∈ claimed unclaimed transferred priority_changed waiting resumed refresh`.
+Payload `{ ticketId, change, note, assigneeUserId }`, `change ∈ claimed unclaimed transferred priority_changed waiting resumed refresh`.
 
-Edit the card to the current state (CLAIM only while active and unassigned;
-CLOSE while active). `claimed`/`transferred`: add the assignee to the thread
-and post one line (`CLAIMED — <assignee> is handling this ticket.`).
-`waiting`: post `WAITING ON YOU — <note>`. `refresh`: card edit + add the
-assignee if any. Others: card edit only. No callback.
+`getTicketCard`, then do exactly what `tickets.planCardUpdate(card, payload)`
+returns — nothing more:
+
+- `editCard` → edit the card to the current state (CLAIM only while active and
+  unassigned; CLOSE while active);
+- `addMemberDiscordId` → add that user (the current assignee) to the thread;
+- `announce` → post one line: `assigned` → `CLAIMED — <assigneeName> is
+handling this ticket.`; `waiting` → `WAITING ON YOU — <note>`.
+
+The plan is empty once the ticket is closed or archived (close_thread owns the
+final card and the lock; posting would unarchive the thread) and before the
+thread exists, so a job retried after close_thread completes without touching
+Discord. It announces an assignment only while the assignee the job was
+enqueued for still holds the ticket, and a waiting reason only while the
+ticket is still waiting. No callback.
 
 Permissions: Send Messages in Threads, Embed Links, Read Message History.
 
@@ -170,7 +199,7 @@ Permissions: Send Messages in Threads, Embed Links, Read Message History.
 Payload `{ ticketId, threadId, archiveChannelId | null }`.
 
 1. Stop if the ticket is no longer closed/archived (a reopen superseded it).
-2. Post the closing card (reference, closed by, reason).
+2. Post the closing card (reference, closed by, reason) and edit the status card to the closed state with no buttons (update_card never touches a closed ticket).
 3. If `archiveChannelId`: `renderTranscript(ctx, { ticketId, format: 'html', includeInternal: false })` and upload the file with a short card. Never internal notes.
 4. `setThreadState(threadId, { locked: true, archived: true })` last.
 
@@ -204,6 +233,10 @@ returns `{ filename, contentType, content, … }`.
   CSP `default-src 'none'`, `referrer: no-referrer`. Every interpolated value
   is HTML-escaped (`& < > " ' \` =`); links only for validated http(s) URLs,
 with `rel="noopener noreferrer nofollow"`.
+- Print / PDF: dark text on white. Every screen rule that sets a color or a
+  background is repeated in `@media print` with the same selector (equal
+  specificity, so print wins). Text is ≥ 4.5:1 and rules/tag outlines ≥ 3:1 on
+  white; `transcript-print.test.ts` enforces both.
 - Markdown: inline punctuation that could form links, images, HTML, code,
   emphasis or table breaks is backslash-escaped; quoted lines also escape
   block markers.
@@ -250,5 +283,12 @@ Rate-limited by `settings.ai.dailyRequestsPerUser` per handler; honours
   check). Unarchiving the thread in Discord, or closing and reopening the
   ticket, repairs it.
 - Waiting tickets are not auto-closed after silence (future sweep).
+- SLA timing trusts the bot's Discord send times (`sentAt`, clamped to
+  [opened, now]). A breach recorded by a late response or a close is not
+  alerted (it is past acting on); a retraction does not un-send the sweep's
+  earlier alert.
+- If a ticket goes waiting → resumed → waiting before the first waiting job
+  runs, that job posts the first reason while the ticket waits on the second
+  (the card does not carry the current reason).
 - Deleted thread messages are retained (flagged) for staff; purging on request
   is not implemented.

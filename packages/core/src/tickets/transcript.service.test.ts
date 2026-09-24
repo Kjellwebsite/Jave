@@ -22,6 +22,7 @@ import {
   authorOf,
   botContext,
   createTicketKit,
+  INTEGRATION_HOOK_TIMEOUT,
   INTEGRATION_SUITE,
   nextSnowflake,
   openAs,
@@ -45,10 +46,10 @@ describe('tickets: transcripts and AI summary', INTEGRATION_SUITE, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTicketKit();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
   afterEach(async () => {
     await kit.close();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
 
   async function hostileTicket() {
     const member = await kit.member({ username: 'requester_1' });

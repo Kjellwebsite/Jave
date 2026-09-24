@@ -92,6 +92,10 @@ export const DOMAIN_EVENTS = {
     description: 'A ticket missed its first-response target.',
     external: false,
   },
+  'ticket.sla_breach_retracted': {
+    description: 'A recorded ticket breach was withdrawn: the first reply was on time.',
+    external: false,
+  },
 
   'moderation.case_created': { description: 'A moderation case was recorded.', external: false },
   'security.event_raised': { description: 'A security event was raised.', external: false },

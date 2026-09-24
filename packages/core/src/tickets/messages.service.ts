@@ -12,10 +12,12 @@ import {
   loadTicket,
   requireHandler,
   requireSystemActor,
+  type TicketRecord,
   ticketTransaction,
 } from './access';
 import { refreshCard, saveTicket } from './effects';
 import { appendTicketEvent } from './records';
+import { recordSlaOutcome, slaBreachPatch } from './sla-outcome';
 import {
   internalNoteSchema,
   type RecordMessageInput,
@@ -69,10 +71,26 @@ async function resolveAuthorRole(
 }
 
 /**
+ * A handler message sent at `sentAt` is the ticket's first response when it
+ * was sent while the ticket was being worked on (active now, or sent before
+ * its close) and earlier than any response recorded so far: the bot may
+ * deliver messages late or out of order, so arrival order proves nothing.
+ */
+function isFirstResponse(ticket: TicketRecord, sentAt: Date): boolean {
+  const sentWhileActive =
+    isActive(ticket) || (ticket.closedAt !== null && sentAt.getTime() <= ticket.closedAt.getTime());
+  return (
+    sentWhileActive &&
+    (ticket.firstResponseAt === null || sentAt.getTime() < ticket.firstResponseAt.getTime())
+  );
+}
+
+/**
  * Bot callback for every message posted in a ticket thread. Idempotent on
- * the Discord message id. A handler's first reply stamps firstResponseAt; the
- * requester's reply takes a waiting ticket back to staff. Attachments are
- * stored as metadata only (name, URL, size, type) — never downloaded.
+ * the Discord message id. A handler's reply stamps firstResponseAt (by its
+ * Discord send time) and settles the SLA outcome; the requester's reply takes
+ * a waiting ticket back to staff. Attachments are stored as metadata only
+ * (name, URL, size, type) — never downloaded.
  */
 export async function recordMessage(
   ctx: ServiceContext,
@@ -152,14 +170,18 @@ export async function recordMessage(
         resumed: false,
       } satisfies RecordMessageResult;
     }
-    const firstResponse = authorRole === 'handler' && !locked.firstResponseAt && isActive(locked);
+    const firstResponse = authorRole === 'handler' && isFirstResponse(locked, sentAt);
     const resumed = authorRole === 'requester' && locked.status === 'waiting';
     const lastActivityAt = sentAt > locked.lastActivityAt ? sentAt : locked.lastActivityAt;
     const updated = await saveTicket(tx, locked.id, {
       lastActivityAt,
-      ...(firstResponse && { firstResponseAt: sentAt }),
+      ...(firstResponse && {
+        firstResponseAt: sentAt,
+        ...slaBreachPatch({ ...locked, firstResponseAt: sentAt }),
+      }),
       ...(resumed && { status: resumedStatus(locked) }),
     });
+    if (firstResponse) await recordSlaOutcome(tx, locked, updated, 'response');
     if (resumed) {
       const eventId = await appendTicketEvent(tx, locked.id, 'status_changed', {
         from: 'waiting',

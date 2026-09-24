@@ -31,6 +31,7 @@ import {
   authorOf,
   botContext,
   createTicketKit,
+  INTEGRATION_HOOK_TIMEOUT,
   INTEGRATION_SUITE,
   jobsOfType,
   nextSnowflake,
@@ -46,10 +47,10 @@ describe('tickets: lifecycle', INTEGRATION_SUITE, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTicketKit();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
   afterEach(async () => {
     await kit.close();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
 
   it('opens a ticket with first message, SLA, event and thread job', async () => {
     const member = await kit.member({ roles: ['verified'] });

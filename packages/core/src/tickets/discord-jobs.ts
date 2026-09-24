@@ -63,17 +63,22 @@ export const openThreadPayloadSchema = z.object({
  * Refresh the status card after a change.
  *
  * Bot responsibilities:
- * 1. `getTicketCard`. No `threadId`/`cardMessageId` yet → complete (the open
- *    job renders current state when it runs).
- * 2. Edit the card message to the current state. CLAIM is shown only while the
- *    ticket is active and unassigned; CLOSE while it is active.
- * 3. `claimed` / `transferred`: `addThreadMember(threadId, assignee.discordId)`
- *    and post one line, e.g. "CLAIMED — <assignee> is handling this ticket."
- * 4. `waiting`: post "WAITING ON YOU — <note>" (`note` is the handler's reason,
- *    written for the requester).
- * 5. `unclaimed`, `priority_changed`, `resumed`: card edit only, no message.
- * 6. `refresh` (sent once the thread exists, when the ticket changed while it was
- *    being created): card edit, and `addThreadMember` for the assignee if any.
+ * 1. `getTicketCard`, then `tickets.planCardUpdate(card, payload)`. Do exactly
+ *    what the plan says and nothing else. It is empty once the ticket is closed
+ *    or archived (close_thread owns the final card and the lock, and posting
+ *    into an archived thread would unarchive it) and before the thread exists.
+ *    An empty plan completes the job without touching Discord — also on a
+ *    retry that runs after close_thread.
+ * 2. `plan.editCard`: edit the card message to the card's current state. CLAIM
+ *    is shown only while the ticket is active and unassigned; CLOSE while it is
+ *    active.
+ * 3. `plan.addMemberDiscordId`: `addThreadMember(threadId, <id>)`.
+ * 4. `plan.announce`: post one line —
+ *    `assigned` → "CLAIMED — <assigneeName> is handling this ticket.";
+ *    `waiting` → "WAITING ON YOU — <note>" (the handler's reason, written for
+ *    the requester). The plan announces an assignment only while the assignee
+ *    the job was enqueued for (`assigneeUserId`) still holds the ticket, and a
+ *    waiting reason only while the ticket is still waiting.
  *
  * Callback: none (job completion is the record). Thread gone → `markThreadMissing`.
  *
@@ -96,6 +101,8 @@ export const updateCardPayloadSchema = z.object({
   change: z.enum(CARD_CHANGES),
   /** Requester-facing text (the waiting reason); null for every other change. */
   note: z.string().max(1000).nullable(),
+  /** Assignee when the job was enqueued; planCardUpdate compares it with the current one. */
+  assigneeUserId: z.uuid().nullable(),
 });
 
 /**
@@ -105,6 +112,8 @@ export const updateCardPayloadSchema = z.object({
  * 1. `getTicketCard`. If the ticket is no longer closed/archived (a reopen
  *    superseded this job), complete without acting.
  * 2. Post the closing card in the thread: reference, closed by, `closeReason`.
+ *    Edit the status card (`card.cardMessageId`) to the closed state with no
+ *    buttons: update_card jobs never touch a closed ticket's thread.
  * 3. When `archiveChannelId` is set: `tickets.renderTranscript(ctx, { ticketId,
  *    format: 'html', includeInternal: false })` (audited as a system access) and
  *    upload it to that channel as a file with a short summary card. Never

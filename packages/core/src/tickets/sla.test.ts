@@ -18,6 +18,7 @@ import {
   authorOf,
   botContext,
   createTicketKit,
+  INTEGRATION_HOOK_TIMEOUT,
   INTEGRATION_SUITE,
   nextSnowflake,
   notificationsFor,
@@ -74,10 +75,10 @@ describe('tickets: SLA sweep', INTEGRATION_SUITE, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTicketKit();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
   afterEach(async () => {
     await kit.close();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
 
   it('registers a recurring sweep every 5 minutes, wired into the core registry', () => {
     expect(recurringJobs.find((j) => j.type === SLA_SWEEP_JOB)?.everyMs).toBe(5 * MINUTE);

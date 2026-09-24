@@ -21,6 +21,12 @@ export {
 } from './constants';
 export { TicketForbiddenError, TicketHiddenError, type TicketViewer } from './access';
 export {
+  planCardUpdate,
+  type CardAnnouncement,
+  type CardPlanInput,
+  type CardUpdatePlan,
+} from './card-plan';
+export {
   CARD_CHANGES,
   CLOSE_THREAD_JOB,
   closeThreadPayloadSchema,

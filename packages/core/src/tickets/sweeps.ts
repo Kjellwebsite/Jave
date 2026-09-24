@@ -1,6 +1,5 @@
 import { and, asc, eq, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { tickets } from '@jave/database';
-import { publishEvent } from '../events/bus';
 import { DAY } from '../kernel/clock';
 import { type ServiceContext, withTransaction } from '../kernel/context';
 import type { JobHandlerMap, RecurringJob } from '../jobs/worker';
@@ -15,7 +14,8 @@ import {
   SWEEP_BATCH_SIZE,
 } from './constants';
 import { ticketCopy } from './copy';
-import { alertTicketStaff, appendTicketEvent, memberIdForUser } from './records';
+import { alertTicketStaff, appendTicketEvent } from './records';
+import { recordSlaBreach } from './sla-outcome';
 
 const slaEligible = (now: Date) =>
   and(
@@ -27,10 +27,15 @@ const slaEligible = (now: Date) =>
   );
 
 /**
- * Mark unanswered tickets whose first-response target has passed. Each ticket
- * is flipped by a conditional update in its own transaction, so concurrent
- * sweeps (or a reply racing the sweep) can never double-report a breach. The
- * breach time recorded is the deadline itself, independent of sweep latency.
+ * Mark open tickets that are still unanswered after their first-response
+ * target, and alert staff. Each ticket is flipped by a conditional update in
+ * its own transaction, so concurrent sweeps (or a reply racing the sweep) can
+ * never double-report a breach. The breach time recorded is the deadline
+ * itself, independent of sweep latency.
+ *
+ * The sweep is only one of the writers: a late first response or the close of
+ * an unanswered ticket records the breach itself, and an on-time reply that
+ * reaches core after the sweep retracts it (see sla-outcome.ts).
  */
 export async function runSlaSweep(ctx: ServiceContext): Promise<{ breached: string[] }> {
   await requireSystemActor(ctx, 'tickets.slaSweep');
@@ -50,22 +55,7 @@ export async function runSlaSweep(ctx: ServiceContext): Promise<{ breached: stri
         .where(and(eq(tickets.id, id), slaEligible(now)))
         .returning();
       if (!ticket) return false;
-      await appendTicketEvent(tx, ticket.id, 'sla_breached', {
-        priority: ticket.priority,
-        dueAt: ticket.slaFirstResponseDueAt?.toISOString() ?? null,
-      });
-      await publishEvent(tx, {
-        type: 'ticket.sla_breached',
-        aggregateType: 'ticket',
-        aggregateId: ticket.id,
-        subjectMemberId: await memberIdForUser(tx, ticket.openerUserId),
-        payload: {
-          ticketId: ticket.id,
-          number: ticket.number,
-          priority: ticket.priority,
-          assigned: ticket.assigneeUserId !== null,
-        },
-      });
+      await recordSlaBreach(tx, ticket, 'sweep');
       await alertTicketStaff(
         tx,
         ticket,

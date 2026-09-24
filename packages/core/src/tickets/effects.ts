@@ -48,7 +48,7 @@ export async function refreshCard(
   await enqueueTicketDiscordJob(
     ctx,
     UPDATE_CARD_JOB,
-    { ticketId: ticket.id, change, note },
+    { ticketId: ticket.id, change, note, assigneeUserId: ticket.assigneeUserId },
     `ticket-card:${ticket.id}:${anchor}`,
   );
 }

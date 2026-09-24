@@ -26,6 +26,7 @@ import {
   transferTicketSchema,
 } from './schemas';
 import { firstResponseDueAt } from './sla';
+import { recordSlaOutcome, slaBreachPatch } from './sla-outcome';
 import { assignedStatus, resumedStatus, unassignedStatus } from './state';
 import { type TicketSummary, ticketSummaryFor } from './views';
 
@@ -273,16 +274,19 @@ export async function setWaiting(
       throw new InvalidStateError('This ticket is already waiting on the requester.');
     }
     const now = tx.clock.now();
+    const firstResponseAt = ticket.firstResponseAt ?? now;
     const waiting = await saveTicket(tx, ticket.id, {
       status: 'waiting',
-      firstResponseAt: ticket.firstResponseAt ?? now,
+      firstResponseAt,
       lastActivityAt: now,
+      ...slaBreachPatch({ ...ticket, firstResponseAt }),
     });
     const eventId = await appendTicketEvent(tx, ticket.id, 'status_changed', {
       from: ticket.status,
       to: 'waiting',
       reason: data.reason,
     });
+    await recordSlaOutcome(tx, ticket, waiting, 'response');
     await refreshCard(tx, waiting, 'waiting', eventId, data.reason);
     await notifyTicketUpdate(
       tx,

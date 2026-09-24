@@ -246,6 +246,9 @@ describe('transcript rendering', () => {
     expect(describeEvent(event({ type: 'sla_breached', data: {} }))).toBe(
       'First-response target missed',
     );
+    expect(describeEvent(event({ type: 'sla_breach_retracted', data: {} }))).toBe(
+      'Missed-target record withdrawn — the first reply was on time',
+    );
     expect(
       describeEvent(
         event({ type: 'transcript_accessed', data: { format: 'html', includeInternal: true } }),

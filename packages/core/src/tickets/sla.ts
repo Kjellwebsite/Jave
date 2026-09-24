@@ -22,8 +22,31 @@ export function firstResponseDueAt(
 }
 
 /**
- * A breach is permanent once recorded (it is history, not a live flag), so a
- * later priority change cannot erase it from the statistics.
+ * The first-response outcome a ticket's own timestamps prove:
+ * - the deadline (a `Date`): breached — the first response, or the close of a
+ *   still-unanswered ticket, came strictly after the deadline;
+ * - `null`: not breached — answered on time, closed unanswered before the
+ *   deadline, or no target at all;
+ * - `undefined`: not decided yet (unanswered and still open). The sweep
+ *   records the breach once the deadline has passed.
+ *
+ * It depends only on when things happened, never on when the sweep ran or
+ * when the bot delivered a message, so every writer converges on one value.
+ */
+export function provenBreach(
+  ticket: SlaFields & { closedAt: Date | null },
+): Date | null | undefined {
+  const dueAt = ticket.slaFirstResponseDueAt;
+  if (!dueAt) return null;
+  const decidedAt = ticket.firstResponseAt ?? ticket.closedAt;
+  if (!decidedAt) return undefined;
+  return decidedAt.getTime() > dueAt.getTime() ? dueAt : null;
+}
+
+/**
+ * slaBreachedAt is the stored outcome and the single source for views, list
+ * filters and statistics. A priority change never erases it (the deadline is
+ * frozen once breached); only a first response proven on time retracts it.
  */
 export function slaState(ticket: SlaFields): SlaState {
   if (ticket.slaBreachedAt) return 'breached';

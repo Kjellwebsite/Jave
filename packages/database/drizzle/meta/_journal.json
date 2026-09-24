@@ -15,6 +15,13 @@
       "when": 1790248928161,
       "tag": "0001_tickets",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790269299167,
+      "tag": "0002_tickets",
+      "breakpoints": true
     }
   ]
 }

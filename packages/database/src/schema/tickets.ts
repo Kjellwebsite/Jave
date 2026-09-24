@@ -137,6 +137,8 @@ export const ticketEventType = pgEnum('ticket_event_type', [
   'summary_generated',
   'transcript_accessed',
   'sla_breached',
+  /** A recorded breach was withdrawn: the first reply was on time but recorded late. */
+  'sla_breach_retracted',
 ]);
 
 export const ticketEvents = pgTable(

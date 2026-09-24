@@ -40,6 +40,7 @@ import {
   ticketRefSchema,
 } from './schemas';
 import { firstResponseDueAt } from './sla';
+import { recordSlaOutcome, slaBreachPatch } from './sla-outcome';
 import { resumedStatus } from './state';
 import { type TicketSummary, ticketSummaryFor } from './views';
 
@@ -146,8 +147,11 @@ export async function closeTicket(
       closedByUserId: actorUserId(tx.actor),
       closeReason: data.reason,
       lastActivityAt: now,
+      // Closing an unanswered ticket after its deadline settles it as breached.
+      ...slaBreachPatch({ ...ticket, closedAt: now }),
     });
     const eventId = await appendTicketEvent(tx, ticket.id, 'closed', { reason: data.reason });
+    await recordSlaOutcome(tx, ticket, closed, 'close');
     await recordAudit(tx, {
       action: 'ticket.closed',
       targetType: 'ticket',

@@ -28,6 +28,7 @@ import {
   auditOf,
   authorOf,
   createTicketKit,
+  INTEGRATION_HOOK_TIMEOUT,
   INTEGRATION_SUITE,
   nextSnowflake,
   openAs,
@@ -44,10 +45,10 @@ describe('tickets: access control (BREAK)', INTEGRATION_SUITE, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTicketKit();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
   afterEach(async () => {
     await kit.close();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
 
   async function scene() {
     const opener = await kit.member({ roles: ['verified'] });

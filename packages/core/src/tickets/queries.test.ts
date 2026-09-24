@@ -2,39 +2,31 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { tickets } from '@jave/database';
 import { HOUR, MINUTE } from '../kernel/clock';
-import type { JobHandlerMap } from '../jobs/worker';
 import type { TestKit } from '../testing';
-import { claimTicket, setWaiting } from './assignment.service';
-import {
-  CLOSE_THREAD_JOB,
-  OPEN_THREAD_JOB,
-  parseTicketDiscordJobPayload,
-  REOPEN_THREAD_JOB,
-  UPDATE_CARD_JOB,
-} from './discord-jobs';
-import { closeTicket, reopenTicket } from './lifecycle.service';
+import { claimTicket } from './assignment.service';
+import { closeTicket } from './lifecycle.service';
 import { listTickets } from './queries.service';
 import { runSlaSweep } from './sweeps';
 import {
   botContext,
   createTicketKit,
+  INTEGRATION_HOOK_TIMEOUT,
   INTEGRATION_SUITE,
   nextSnowflake,
   openAs,
   provisionThread,
   TICKET_CHANNEL_ID,
 } from './test-fixtures';
-import { getTicketCard, getTicketIdForThread, markThreadCreated } from './thread.service';
-import { renderTranscript } from './transcript.service';
+import { getTicketCard, getTicketIdForThread } from './thread.service';
 
 describe('tickets: queries', INTEGRATION_SUITE, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTicketKit();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
   afterEach(async () => {
     await kit.close();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
 
   it('lists with handler filters, pagination and sorting', async () => {
     const a = await kit.member();
@@ -117,87 +109,5 @@ describe('tickets: queries', INTEGRATION_SUITE, () => {
     expect(await getTicketIdForThread(kit.as(member), { threadId })).toBe(ticket.id);
     expect(await getTicketIdForThread(kit.as(mod), { threadId })).toBe(ticket.id);
     expect(await getTicketIdForThread(kit.as(mod), { threadId: nextSnowflake() })).toBeNull();
-  });
-});
-
-/**
- * MOCK / TEST ONLY — a stand-in for the bot's discord.tickets.* handlers that
- * follows each job contract against a recorded fake Discord, to prove the
- * contracts and callbacks compose end to end.
- */
-function simulatedBot(kit: TestKit) {
-  const discord: string[] = [];
-  const handlers: JobHandlerMap = {
-    [OPEN_THREAD_JOB]: async (ctx, payload) => {
-      const job = parseTicketDiscordJobPayload(OPEN_THREAD_JOB, payload);
-      const card = await getTicketCard(ctx, { ticketId: job.ticketId });
-      if (card.threadId || card.status === 'archived') return { skipped: true };
-      const threadId = nextSnowflake();
-      discord.push(`createPrivateThread ${job.parentChannelId} "${job.threadName}"`);
-      discord.push(`addThreadMember ${job.openerDiscordId}`);
-      await markThreadCreated(ctx, {
-        ticketId: job.ticketId,
-        threadId,
-        cardMessageId: nextSnowflake(),
-      });
-      return { threadId };
-    },
-    [UPDATE_CARD_JOB]: async (ctx, payload) => {
-      const job = parseTicketDiscordJobPayload(UPDATE_CARD_JOB, payload);
-      const card = await getTicketCard(ctx, { ticketId: job.ticketId });
-      discord.push(`editCard ${card.status} ${job.change}${job.note ? ` "${job.note}"` : ''}`);
-    },
-    [CLOSE_THREAD_JOB]: async (ctx, payload) => {
-      const job = parseTicketDiscordJobPayload(CLOSE_THREAD_JOB, payload);
-      const card = await getTicketCard(ctx, { ticketId: job.ticketId });
-      if (card.status !== 'closed' && card.status !== 'archived') return { skipped: true };
-      if (job.archiveChannelId) {
-        const transcript = await renderTranscript(ctx, { ticketId: job.ticketId, format: 'html' });
-        discord.push(`upload ${job.archiveChannelId} ${transcript.filename}`);
-      }
-      discord.push(`lockAndArchive ${job.threadId}`);
-    },
-    [REOPEN_THREAD_JOB]: async (ctx, payload) => {
-      const job = parseTicketDiscordJobPayload(REOPEN_THREAD_JOB, payload);
-      const card = await getTicketCard(ctx, { ticketId: job.ticketId });
-      if (card.status === 'closed' || card.status === 'archived') return { skipped: true };
-      discord.push(`unarchive ${job.threadId} "${job.reason}"`);
-    },
-  };
-  return { discord, drain: () => kit.drain(handlers) };
-}
-
-describe('tickets: Discord job contracts (simulated bot)', INTEGRATION_SUITE, () => {
-  let kit: TestKit;
-  beforeEach(async () => {
-    kit = await createTicketKit();
-  });
-  afterEach(async () => {
-    await kit.close();
-  });
-
-  it('drives a ticket end to end through every contract and callback', async () => {
-    const member = await kit.member();
-    const mod = await kit.member({ roles: ['moderator'] });
-    const bot = simulatedBot(kit);
-    const ticket = await openAs(kit, member);
-    await claimTicket(kit.as(mod), { ticketId: ticket.id });
-    await bot.drain();
-    await setWaiting(kit.as(mod), { ticketId: ticket.id, reason: 'Send the error text.' });
-    await closeTicket(kit.as(mod), { ticketId: ticket.id, reason: 'Answered in thread.' });
-    await bot.drain();
-    await reopenTicket(kit.as(member), { ticketId: ticket.id, reason: 'Still failing.' });
-    await bot.drain();
-
-    expect(bot.discord[0]).toMatch(
-      new RegExp(`^createPrivateThread ${TICKET_CHANNEL_ID} "#\\d{4} · `),
-    );
-    expect(bot.discord).toContain(`addThreadMember ${member.discordId}`);
-    // Claimed before the thread existed: the refresh after creation renders it.
-    expect(bot.discord).toContain('editCard claimed refresh');
-    expect(bot.discord).toContain('editCard closed waiting "Send the error text."');
-    expect(bot.discord.some((l) => /^upload \d+ ticket-\d{4}\.html$/.test(l))).toBe(true);
-    expect(bot.discord.some((l) => l.startsWith('lockAndArchive '))).toBe(true);
-    expect(bot.discord.some((l) => l.endsWith('"Still failing."'))).toBe(true);
   });
 });

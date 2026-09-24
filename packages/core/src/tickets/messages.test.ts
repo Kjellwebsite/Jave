@@ -19,6 +19,7 @@ import {
   authorOf,
   botContext,
   createTicketKit,
+  INTEGRATION_HOOK_TIMEOUT,
   INTEGRATION_SUITE,
   jobsOfType,
   nextSnowflake,
@@ -30,10 +31,10 @@ describe('tickets: messages', INTEGRATION_SUITE, () => {
   let kit: TestKit;
   beforeEach(async () => {
     kit = await createTicketKit();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
   afterEach(async () => {
     await kit.close();
-  });
+  }, INTEGRATION_HOOK_TIMEOUT);
 
   async function ticketWithThread() {
     const member = await kit.member({ roles: ['verified'] });

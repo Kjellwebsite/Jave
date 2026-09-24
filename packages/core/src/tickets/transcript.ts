@@ -51,6 +51,10 @@ const PALETTE = {
   danger: '#B86B6B',
   printBackground: '#FFFFFF',
   printText: '#000000',
+  /** Secondary text on paper: 8.3:1 on white. */
+  printMuted: '#4A4F55',
+  /** Rules and tag outlines on paper: 4:1 on white. */
+  printBorder: '#7A7F86',
 } as const;
 
 const ROLE_LABEL: Record<TicketAuthorRole, string> = {
@@ -165,6 +169,8 @@ export function describeEvent(event: TicketEventView): string {
       return `Transcript accessed (${text(data.format)}${data.includeInternal ? ', with internal notes' : ''})`;
     case 'sla_breached':
       return 'First-response target missed';
+    case 'sla_breach_retracted':
+      return 'Missed-target record withdrawn — the first reply was on time';
   }
 }
 
@@ -292,6 +298,23 @@ export function renderMarkdown(model: TranscriptModel): string {
 
 // ─── HTML ────────────────────────────────────────────────────────────────────
 
+/**
+ * Paper / PDF: dark text on white. Every screen rule below that sets a color
+ * or a background is repeated here with the same selector — equal specificity,
+ * so the later print rule wins (`.msg` alone would lose to `.msg.handler`).
+ * transcript-print.test.ts enforces the coverage and the contrast.
+ */
+const PRINT_STYLES = `@media print {
+:root { color-scheme: light; }
+body { background: ${PALETTE.printBackground}; color: ${PALETTE.printText}; }
+.msg, .msg.handler, dl, .summary { background: ${PALETTE.printBackground}; }
+.subject, h2, .tag, .tag.alert, a { color: ${PALETTE.printText}; }
+.kicker, dt, .time, .event, .summary .note, .msg.deleted .body, .original, .truncated, footer { color: ${PALETTE.printMuted}; }
+.tag, .msg, dl, .summary, .event, .original, footer { border-color: ${PALETTE.printBorder}; }
+.tag.alert, .msg.internal { border-color: ${PALETTE.printText}; }
+}
+`;
+
 const STYLES = `
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -329,9 +352,7 @@ li { margin: 0 0 12px; }
 a { color: ${PALETTE.text}; }
 .truncated { color: ${PALETTE.muted}; font-style: italic; }
 footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid ${PALETTE.border}; color: ${PALETTE.muted}; }
-@media print { body { background: ${PALETTE.printBackground}; color: ${PALETTE.printText}; }
-  .msg, dl, .summary { background: ${PALETTE.printBackground}; } }
-`;
+${PRINT_STYLES}`;
 
 function htmlAttachment(attachment: TicketAttachment): string {
   const label = `${escapeHtml(attachment.name)} (${formatBytes(attachment.size)})`;

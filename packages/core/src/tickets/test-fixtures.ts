@@ -18,6 +18,11 @@ import type { TicketSummary } from './views';
  * the shared build machine they can exceed the default 20 s under heavy load.
  */
 export const INTEGRATION_SUITE = { timeout: 90_000 } as const;
+/**
+ * Timeout for the kit's setup/teardown hooks. The first kit in a worker builds
+ * the migrated PGlite snapshot, which has exceeded the 60 s default under load.
+ */
+export const INTEGRATION_HOOK_TIMEOUT = 180_000;
 
 export const TICKET_CHANNEL_ID = '300000000000000001';
 export const ARCHIVE_CHANNEL_ID = '300000000000000002';

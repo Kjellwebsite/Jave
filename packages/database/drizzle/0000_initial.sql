@@ -282,20 +282,26 @@ CREATE TABLE "verifications" (
 	"claim" text NOT NULL,
 	"target_type" varchar(32),
 	"target_id" uuid,
+	"target_key" varchar(160) NOT NULL,
+	"target_label" varchar(200) NOT NULL,
 	"facet_key" varchar(48),
 	"requested_rank" varchar(4),
 	"granted_rank" varchar(4),
 	"status" "verification_status" DEFAULT 'pending' NOT NULL,
-	"requested_by_user_id" uuid NOT NULL,
+	"requested_by_user_id" uuid,
 	"assigned_verifier_user_id" uuid,
 	"verifier_user_id" uuid,
 	"decision_note" text,
+	"outcome" jsonb,
 	"requested_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"review_started_at" timestamp with time zone,
 	"decided_at" timestamp with time zone,
 	"expires_at" timestamp with time zone,
 	"revoked_at" timestamp with time zone,
 	"revoked_by_user_id" uuid,
 	"revoke_reason" text,
+	"queue_channel_id" varchar(20),
+	"queue_message_id" varchar(20),
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -1256,9 +1262,12 @@ CREATE INDEX "application_status_changes_app_idx" ON "application_status_changes
 CREATE UNIQUE INDEX "applications_number_uq" ON "applications" USING btree ("number");--> statement-breakpoint
 CREATE UNIQUE INDEX "applications_open_per_user_uq" ON "applications" USING btree ("user_id") WHERE "applications"."status" in ('draft', 'submitted', 'review', 'interview');--> statement-breakpoint
 CREATE INDEX "applications_status_idx" ON "applications" USING btree ("status","submitted_at");--> statement-breakpoint
+CREATE INDEX "verification_evidence_evidence_idx" ON "verification_evidence" USING btree ("evidence_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "verifications_number_uq" ON "verifications" USING btree ("number");--> statement-breakpoint
+CREATE UNIQUE INDEX "verifications_open_target_uq" ON "verifications" USING btree ("target_key") WHERE "verifications"."status" in ('pending', 'in_review');--> statement-breakpoint
 CREATE INDEX "verifications_subject_idx" ON "verifications" USING btree ("subject_member_id");--> statement-breakpoint
 CREATE INDEX "verifications_status_idx" ON "verifications" USING btree ("status","requested_at");--> statement-breakpoint
+CREATE INDEX "verifications_expiry_idx" ON "verifications" USING btree ("status","expires_at");--> statement-breakpoint
 CREATE INDEX "verifications_target_idx" ON "verifications" USING btree ("target_type","target_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "trial_evaluations_team_uq" ON "trial_evaluations" USING btree ("trial_id","team_id","evaluator_user_id") WHERE "trial_evaluations"."member_id" is null;--> statement-breakpoint
 CREATE UNIQUE INDEX "trial_evaluations_member_uq" ON "trial_evaluations" USING btree ("trial_id","member_id","evaluator_user_id") WHERE "trial_evaluations"."member_id" is not null;--> statement-breakpoint

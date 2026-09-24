@@ -1,5 +1,5 @@
 {
-  "id": "96461197-2edb-441d-badc-995a635e6832",
+  "id": "9095ec26-1781-47e1-9ed7-e56e94114198",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2053,7 +2053,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "verification_evidence_evidence_idx": {
+          "name": "verification_evidence_evidence_idx",
+          "columns": [
+            {
+              "expression": "evidence_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "verification_evidence_verification_id_verifications_id_fk": {
           "name": "verification_evidence_verification_id_verifications_id_fk",
@@ -2155,6 +2171,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "target_key": {
+          "name": "target_key",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_label": {
+          "name": "target_label",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "facet_key": {
           "name": "facet_key",
           "type": "varchar(48)",
@@ -2185,7 +2213,7 @@
           "name": "requested_by_user_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "assigned_verifier_user_id": {
           "name": "assigned_verifier_user_id",
@@ -2205,12 +2233,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "outcome": {
+          "name": "outcome",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "requested_at": {
           "name": "requested_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "review_started_at": {
+          "name": "review_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "decided_at": {
           "name": "decided_at",
@@ -2239,6 +2279,18 @@
         "revoke_reason": {
           "name": "revoke_reason",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "queue_channel_id": {
+          "name": "queue_channel_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "queue_message_id": {
+          "name": "queue_message_id",
+          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false
         },
@@ -2273,6 +2325,22 @@
           "method": "btree",
           "with": {}
         },
+        "verifications_open_target_uq": {
+          "name": "verifications_open_target_uq",
+          "columns": [
+            {
+              "expression": "target_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"verifications\".\"status\" in ('pending', 'in_review')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "verifications_subject_idx": {
           "name": "verifications_subject_idx",
           "columns": [
@@ -2299,6 +2367,27 @@
             },
             {
               "expression": "requested_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "verifications_expiry_idx": {
+          "name": "verifications_expiry_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

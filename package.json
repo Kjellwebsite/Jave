@@ -1,0 +1,42 @@
+{
+  "name": "jave",
+  "private": true,
+  "version": "0.1.0",
+  "description": "JAVE — the operating layer of JAVELIN. Discord bot, operations dashboard and Activity on one data layer.",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev:bot": "pnpm --filter @jave/bot dev",
+    "dev:dashboard": "pnpm --filter @jave/dashboard dev",
+    "dev:activity": "pnpm --filter @jave/activity dev",
+    "build": "pnpm -r --filter './apps/*' build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "pnpm --filter @jave/dashboard test:e2e",
+    "db:generate": "pnpm --filter @jave/database generate",
+    "db:migrate": "pnpm --filter @jave/database migrate",
+    "db:seed": "pnpm --filter @jave/database seed",
+    "db:check": "pnpm --filter @jave/database check",
+    "commands:deploy": "pnpm --filter @jave/bot commands:deploy",
+    "check": "pnpm typecheck && pnpm lint && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.4",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.1"
+  }
+}

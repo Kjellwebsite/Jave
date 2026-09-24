@@ -111,6 +111,19 @@ export const NOTIFICATION_TYPES = {
     severity: 'notice',
     channels: ['discord_dm'],
   },
+  'contribution.updated': {
+    label: 'Contribution update',
+    description: 'A contribution of yours was recorded, verified or rejected.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
+  'integration.alert': {
+    label: 'Integration alert',
+    description: 'An integration or outbound webhook needs attention.',
+    severity: 'important',
+    channels: ['discord_dm'],
+    staff: true,
+  },
 } as const satisfies Record<string, NotificationTypeDefinition>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;

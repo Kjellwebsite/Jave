@@ -314,3 +314,18 @@ main {
 .review-features dd { margin: 0; color: var(--text-2); }
 
 .review-explain { font-size: 13px; color: var(--text-2); }
+
+.error-box {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  max-width: 520px;
+  margin: 12vh auto;
+  padding: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+
+.error-box.is-compact { margin: 24px auto; }
+.error-box p { color: var(--text-2); }

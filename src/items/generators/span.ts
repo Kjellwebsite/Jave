@@ -49,10 +49,12 @@ export const spatialSpan = generatorParadigm<SpatialSpanContent, string>({
   levels: SPATIAL_LEVELS,
   practiceLevels: [3],
   generate(level, rng) {
+    // Up to nine blocks: all distinct. Longer sequences revisit blocks, never twice in a row.
+    const distinct = level <= CORSI_LAYOUT.length;
     const sequence: number[] = [];
     while (sequence.length < level) {
       const b = rng.int(0, CORSI_LAYOUT.length - 1);
-      if (!sequence.includes(b)) sequence.push(b);
+      if (distinct ? !sequence.includes(b) : sequence[sequence.length - 1] !== b) sequence.push(b);
     }
     return {
       content: { sequence, onMs: 700, offMs: 250 },

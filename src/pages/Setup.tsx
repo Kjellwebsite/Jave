@@ -1,3 +1,4 @@
+import '../app/engine';
 import { useMemo, useState } from 'react';
 import { detectDevice } from '../app/device';
 import { navigate } from '../app/router';

@@ -1,3 +1,4 @@
+import '../app/engine';
 import { motion } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { navigate } from '../app/router';

@@ -1,4 +1,14 @@
 /* Matrix */
+@media (min-width: 1100px) {
+  .task.mx {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 40px;
+  }
+  .task.mx > .task-prompt { grid-column: 1 / -1; }
+  .mx-options .choice-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+}
+
 .mx-frame {
   justify-self: center;
   width: min(100%, 440px);
@@ -55,6 +65,7 @@
   display: block;
   aspect-ratio: 1;
   overflow: hidden;
+  border: 0;
 }
 
 .mx-option-panel .mx-panel {

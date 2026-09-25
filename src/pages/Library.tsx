@@ -1,3 +1,4 @@
+import '../app/engine';
 import { navigate } from '../app/router';
 import { startSession } from '../app/sessions';
 import { Footer, Header } from '../components/Chrome';

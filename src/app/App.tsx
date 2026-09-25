@@ -1,5 +1,6 @@
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { lazy, Suspense, useEffect } from 'react';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { type Route, useRoute } from './router';
 import './app.css';
 
@@ -43,6 +44,7 @@ export function App() {
       <a className="skip-link" href="#main">
         Skip to content
       </a>
+      <ErrorBoundary>
       <Suspense fallback={<div className="page-loading" aria-hidden="true" />}>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
@@ -57,6 +59,7 @@ export function App() {
           </motion.div>
         </AnimatePresence>
       </Suspense>
+      </ErrorBoundary>
     </MotionConfig>
   );
 }

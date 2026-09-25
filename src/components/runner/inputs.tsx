@@ -62,6 +62,7 @@ export function ChoiceGrid({
               type="button"
               role="radio"
               aria-checked={selected === i}
+              aria-label={typeof o === 'string' ? undefined : `Option ${i + 1}`}
               className={`choice-option ${state} ${optionClassName}`}
               disabled={disabled}
               onClick={() => setSelected(i)}

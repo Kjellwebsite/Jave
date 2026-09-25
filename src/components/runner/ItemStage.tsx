@@ -1,3 +1,4 @@
+import { ErrorBoundary } from '../ErrorBoundary';
 import { motion } from 'motion/react';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getParadigm } from '../../engine/registry';
@@ -91,9 +92,11 @@ export function ItemStage({ item, practice, askConfidence, onDone }: Props) {
         </div>
       ) : null}
       <div className={`item-body ${phase.kind !== 'answer' ? 'is-answered' : ''}`} aria-hidden={phase.kind === 'confidence'}>
-        <Suspense fallback={<div className="renderer-loading" />}>
+        <ErrorBoundary compact>
+<Suspense fallback={<div className="renderer-loading" />}>
           <Renderer item={item} practice={practice} disabled={phase.kind !== 'answer'} onAnswer={handleAnswer} reveal={phase.kind === 'feedback' ? phase.reveal : undefined} />
         </Suspense>
+</ErrorBoundary>
       </div>
       {phase.kind === 'confidence' ? (
         <motion.div className="stage-overlay" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>

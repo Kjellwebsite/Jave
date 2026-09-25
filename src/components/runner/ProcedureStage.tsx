@@ -1,3 +1,4 @@
+import { ErrorBoundary } from '../ErrorBoundary';
 import { Suspense, useCallback, useRef } from 'react';
 import type { InputKind } from '../../types';
 import { procedureRenderer } from '../tasks';
@@ -15,9 +16,11 @@ export function ProcedureStage({ paradigm, config, input, onComplete }: { paradi
   );
   return (
     <div className="procedure-stage">
-      <Suspense fallback={<div className="renderer-loading" />}>
+      <ErrorBoundary compact>
+<Suspense fallback={<div className="renderer-loading" />}>
         <Renderer config={config} input={input} onComplete={complete} />
       </Suspense>
+</ErrorBoundary>
     </div>
   );
 }

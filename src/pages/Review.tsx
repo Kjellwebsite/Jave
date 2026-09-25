@@ -1,3 +1,4 @@
+import '../app/engine';
 import { Suspense, useMemo, useState } from 'react';
 import { BAND_LABEL, information, thetaMax } from '../adaptive/irt';
 import { Footer, Header } from '../components/Chrome';

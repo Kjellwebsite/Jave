@@ -1,74 +1,44 @@
-# JVLN Intelligence Assessment
+# JVLN Intelligence
 
-by Javelin. Eleven cognitive domains, one rank from **F** to **S**.
+A multidimensional, adaptive assessment of how you think, by Javelin.
 
-JVLN runs a short task per domain (the *Core battery*, about 40 minutes), ranks each domain against other users and combines them into an overall JVLN rank. Each task also reports finer *facets*, and preferences with no better or worse end (risk taking, loss aversion) are shown as style scales instead of ranks.
+JVLN measures eleven cognitive domains with 37 instruments. Items are selected adaptively under item response theory. Every estimate comes with its uncertainty. Until the items are calibrated on a large sample, all ranks are **provisional and unnormed**, and no percentiles are shown.
+
+> JVLN estimates performance on the measured constructs. It is not an IQ test, not a clinical instrument, and must not be used for decisions about a person.
 
 ## Run it
 
 ```bash
 npm install
-npm run dev        # local dev server
-npm run build      # typecheck + production build into dist/
-npm run preview    # serve the build
+npm run dev          # development server
+npm test             # unit, integration and simulation tests (Vitest)
+npm run build        # typecheck and production build (static, host anywhere)
+npm run e2e          # Playwright browser tests (set PW_CHROMIUM to a Chromium binary if needed)
 ```
 
-The build uses relative paths, so `dist/` can be hosted on GitHub Pages, Netlify, Vercel or any static host.
+## What is inside
 
-## The Core battery
+| | |
+|---|---|
+| **Engine** (`src/engine`, `src/adaptive`) | UI-independent: 3PL model, EAP estimation, maximum-information selection with randomesque exposure control and content balancing, combined stopping rules, deterministic seeded sessions, idempotent submission, and resume that voids the open item |
+| **Items** (`src/items`) | Generators with validity checks for matrices, series, deduction, analogies, balance, probability, spans, planning, games, belief tracking, artificial language, orientation, specimens and layout, plus five authored banks. Every item is validated with Zod before it is shown. |
+| **Procedures** (`src/tasks`) | Reaction time, visual search, sustained attention, flanker, task switching, rule discovery, category learning with retention, reversal learning (Rescorla–Wagner fit), n-back, paired associates with delayed recall, dual task, typing, alternative uses and constrained writing |
+| **Scoring** (`src/scoring`) | Facet, domain and general estimates; provisional S–F ranks with ranges; metacognition (bias, Brier decomposition, type-2 AUROC with bootstrap intervals); performance metrics with reliability caveats |
+| **UI** (`src/pages`, `src/components`) | Landing, method, setup, runner, report, instrument library and internal item review. White / silver / graphite, dark mode, reduced motion, keyboard and touch |
 
-| # | Domain | Task | Primary score |
-|---|---|---|---|
-| 01 | Reasoning | Matrix Reasoning (generated 3×3 puzzles) | Difficulty-weighted accuracy |
-| 02 | Memory | Corsi Blocks | Spatial span |
-| 03 | Speed & Attention | Reaction Suite (simple + choice RT) | Median RT in ms, normed per input type |
-| 04 | Executive Function | Rule Shift (card sorting with hidden rule changes) | Accuracy |
-| 05 | Learning | Alien Categories (rule learning + transfer) | Learning and transfer accuracy |
-| 06 | Decision Making | Odds (expected value under time pressure) | Accuracy, plus risk and loss style |
-| 07 | Creativity | Remote Associates | Triads solved |
-| 08 | Metacognition | Signal Check (adaptive dot comparison + confidence) | Type-2 AUROC |
-| 09 | Social & Emotional | Story Minds (theory of mind stories) | Accuracy |
-| 10 | Language | Word Power (vocabulary + analogies) | Accuracy |
-| 11 | Perception | Motion Sense (random-dot motion, staircase) | Coherence threshold |
+## Documentation
 
-Generated items (matrices, sequences, deals, aliens, dots) differ on every run, so answers cannot be memorised or shared.
+| Document | Content |
+|---|---|
+| [RESEARCH.md](docs/RESEARCH.md) | The research basis, with citations |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Structure, data flow, data model |
+| [PSYCHOMETRICS.md](docs/PSYCHOMETRICS.md) | Construct model and interpretation rules |
+| [ADAPTIVE_TESTING.md](docs/ADAPTIVE_TESTING.md) | Estimation, selection, stopping, calibration path |
+| [TASK_DESIGN.md](docs/TASK_DESIGN.md) | Every instrument, its difficulty model and validity checks |
+| [SCORING.md](docs/SCORING.md) | Scores, ranks, metrics and the report |
+| [LIMITATIONS.md](docs/LIMITATIONS.md) | What the results cannot tell you |
+| [AUDIT.md](docs/AUDIT.md) | Psychometric, UX, accessibility and performance audits; break-it log |
 
-## Ranking
+## Privacy
 
-1. Each task produces a raw score.
-2. The score becomes a z-score against the task's norm (`src/core/norms.ts`), then a percentile.
-3. Percentile → rank: **S** top 3% · **A** top 15% · **B** top 35% · **C** middle 30% · **D** bottom 35% · **E** bottom 15% · **F** bottom 5%.
-4. The overall rank combines domain z-scores, corrected for the fact that averaging correlated scores narrows their spread (`compositeZ` in `src/core/scoring.ts`).
-
-The norms are **provisional** estimates until the backend collects real first attempts (target: 500 per task and input type). Then ranks are computed against JVLN users.
-
-## Project layout
-
-```
-src/
-  core/        engine: types, DOM helpers, shared UI, scoring, norms, storage
-  tasks/       one file per task, registered in tasks/index.ts
-  views/       home, task runner (intro → task → rank reveal), report
-  domains.ts   the 11 domains and all facets of the JVLN model
-  styles/      design tokens and styles (light + dark)
-```
-
-### Adding a task
-
-Create `src/tasks/<name>.ts` exporting a `TaskDef`:
-
-- `run(ctx)` draws into `ctx.stage`, calls `ctx.progress(done, total)` and returns `{ score, scoreDisplay, facets, styles?, trials }`.
-- Use the helpers in `core/ui.ts` (`choose`, `textAnswer`, `interlude`, `flash`, `countIn`) and pass `ctx.signal` so the Exit button can cancel the task.
-- Add a norm for the task id in `core/norms.ts` and register the task in `tasks/index.ts`.
-
-Raw trials are stored with every result so scoring can be improved and recomputed later.
-
-## Roadmap
-
-- **Backend**: anonymous result collection, live user norms per task, input type and age band.
-- **Deep Dives**: more tasks per domain to measure the remaining facets.
-- **Creativity with AI scoring**: alternative uses, divergent association, originality compared against all answers.
-- **Social**: face-based emotion recognition.
-- **Share card** image for social media.
-
-JVLN is a cognitive self-assessment for insight and fun. It is not a clinical or diagnostic test.
+No account and no personal data. Sessions are stored in the browser's local storage only. Fonts are self-hosted and no third-party requests are made. The report can export all data as JSON or delete it.

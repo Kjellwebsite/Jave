@@ -19,8 +19,8 @@
   --line-strong: #cfd3d8;
   --text: var(--graphite);
   --text-2: #3b3f45;
-  --muted: var(--steel);
-  --faint: #9aa0a7;
+  --muted: #5d636a;
+  --faint: #6a7077;
   --accent: #8d939a;
   --accent-soft: #d9dce0;
   --metal: linear-gradient(180deg, #ffffff 0%, #eef0f2 55%, #e3e6e9 100%);
@@ -59,7 +59,7 @@
     --text: #eceef1;
     --text-2: #c6cad0;
     --muted: #8a9099;
-    --faint: #5f656d;
+    --faint: #7e848c;
     --accent: #a9afb6;
     --accent-soft: #2a2e34;
     --metal: linear-gradient(180deg, #1a1d21 0%, #15171b 60%, #121417 100%);
@@ -84,7 +84,7 @@
   --text: #eceef1;
   --text-2: #c6cad0;
   --muted: #8a9099;
-  --faint: #5f656d;
+  --faint: #7e848c;
   --accent: #a9afb6;
   --accent-soft: #2a2e34;
   --metal: linear-gradient(180deg, #1a1d21 0%, #15171b 60%, #121417 100%);

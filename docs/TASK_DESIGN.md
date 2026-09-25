@@ -404,3 +404,38 @@ An authored item enters a bank only if a reviewer can answer **yes** to all of t
 8. Is it original rather than copied from a published test?
 
 The item schema stores `reviewed: boolean`. Unreviewed items are excluded from administration.
+
+## Implementation notes (v1.0)
+
+Where the implementation deviates from the tables above, the implementation is authoritative. Each deviation was made to keep items valid and unambiguous.
+
+- **Planning (tower).** The 3-ball state space has a maximum of 8 minimum moves and the 4-ball space a maximum of 9. Levels 7–9 are therefore defined by detours instead: L7 is 7 moves with ≥3 detours, L8 is 8 with ≥4, and L9 is 9 with ≥5 (only 24 distinct problems exist). The answer is typed (1–20), so c = 0.
+- **Backward induction.**
+  - With {1,2,3} and two heaps, won positions almost always have two winning moves. Two-heap levels therefore use irregular sets such as {1,3,4}, {2,3,5}, {1,2,6} and {1,4,6}.
+  - Normal play is defined as "whoever cannot move loses". Misère move sets always contain 1.
+  - About 25% of positions are losing, and the key is then "No move guarantees a win".
+- **Spatial sequence.** Nine blocks, so a 10-position sequence revisits blocks, never twice in a row.
+- **Balance systems.**
+  - Scales must determine every weight, not only the asked ratio.
+  - Answers run from 2 to 60.
+  - "Elimination" levels cannot be solved by repeatedly using a scale with a single unknown.
+- **Probabilistic reasoning.**
+  - The expected-value level keeps only items where the naive average points the wrong way.
+  - Simpson items show a reversal in about 70% of cases, so "paradox" is not always the answer.
+- **Belief tracking.**
+  - 3 containers at L1–L2 and 4 from L3.
+  - One option may be a container the object never visited, which keeps L1 from having only two options.
+  - Every secret watch changes the answer.
+  - The story stays visible during the question, so the control question is a comprehension and attention check rather than a pure memory test.
+- **Artificial language.**
+  - Wrong options are plausible misapplications of a rule (English word order, a suffix on the wrong noun, agreement with the object), not simple omissions.
+  - L7 tests a double possessive after showing only single ones.
+- **Orientation.**
+  - From L2, the key never equals the map-relative direction, so answering without rotating fails.
+  - The collinearity rule is waived for front and back keys, because the 12° margin already enforces separation.
+- **Specimen anomaly.**
+  - L1 and L2 carry 2 and 3 noise traits, so the eight regular specimens are distinct.
+  - The numeric rule is limb pairs = segments + k.
+  - No simpler rule may single out a different specimen.
+- **Layout precision.** Offsets are 12, 10, 6, 4, 3 and 2 px. 8 px is avoided so that exactly one element is off the 8-px grid.
+- **Authored banks.** 157 live items: social 37, strategic 28, semantic 36, reading 27, prompting 28. Each bank also has two practice items.

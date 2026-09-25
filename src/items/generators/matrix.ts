@@ -455,16 +455,28 @@ export function generateMatrix(level: number, rng: Rng): { content: MatrixConten
   throw new Error(`matrix: could not generate level ${level}`);
 }
 
+const ATTR_NAME: Record<string, string> = { shape: 'shape', size: 'size', shade: 'shade', angle: 'rotation', count: 'number of figures', pos: 'positions' };
+const RULE_TEXT: Record<RuleKind, string> = {
+  const: 'stays the same',
+  rowConst: 'is constant within each row',
+  prog: 'changes step by step along each row',
+  dist3: 'takes the same three values in every row, in a different order',
+  arith: 'in the third column equals the first combined with the second (added or subtracted)',
+  setop: 'in the third column combine the first two (overlay, overlap or difference)',
+};
+
+/** Plain-language rule summary, shown in practice feedback and item review. */
 function describe(content: MatrixContent): string {
   return content.components
     .map((c, i) => {
       const rules = Object.entries(c.rules)
         .filter(([, r]) => r !== 'const')
-        .map(([a, r]) => `${a}: ${r}`)
-        .join(', ');
-      return `${content.components.length > 1 ? (i === 0 ? 'Left' : 'Right') + ' — ' : ''}${c.layout}; ${rules || 'no varying attributes'}`;
+        .map(([a, r]) => `the ${ATTR_NAME[a]} ${RULE_TEXT[r as RuleKind]}`)
+        .join('; ');
+      const prefix = content.components.length > 1 ? (i === 0 ? 'Left part: ' : 'Right part: ') : '';
+      return `${prefix}${rules || 'nothing varies'}.`;
     })
-    .join(' · ');
+    .join(' ');
 }
 
 export const matrix = generatorParadigm<MatrixContent, number>({

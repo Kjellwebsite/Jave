@@ -1,9 +1,11 @@
 import { selectCandidate } from '../adaptive/select';
 import { shouldStop } from '../adaptive/stopping';
 import type { ItemParadigm } from '../items/paradigm';
+import { validateItem } from '../items/schema';
 import { domainEstimate, paradigmEstimate } from '../scoring/estimates';
 import type {
   Action,
+  Item,
   DeviceInfo,
   Mode,
   PendingStep,
@@ -252,9 +254,26 @@ function issueNext(s: Session, now: number) {
     maxStep: MAX_EARLY_STEP,
   });
   if (!choice) return finishSection(s, now, 'exhausted');
-  // Never show the same generated instance twice in a section (small pools at easy levels).
-  let item = paradigm.instantiate(choice.key, rng.fork('item'));
-  for (let retry = 1; retry < 8 && section.used.includes(item.id); retry++) item = paradigm.instantiate(choice.key, rng.fork(`item-${retry}`));
+  // Never show the same generated instance twice in a section (small pools at easy levels),
+  // and never show an item that fails validation.
+  let item: Item | null = null;
+  for (let retry = 0; retry < 8; retry++) {
+    let candidate: Item;
+    try {
+      candidate = paradigm.instantiate(choice.key, rng.fork(retry ? `item-${retry}` : 'item'));
+    } catch (e) {
+      s.events.push({ at: now, type: 'void', detail: `generation failed: ${choice.key}: ${String(e).slice(0, 120)}` });
+      continue;
+    }
+    const issues = validateItem(candidate);
+    if (issues.length) {
+      s.events.push({ at: now, type: 'void', detail: `invalid item ${candidate.id}: ${issues[0]}` });
+      continue;
+    }
+    item = candidate;
+    if (!section.used.includes(candidate.id)) break;
+  }
+  if (!item) return finishSection(s, now, 'exhausted');
   const confidence = rng.fork('confidence').chance(plan.confidenceRate);
   s.pending = { type: 'item', stepId, section: s.cursor, item, issuedAt: now, index: answered, confidence };
 }

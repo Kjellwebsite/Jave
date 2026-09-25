@@ -139,6 +139,14 @@ export const DOMAIN_EVENTS = {
   'mission.accepted': { description: 'A member accepted a mission assignment.', external: false },
   'mission.abandoned': { description: 'A member abandoned a mission.', external: false },
   'mission.closed': { description: 'A mission closed or was archived.', external: false },
+  'referral.recorded': {
+    description: 'A join was attributed to a referral source.',
+    external: false,
+  },
+  'referral.invalidated': {
+    description: 'A referral was invalidated after staff review.',
+    external: false,
+  },
 } as const satisfies Record<string, DomainEventDefinition>;
 
 export type DomainEventType = keyof typeof DOMAIN_EVENTS;

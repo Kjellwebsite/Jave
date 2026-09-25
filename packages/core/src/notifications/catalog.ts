@@ -186,6 +186,12 @@ export const NOTIFICATION_TYPES = {
     severity: 'info',
     channels: [],
   },
+  'referral.validated': {
+    label: 'Referral validated',
+    description: 'Someone you referred passed retention and became a valid referral.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
 } as const satisfies Record<string, NotificationTypeDefinition>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;

@@ -126,3 +126,18 @@ describe('complete assessments', () => {
     }
   });
 });
+
+describe('guessing participants', () => {
+  it('cannot extend a section indefinitely with rapid guesses', () => {
+    let s = createSession({ mode: 'single', plan: planFor('single', 'series'), device, now: 0, seed: 77 });
+    s = dispatch(s, { type: 'begin', section: 0 }, 1);
+    for (let i = 0; i < 100 && s.status === 'active'; i++) {
+      const step = getStep(s);
+      if (step.type === 'practice') s = dispatch(s, { type: 'practice-answer', stepId: step.stepId, value: { kind: 'number', value: 1 } }, 2);
+      else if (step.type === 'item') s = dispatch(s, { type: 'answer', stepId: step.stepId, value: { kind: 'number', value: 1 }, rtMs: 300 }, 3);
+    }
+    expect(s.status).toBe('complete');
+    expect(s.sections[0].responses.length).toBe(planFor('single', 'series')[0].stop.maxItems);
+    expect(s.sections[0].responses.every((r) => r.rapid)).toBe(true);
+  });
+});

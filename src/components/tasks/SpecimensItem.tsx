@@ -24,20 +24,23 @@ function Organism({ s }: { s: Specimen }) {
       parts.push(<line key={`l${i}b`} x1="62" y1={y} x2="78" y2={y + 5} stroke={INK} strokeWidth="1.2" strokeLinecap="round" />);
     }
   } else {
-    for (let i = s.segments; i >= 1; i--) {
-      parts.push(<circle key={`s${i}`} cx="50" cy="55" r={6 + i * 5} fill={i === s.segments ? fill : 'none'} stroke={INK} strokeWidth="1.1" />);
+    // Radial body: one disc divided into `segments` wedges.
+    const R = 20;
+    parts.push(<circle key="body" cx="50" cy="55" r={R} fill={fill} stroke={INK} strokeWidth="1.2" />);
+    for (let i = 0; i < s.segments; i++) {
+      const a = -Math.PI / 2 + (i / s.segments) * Math.PI * 2;
+      parts.push(<line key={`w${i}`} x1="50" y1="55" x2={50 + Math.cos(a) * R} y2={55 + Math.sin(a) * R} stroke={INK} strokeWidth="1" />);
     }
     const arms = s.limbPairs * 2;
     for (let i = 0; i < arms; i++) {
-      const a = (i / arms) * Math.PI * 2;
-      const r0 = 6 + s.segments * 5;
-      parts.push(<line key={`a${i}`} x1={50 + Math.cos(a) * r0} y1={55 + Math.sin(a) * r0} x2={50 + Math.cos(a) * (r0 + 9)} y2={55 + Math.sin(a) * (r0 + 9)} stroke={INK} strokeWidth="1.2" strokeLinecap="round" />);
+      const a = (i / arms) * Math.PI * 2 + Math.PI / arms;
+      parts.push(<line key={`a${i}`} x1={50 + Math.cos(a) * R} y1={55 + Math.sin(a) * R} x2={50 + Math.cos(a) * (R + 10)} y2={55 + Math.sin(a) * (R + 10)} stroke={INK} strokeWidth="1.2" strokeLinecap="round" />);
     }
-    if (s.marking === 'spots') [0, 1, 2].forEach((k) => parts.push(<circle key={`m${k}`} cx={44 + k * 6} cy="55" r="1.8" fill={INK} />));
-    if (s.marking === 'stripes') parts.push(<line key="m" x1="42" y1="55" x2="58" y2="55" stroke={INK} strokeWidth="1.2" />);
-    if (s.marking === 'rings') parts.push(<circle key="m" cx="50" cy="55" r="3.5" fill="none" stroke={INK} strokeWidth="1" />);
+    if (s.marking === 'spots') [0, 1, 2].forEach((k) => parts.push(<circle key={`m${k}`} cx={43 + k * 7} cy="62" r="1.8" fill={INK} />));
+    if (s.marking === 'stripes') parts.push(<line key="m" x1="36" y1="62" x2="64" y2="62" stroke={INK} strokeWidth="1.4" />);
+    if (s.marking === 'rings') parts.push(<circle key="m" cx="50" cy="55" r="7" fill="none" stroke={INK} strokeWidth="1.4" />);
   }
-  const headY = s.symmetry === 'bilateral' ? 22 : 55 - (6 + s.segments * 5);
+  const headY = s.symmetry === 'bilateral' ? 22 : 35;
   if (s.antennae !== 'none') {
     const len = s.antennae === 'short' ? 8 : 15;
     parts.push(<line key="a1" x1="46" y1={headY} x2={40} y2={headY - len} stroke={INK} strokeWidth="1.2" strokeLinecap="round" />);

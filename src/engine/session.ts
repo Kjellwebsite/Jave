@@ -226,7 +226,7 @@ function issueNext(s: Session, now: number) {
 
   // Adaptive loop
   const estimate = paradigmEstimate(s, plan.paradigm);
-  const stop = shouldStop(plan.stop, estimate, sectionActiveMs(section));
+  const stop = shouldStop(plan.stop, estimate, sectionActiveMs(section), section.responses.length);
   if (stop) return finishSection(s, now, stop);
 
   const candidates = paradigm.candidates(section.used);
@@ -252,7 +252,9 @@ function issueNext(s: Session, now: number) {
     maxStep: MAX_EARLY_STEP,
   });
   if (!choice) return finishSection(s, now, 'exhausted');
-  const item = paradigm.instantiate(choice.key, rng.fork('item'));
+  // Never show the same generated instance twice in a section (small pools at easy levels).
+  let item = paradigm.instantiate(choice.key, rng.fork('item'));
+  for (let retry = 1; retry < 8 && section.used.includes(item.id); retry++) item = paradigm.instantiate(choice.key, rng.fork(`item-${retry}`));
   const confidence = rng.fork('confidence').chance(plan.confidenceRate);
   s.pending = { type: 'item', stepId, section: s.cursor, item, issuedAt: now, index: answered, confidence };
 }

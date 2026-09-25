@@ -81,14 +81,14 @@ export default function OrientationItem({ item, disabled, onAnswer, reveal }: It
               <rect x="-6" y="-6" width="112" height="112" fill="#ffffff" />
               {[20, 40, 60, 80].map((g) => (
                 <g key={g}>
-                  <line x1={g} y1="-6" x2={g} y2="106" stroke="#eef0f2" />
-                  <line x1="-6" y1={g} x2="106" y2={g} stroke="#eef0f2" />
+                  <line x1={g} y1="-6" x2={g} y2="106" stroke="#eef0f2" strokeWidth="0.4" />
+                  <line x1="-6" y1={g} x2="106" y2={g} stroke="#eef0f2" strokeWidth="0.4" />
                 </g>
               ))}
               {c.landmarks.map((l) => (
                 <g key={l.name}>
-                  <circle cx={l.x} cy={l.y} r="2.2" fill="#181a1d" />
-                  <text x={l.x + 3.5} y={l.y - 3} fontSize="5" fontFamily="var(--font-sans)" fill="#181a1d">
+                  <circle cx={l.x} cy={l.y} r="1.6" fill="#181a1d" />
+                  <text x={l.x + 2.8} y={l.y - 2.2} fontSize="4.2" fontFamily="var(--font-sans)" fill="#181a1d">
                     {l.name}
                   </text>
                 </g>

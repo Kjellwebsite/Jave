@@ -5,6 +5,7 @@ import { displayRank } from '../../scoring/rank';
 
 export interface ProfileRow {
   id: string;
+  index: number;
   label: string;
   estimate: EstimateView | null;
   experimental?: boolean;
@@ -65,7 +66,7 @@ export function IntervalPlot({ rows }: { rows: ProfileRow[] }) {
             >
               <rect x={0} y={y - rowH / 2} width={W} height={rowH} fill="transparent" />
               <text x={0} y={y + 4} className="chart-label">
-                {r.label}
+                {String(r.index).padStart(2, '0')}  {r.label}
                 {r.experimental ? ' ·' : ''}
               </text>
               {e ? (
@@ -118,7 +119,7 @@ export function PolarProfile({ rows }: { rows: ProfileRow[] }) {
           <g key={row.id}>
             <line x1={c} y1={c} x2={x2} y2={y2} stroke="var(--line)" />
             <text x={lx} y={ly} textAnchor={Math.abs(Math.cos(angle(i))) < 0.2 ? 'middle' : Math.cos(angle(i)) > 0 ? 'start' : 'end'} dominantBaseline="middle" className="chart-tick">
-              {String(i + 1).padStart(2, '0')}
+              {String(row.index).padStart(2, '0')}
             </text>
           </g>
         );

@@ -77,7 +77,7 @@ function FacetRow({ f }: { f: FacetView }) {
           {f.items || f.estimate ? (
             <p className="facet-stats mono">
               <EstimateLine e={f.estimate} />
-              {f.items ? <span> · {f.items} items</span> : null}
+              {f.items && !f.estimate ? <span> · {f.items} items</span> : null}
               {f.rapid ? <span> · {f.rapid} rapid guesses excluded</span> : null}
               {f.excluded ? <span> · {f.excluded} excluded (memory check)</span> : null}
               {f.estimate?.ceiling ? <span> · ceiling reached</span> : null}
@@ -122,7 +122,7 @@ export default function ReportPage() {
   }
 
   const coreDomains = report.domains.filter((d) => d.info.status !== 'performance' && d.info.status !== 'metrics');
-  const rows: ProfileRow[] = coreDomains.map((d) => ({ id: d.info.id, label: `${String(d.info.index).padStart(2, '0')}  ${d.info.name}`, estimate: d.estimate, experimental: d.info.status === 'experimental' }));
+  const rows: ProfileRow[] = coreDomains.map((d) => ({ id: d.info.id, index: d.info.index, label: d.info.name, estimate: d.estimate, experimental: d.info.status === 'experimental' }));
   const measured = coreDomains.filter((d) => d.estimate);
   const strongest = [...measured].sort((a, b) => b.estimate!.lo - a.estimate!.lo).slice(0, 3);
   const g = report.general;
@@ -219,9 +219,9 @@ export default function ReportPage() {
             <div className="profile-polar">
               <PolarProfile rows={rows} />
               <ol className="polar-key mono">
-                {rows.map((r, i) => (
+                {rows.map((r) => (
                   <li key={r.id}>
-                    {String(i + 1).padStart(2, '0')} {r.label.replace(/^\d+\s+/, '')}
+                    {String(r.index).padStart(2, '0')} {r.label}
                   </li>
                 ))}
               </ol>
@@ -282,7 +282,8 @@ export default function ReportPage() {
             {report.domains.map((d) => {
               const taken = d.facets.filter((f) => f.status !== 'not-taken');
               if (!taken.length && !d.estimate && d.info.status !== 'metrics') return null;
-              if (d.info.status === 'metrics') return null;
+              // Metacognition and attention/processing have their own sections below.
+              if (d.info.status === 'metrics' || d.info.status === 'performance') return null;
               return (
                 <article key={d.info.id} className="domain-card">
                   <header className="domain-card-head">
@@ -292,7 +293,7 @@ export default function ReportPage() {
                       <p className="domain-card-short">{d.info.short}</p>
                     </div>
                     <div className="domain-card-rank">
-                      {d.estimate ? <RankRange e={d.estimate} size="sm" /> : <Tag tone="outline">{d.info.status === 'performance' ? 'Metrics only' : 'No estimate'}</Tag>}
+                      {d.estimate ? <RankRange e={d.estimate} size="sm" /> : <Tag tone="outline">No estimate</Tag>}
                       {d.info.status === 'experimental' ? <Tag>Experimental</Tag> : null}
                     </div>
                   </header>

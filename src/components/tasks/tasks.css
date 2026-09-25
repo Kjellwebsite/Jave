@@ -839,6 +839,8 @@
 
 .map {
   aspect-ratio: 1;
+  width: 100%;
+  max-width: 460px;
   display: grid;
   place-items: center;
   overflow: hidden;

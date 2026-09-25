@@ -94,8 +94,8 @@ export default function Review() {
           ) : null}
           {sample.errors.length ? <p className="runner-warning">{sample.errors.join(' · ')}</p> : null}
           <div className="review-items">
-            {sample.items.map((item) => (
-              <article key={item.id} className="review-item">
+            {sample.items.map((item, i) => (
+              <article key={`${i}-${item.id}`} className="review-item">
                 <header className="review-item-head">
                   <span className="mono">{item.id}</span>
                   <Tag tone="outline">Key: {describeKey(item)}</Tag>

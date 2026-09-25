@@ -115,6 +115,13 @@ export const DOMAIN_EVENTS = {
     external: false,
   },
   'settings.updated': { description: 'Server settings changed.', external: false },
+  'event.updated': { description: 'An event was edited or rescheduled.', external: false },
+  'event.started': { description: 'An event went live.', external: true },
+  'event.cancelled': { description: 'An event was cancelled.', external: false },
+  'tournament.completed': {
+    description: 'A tournament final concluded (one event per participant).',
+    external: true,
+  },
 } as const satisfies Record<string, DomainEventDefinition>;
 
 export type DomainEventType = keyof typeof DOMAIN_EVENTS;

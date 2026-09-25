@@ -125,6 +125,18 @@ export const NOTIFICATION_TYPES = {
     severity: 'notice',
     channels: ['discord_dm'],
   },
+  'event.updated': {
+    label: 'Event update',
+    description: 'An event you responded to was rescheduled or cancelled.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
+  'event.waitlist': {
+    label: 'Waitlist',
+    description: 'A spot opened for you at an event you waitlisted for.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
 } as const satisfies Record<string, NotificationTypeDefinition>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;

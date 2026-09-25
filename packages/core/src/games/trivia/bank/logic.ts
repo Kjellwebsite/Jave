@@ -1,0 +1,106 @@
+import type { TriviaQuestion } from './types';
+
+export const LOGIC_QUESTIONS: readonly TriviaQuestion[] = [
+  {
+    id: 'logic-01',
+    category: 'logic',
+    difficulty: 'easy',
+    prompt: 'If it rains, the ground is wet. The ground is not wet. What follows?',
+    correct: 'It did not rain.',
+    distractors: ['It rained.', 'The ground is dry because of the sun.', 'Nothing follows.'],
+    fact: 'Modus tollens: from "P implies Q" and "not Q", conclude "not P".',
+  },
+  {
+    id: 'logic-02',
+    category: 'logic',
+    difficulty: 'medium',
+    prompt: 'All builders ship. Some shippers are founders. What must be true?',
+    correct: 'Nothing definite about builders and founders follows.',
+    distractors: [
+      'Some builders are founders.',
+      'No builders are founders.',
+      'All founders are builders.',
+    ],
+    fact: 'The founders who ship may all be non-builders; the premises allow either case.',
+  },
+  {
+    id: 'logic-03',
+    category: 'logic',
+    difficulty: 'easy',
+    prompt:
+      'A bat and a ball cost $1.10 together. The bat costs $1.00 more than the ball. The ball costs:',
+    correct: '$0.05',
+    distractors: ['$0.10', '$0.01', '$0.15'],
+    fact: 'Ball x, bat x + 1.00: 2x + 1.00 = 1.10, so x = 0.05.',
+  },
+  {
+    id: 'logic-04',
+    category: 'logic',
+    difficulty: 'medium',
+    prompt: 'What is the negation of "Every system is secure"?',
+    correct: 'At least one system is not secure.',
+    distractors: ['No system is secure.', 'Some systems are secure.', 'Every system is insecure.'],
+    fact: 'Not (for all x, P) is equivalent to: there exists x with not P.',
+  },
+  {
+    id: 'logic-05',
+    category: 'logic',
+    difficulty: 'easy',
+    prompt: 'In a race you overtake the runner in second place. What place are you in now?',
+    correct: 'Second',
+    distractors: ['First', 'Third', 'It depends on the leader'],
+    fact: 'You take the place of the runner you passed.',
+  },
+  {
+    id: 'logic-06',
+    category: 'logic',
+    difficulty: 'medium',
+    prompt: 'The statement "P implies Q" is false exactly when:',
+    correct: 'P is true and Q is false.',
+    distractors: ['P is false and Q is true.', 'Both are false.', 'Both are true.'],
+    fact: 'A material implication only fails when a true premise leads to a false conclusion.',
+  },
+  {
+    id: 'logic-07',
+    category: 'logic',
+    difficulty: 'easy',
+    prompt:
+      '5 machines make 5 widgets in 5 minutes. How long do 100 machines take to make 100 widgets?',
+    correct: '5 minutes',
+    distractors: ['100 minutes', '20 minutes', '1 minute'],
+    fact: 'Each machine makes one widget in 5 minutes, in parallel.',
+  },
+  {
+    id: 'logic-08',
+    category: 'logic',
+    difficulty: 'easy',
+    prompt:
+      'A patch of lily pads doubles daily and covers the lake on day 48. When did it cover half?',
+    correct: 'Day 47',
+    distractors: ['Day 24', 'Day 46', 'Day 36'],
+    fact: 'Doubling from half on day 47 gives the full lake on day 48.',
+  },
+  {
+    id: 'logic-09',
+    category: 'logic',
+    difficulty: 'hard',
+    prompt:
+      'Knights always tell the truth, knaves always lie. A says: "We are both knaves." What are A and B?',
+    correct: 'A is a knave, B is a knight.',
+    distractors: ['Both are knaves.', 'A is a knight, B is a knave.', 'Both are knights.'],
+    fact: 'A knight could not say it; so A lies, and "both knaves" is false: B is a knight.',
+  },
+  {
+    id: 'logic-10',
+    category: 'logic',
+    difficulty: 'medium',
+    prompt: 'Which statement is equivalent to "If a project ships, it has tests"?',
+    correct: 'If a project has no tests, it does not ship.',
+    distractors: [
+      'If a project has tests, it ships.',
+      'If a project does not ship, it has no tests.',
+      'Every project with tests ships.',
+    ],
+    fact: 'A conditional is equivalent to its contrapositive, not to its converse or inverse.',
+  },
+];

@@ -1,0 +1,92 @@
+import type { TriviaQuestion } from './types';
+
+export const ENGINEERING_HISTORY_QUESTIONS: readonly TriviaQuestion[] = [
+  {
+    id: 'hist-01',
+    category: 'engineering_history',
+    difficulty: 'easy',
+    prompt:
+      'Who published an algorithm for the Analytical Engine in 1843, often called the first program?',
+    correct: 'Ada Lovelace',
+    distractors: ['Charles Babbage', 'Grace Hopper', 'Alan Turing'],
+    fact: 'Her Note G computed Bernoulli numbers on a machine that was never built.',
+  },
+  {
+    id: 'hist-02',
+    category: 'engineering_history',
+    difficulty: 'medium',
+    prompt: 'Where was the transistor invented in 1947?',
+    correct: 'Bell Labs',
+    distractors: ['Xerox PARC', 'IBM Research', 'MIT Lincoln Laboratory'],
+    fact: 'Bardeen, Brattain and Shockley shared the 1956 Nobel Prize in Physics for it.',
+  },
+  {
+    id: 'hist-03',
+    category: 'engineering_history',
+    difficulty: 'medium',
+    prompt:
+      'Unveiled in 1946, which machine was the first programmable, general-purpose electronic digital computer?',
+    correct: 'ENIAC',
+    distractors: ['UNIVAC I', 'Harvard Mark I', 'Colossus'],
+    fact: 'Colossus was electronic but special-purpose; the Mark I was electromechanical.',
+  },
+  {
+    id: 'hist-04',
+    category: 'engineering_history',
+    difficulty: 'easy',
+    prompt: 'Who proposed the World Wide Web at CERN in 1989?',
+    correct: 'Tim Berners-Lee',
+    distractors: ['Vint Cerf', 'Linus Torvalds', 'Marc Andreessen'],
+    fact: 'He also wrote the first web browser and web server.',
+  },
+  {
+    id: 'hist-05',
+    category: 'engineering_history',
+    difficulty: 'easy',
+    prompt:
+      'In which year did the Wright brothers make the first powered, controlled aeroplane flight?',
+    correct: '1903',
+    distractors: ['1893', '1911', '1927'],
+    fact: 'Kitty Hawk, 17 December 1903: 12 seconds, 37 metres.',
+  },
+  {
+    id: 'hist-06',
+    category: 'engineering_history',
+    difficulty: 'medium',
+    prompt: 'What did Moore’s law originally observe?',
+    correct: 'Transistors per chip double roughly every two years',
+    distractors: [
+      'Clock speeds double every year',
+      'Chip prices halve every decade',
+      'Power use per chip doubles every two years',
+    ],
+    fact: 'Gordon Moore said yearly in 1965 and revised it to every two years in 1975.',
+  },
+  {
+    id: 'hist-07',
+    category: 'engineering_history',
+    difficulty: 'hard',
+    prompt: 'Who designed the Brooklyn Bridge?',
+    correct: 'John A. Roebling',
+    distractors: ['Gustave Eiffel', 'Isambard Kingdom Brunel', 'Joseph Strauss'],
+    fact: 'After his death, his son Washington and Emily Warren Roebling saw it through to 1883.',
+  },
+  {
+    id: 'hist-08',
+    category: 'engineering_history',
+    difficulty: 'medium',
+    prompt: 'In which year was the first version of the Linux kernel released?',
+    correct: '1991',
+    distractors: ['1983', '1995', '1987'],
+    fact: 'Linus Torvalds announced it as "just a hobby" in August 1991.',
+  },
+  {
+    id: 'hist-09',
+    category: 'engineering_history',
+    difficulty: 'medium',
+    prompt: 'Who demonstrated the first working integrated circuit, in 1958?',
+    correct: 'Jack Kilby',
+    distractors: ['Robert Noyce', 'William Shockley', 'Gordon Moore'],
+    fact: 'Kilby built it at Texas Instruments; Noyce’s silicon version followed in 1959.',
+  },
+];

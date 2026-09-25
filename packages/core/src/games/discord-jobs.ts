@@ -1,0 +1,181 @@
+import { eq } from 'drizzle-orm';
+import { z } from 'zod';
+import { gameSessions } from '@jave/database';
+import { type ServiceContext, withTransaction } from '../kernel/context';
+import { ValidationError } from '../kernel/errors';
+import { parseInput } from '../kernel/validation';
+import { enqueueJob } from '../jobs/queue';
+import { recordAudit } from '../audit/audit.service';
+import { discordObjectVerdict } from '../calendar/discord-objects';
+import { requireSystemActor } from '../calendar/guards';
+import {
+  compareAndSetSession,
+  LIVE_SESSION_STATUSES,
+  loadPlayers,
+  loadSession,
+  type SessionRecord,
+} from './records';
+import { gameChannelUnavailableSchema, markGameMessageSchema } from './schemas';
+import { type SessionView, toSessionView } from './views';
+
+/**
+ * `discord.games.render` — show the current state of a Discord game session.
+ *
+ * Enqueued (in the same transaction) after every change to a session whose
+ * surface is 'discord': creation, join/leave, start, each accepted move, each
+ * timer transition, finish and abandon. One job per version; payload
+ * `{ sessionId, version }`.
+ *
+ * The bot must:
+ * 1. Load `getGameRender(ctx, sessionId)`. If `render.session.version > payload.version`,
+ *    return `{ skipped: 'superseded' }` — a newer render job is queued.
+ * 2. Build one panel from `render.session` (spectator view — never per-player data):
+ *    - lobby: game name, host, players `n/max`, buttons `games:join:<id>`, `games:leave:<id>`,
+ *      `games:start:<id>` (start is re-authorized by core: host or event staff only);
+ *    - trivia `question`: prompt, the four options as buttons
+ *      `games:move:<id>:<round>:<choice>`, answered count, closing time as a Discord timestamp;
+ *    - trivia `reveal`: the correct option highlighted, the fact line, scoreboard; no buttons;
+ *    - reaction `wait`/`go`: a single `games:move:<id>:<round>:tap` button;
+ *    - completed/abandoned: final standings (or the end reason); no buttons.
+ *    All player/user text through `userText()`; `allowedMentions: { parse: [] }`.
+ * 3. If `discordMessageId` is null:
+ *    - never post for an ended session (completed/abandoned): return skipped;
+ *    - verify the HOST can View Channel and Send Messages in `discordChannelId` — non-Discord
+ *      surfaces let a member name any channel id — and that the bot can post there; if not,
+ *      call `markGameChannelUnavailable(ctx, { sessionId, reason })` and stop;
+ *    - otherwise send the panel and report it with `markGameMessagePosted(ctx, { sessionId,
+ *      channelId, messageId, replacesMessageId: null })`.
+ *    If `discordMessageId` is set, edit that message. A deleted message (Unknown Message) is
+ *    re-posted after the same checks and reported with `replacesMessageId` = the old id.
+ *    When the result's `discard` is set, another run stored its message first: delete the
+ *    `discard` message and edit `result.messageId` with the panel instead.
+ * 4. Button clicks call `games.joinSession / leaveSession / startSession / submitMove`
+ *    as the clicking user (ephemeral replies for errors). The custom id never authorizes;
+ *    `submitMove` rejects non-players, closed rounds and duplicates.
+ *
+ * Serialization: the bot runs at most one render per session at a time (a per-session lock
+ * in the worker process); the compare-and-set in `markGameMessagePosted` is the backstop
+ * when runs still overlap, so a session never keeps two live panels.
+ *
+ * Discord permissions in the session channel: View Channel, Send Messages, Embed Links,
+ * Read Message History (to edit its own message; deleting its own message needs nothing more).
+ */
+export const DISCORD_GAMES_RENDER_JOB = 'discord.games.render';
+export const discordGamesRenderPayloadSchema = z.object({
+  sessionId: z.uuid(),
+  version: z.number().int().min(0),
+});
+export type DiscordGamesRenderPayload = z.infer<typeof discordGamesRenderPayloadSchema>;
+
+export async function enqueueRender(ctx: ServiceContext, session: SessionRecord): Promise<void> {
+  if (session.surface !== 'discord' || !session.discordChannelId) return;
+  const payload: DiscordGamesRenderPayload = { sessionId: session.id, version: session.version };
+  await enqueueJob(ctx, DISCORD_GAMES_RENDER_JOB, payload, {
+    dedupeKey: `${DISCORD_GAMES_RENDER_JOB}:${session.id}:v${session.version}`,
+  });
+}
+
+export interface GameRender {
+  session: SessionView;
+  discordChannelId: string | null;
+  discordMessageId: string | null;
+  /** Player Discord ids in join order, for rendering names as non-pinging mentions. */
+  playerDiscordIds: Record<string, string>;
+}
+
+/** Everything the bot needs to render a session. System actor only; spectator view. */
+export async function getGameRender(ctx: ServiceContext, sessionId: string): Promise<GameRender> {
+  requireSystemActor(ctx);
+  const session = await loadSession(ctx, parseInput(z.uuid(), sessionId));
+  const players = await loadPlayers(ctx, session.id);
+  return {
+    session: toSessionView(session, players, null),
+    discordChannelId: session.discordChannelId,
+    discordMessageId: session.discordMessageId,
+    playerDiscordIds: Object.fromEntries(players.map((p) => [p.userId, p.discordId])),
+  };
+}
+
+export interface GameMessageResult {
+  /** The session's message after the call — the one to edit from now on. */
+  messageId: string | null;
+  /** The reported message lost the compare-and-set: a duplicate the bot must delete. */
+  discard: string | null;
+}
+
+/**
+ * Callback for `discord.games.render`: remember the message the bot posted.
+ * Compare-and-set on the id the bot saw (`discordObjectVerdict`), under the
+ * session row lock.
+ */
+export async function markGameMessagePosted(
+  ctx: ServiceContext,
+  input: z.input<typeof markGameMessageSchema>,
+): Promise<GameMessageResult> {
+  requireSystemActor(ctx);
+  const data = parseInput(markGameMessageSchema, input);
+  return withTransaction(ctx, async (tx) => {
+    const session = await loadSession(tx, data.sessionId, { lock: true });
+    if (session.discordChannelId !== data.channelId) {
+      throw new ValidationError('The message is not in the session channel.');
+    }
+    const verdict = discordObjectVerdict(
+      session.discordMessageId,
+      data.messageId,
+      data.replacesMessageId,
+    );
+    if (verdict === 'discard') {
+      return { messageId: session.discordMessageId, discard: data.messageId };
+    }
+    if (verdict === 'store') {
+      await tx.db
+        .update(gameSessions)
+        .set({ discordMessageId: data.messageId })
+        .where(eq(gameSessions.id, session.id));
+    }
+    return { messageId: data.messageId, discard: null };
+  });
+}
+
+const CHANNEL_UNAVAILABLE_REASONS = {
+  host_cannot_post: 'The host cannot post in that channel.',
+  bot_cannot_post: 'JAVE cannot post in that channel.',
+} as const;
+
+/**
+ * Callback for `discord.games.render`: the session channel failed the bot's
+ * checks. Ends the session without enqueueing a render — nothing may be
+ * posted there — and audits the refusal with the host and channel, so
+ * repeated probing of channels the host cannot use is visible to moderators.
+ */
+export async function markGameChannelUnavailable(
+  ctx: ServiceContext,
+  input: z.input<typeof gameChannelUnavailableSchema>,
+): Promise<{ status: SessionRecord['status'] }> {
+  requireSystemActor(ctx);
+  const data = parseInput(gameChannelUnavailableSchema, input);
+  return withTransaction(ctx, async (tx) => {
+    const session = await loadSession(tx, data.sessionId, { lock: true });
+    if (!LIVE_SESSION_STATUSES.includes(session.status)) return { status: session.status };
+    const ended = await compareAndSetSession(tx, session, {
+      status: 'abandoned',
+      endedAt: tx.clock.now(),
+      endReason: CHANNEL_UNAVAILABLE_REASONS[data.reason],
+    });
+    if (!ended) return { status: session.status };
+    await recordAudit(tx, {
+      action: 'game.channel_rejected',
+      targetType: 'game_session',
+      targetId: session.id,
+      result: 'denied',
+      context: {
+        hostUserId: session.hostUserId,
+        channelId: session.discordChannelId,
+        surface: session.surface,
+        reason: data.reason,
+        previousStatus: session.status,
+      },
+    });
+    return { status: ended.status };
+  });
+}

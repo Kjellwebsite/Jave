@@ -17,17 +17,21 @@ CREATE TYPE "public"."trial_outcome" AS ENUM('distinction', 'pass', 'fail', 'inc
 CREATE TYPE "public"."trial_participant_status" AS ENUM('applied', 'selected', 'waitlisted', 'withdrawn', 'removed');--> statement-breakpoint
 CREATE TYPE "public"."trial_status" AS ENUM('draft', 'recruiting', 'teams_assigned', 'active', 'evaluating', 'completed', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."trial_team_role" AS ENUM('lead', 'member');--> statement-breakpoint
+CREATE TYPE "public"."adversarial_delivery" AS ENUM('pending', 'sent', 'undeliverable');--> statement-breakpoint
 CREATE TYPE "public"."adversarial_outcome" AS ENUM('resisted', 'detected', 'reported', 'partial', 'failure');--> statement-breakpoint
 CREATE TYPE "public"."adversarial_role_status" AS ENUM('planned', 'briefed', 'active', 'concluded', 'revealed', 'aborted');--> statement-breakpoint
 CREATE TYPE "public"."adversarial_technique" AS ENUM('social_engineering', 'instruction_integrity', 'permission_hygiene', 'data_handling', 'verification_discipline');--> statement-breakpoint
+CREATE TYPE "public"."ticket_author_role" AS ENUM('requester', 'handler', 'participant');--> statement-breakpoint
 CREATE TYPE "public"."ticket_category" AS ENUM('general', 'application', 'technical', 'report', 'partnership', 'trial', 'operations', 'other');--> statement-breakpoint
-CREATE TYPE "public"."ticket_event_type" AS ENUM('created', 'claimed', 'unclaimed', 'transferred', 'priority_changed', 'status_changed', 'closed', 'reopened', 'archived', 'note_added', 'summary_generated', 'transcript_accessed', 'sla_breached');--> statement-breakpoint
+CREATE TYPE "public"."ticket_event_type" AS ENUM('created', 'claimed', 'unclaimed', 'transferred', 'priority_changed', 'status_changed', 'closed', 'reopened', 'archived', 'note_added', 'summary_generated', 'transcript_accessed', 'sla_breached', 'sla_breach_retracted');--> statement-breakpoint
 CREATE TYPE "public"."ticket_priority" AS ENUM('low', 'normal', 'high', 'urgent');--> statement-breakpoint
 CREATE TYPE "public"."ticket_status" AS ENUM('open', 'claimed', 'waiting', 'closed', 'archived');--> statement-breakpoint
 CREATE TYPE "public"."discord_sync_state" AS ENUM('pending', 'applied', 'failed', 'not_required');--> statement-breakpoint
 CREATE TYPE "public"."mod_action" AS ENUM('warn', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'quarantine', 'release', 'note');--> statement-breakpoint
-CREATE TYPE "public"."mod_source" AS ENUM('manual', 'automod', 'ai_suggested', 'security_event');--> statement-breakpoint
+CREATE TYPE "public"."mod_case_end_reason" AS ENUM('expired', 'lifted', 'superseded', 'revoked');--> statement-breakpoint
+CREATE TYPE "public"."mod_source" AS ENUM('manual', 'automod', 'ai_suggested', 'security_event', 'system');--> statement-breakpoint
 CREATE TYPE "public"."security_action" AS ENUM('none', 'flagged', 'message_deleted', 'timeout', 'quarantine', 'kick', 'ban', 'lockdown');--> statement-breakpoint
+CREATE TYPE "public"."security_event_source" AS ENUM('automod', 'join_screening', 'manual', 'integration', 'system');--> statement-breakpoint
 CREATE TYPE "public"."security_event_status" AS ENUM('open', 'acknowledged', 'dismissed', 'actioned');--> statement-breakpoint
 CREATE TYPE "public"."security_trigger" AS ENUM('spam_rate', 'duplicate_content', 'mention_spam', 'blocked_link', 'foreign_invite', 'join_burst', 'suspicious_account', 'manual_report');--> statement-breakpoint
 CREATE TYPE "public"."referral_method" AS ENUM('invite', 'referral_code', 'vanity', 'unknown');--> statement-breakpoint
@@ -54,10 +58,12 @@ CREATE TYPE "public"."delivery_status" AS ENUM('pending', 'deferred', 'sent', 'f
 CREATE TYPE "public"."notification_channel" AS ENUM('discord_dm', 'discord_channel', 'dashboard', 'email', 'webhook');--> statement-breakpoint
 CREATE TYPE "public"."notification_severity" AS ENUM('info', 'notice', 'important', 'critical');--> statement-breakpoint
 CREATE TYPE "public"."ai_proposal_status" AS ENUM('pending', 'confirmed', 'executed', 'rejected', 'expired', 'failed');--> statement-breakpoint
-CREATE TYPE "public"."ai_request_status" AS ENUM('ok', 'error', 'refused', 'rate_limited', 'disabled');--> statement-breakpoint
+CREATE TYPE "public"."ai_request_status" AS ENUM('ok', 'error', 'refused', 'rate_limited', 'disabled', 'pending');--> statement-breakpoint
 CREATE TYPE "public"."evidence_level" AS ENUM('unknown', 'anecdotal', 'observational', 'experimental', 'peer_reviewed', 'meta_analysis');--> statement-breakpoint
+CREATE TYPE "public"."research_enrichment_status" AS ENUM('pending', 'enriched', 'not_found', 'failed', 'skipped');--> statement-breakpoint
 CREATE TYPE "public"."research_status" AS ENUM('new', 'needs_review', 'reviewed', 'verified', 'archived');--> statement-breakpoint
 CREATE TYPE "public"."sidus_sync_status" AS ENUM('not_synced', 'pending', 'synced', 'failed');--> statement-breakpoint
+CREATE TYPE "public"."external_account_provider" AS ENUM('github');--> statement-breakpoint
 CREATE TYPE "public"."integration_provider" AS ENUM('github', 'generic', 'sidus', 'supabase', 'monitoring');--> statement-breakpoint
 CREATE TYPE "public"."webhook_delivery_status" AS ENUM('received', 'processing', 'processed', 'ignored', 'failed', 'dead');--> statement-breakpoint
 CREATE TYPE "public"."actor_type" AS ENUM('user', 'system', 'ai', 'integration');--> statement-breakpoint
@@ -241,7 +247,8 @@ CREATE TABLE "application_status_changes" (
 	"to_status" "application_status" NOT NULL,
 	"actor_user_id" uuid,
 	"note" text,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"sequence" integer GENERATED ALWAYS AS IDENTITY (sequence name "application_status_changes_sequence_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1)
 );
 --> statement-breakpoint
 CREATE TABLE "applications" (
@@ -264,6 +271,14 @@ CREATE TABLE "applications" (
 	"decided_by_user_id" uuid,
 	"decision_reason" text,
 	"applicant_message" text,
+	"review_assigned_at" timestamp with time zone,
+	"review_reminder_sent_at" timestamp with time zone,
+	"review_channel_id" varchar(20),
+	"review_message_id" varchar(20),
+	"review_card_revision" integer DEFAULT 0 NOT NULL,
+	"review_card_rendered_revision" integer DEFAULT 0 NOT NULL,
+	"review_card_lease_id" varchar(64),
+	"review_card_lease_expires_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -315,7 +330,8 @@ CREATE TABLE "trial_evaluations" (
 	"overall_score" double precision NOT NULL,
 	"notes" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "trial_evaluations_score_ck" CHECK ("trial_evaluations"."overall_score" between 0 and 10)
 );
 --> statement-breakpoint
 CREATE TABLE "trial_participants" (
@@ -352,7 +368,8 @@ CREATE TABLE "trial_scores" (
 	"evaluation_id" uuid NOT NULL,
 	"criterion_key" varchar(48) NOT NULL,
 	"score" smallint NOT NULL,
-	CONSTRAINT "trial_scores_evaluation_id_criterion_key_pk" PRIMARY KEY("evaluation_id","criterion_key")
+	CONSTRAINT "trial_scores_evaluation_id_criterion_key_pk" PRIMARY KEY("evaluation_id","criterion_key"),
+	CONSTRAINT "trial_scores_range_ck" CHECK ("trial_scores"."score" between 0 and 10)
 );
 --> statement-breakpoint
 CREATE TABLE "trial_submissions" (
@@ -374,6 +391,8 @@ CREATE TABLE "trial_teams" (
 	"ordinal" smallint NOT NULL,
 	"discord_channel_id" varchar(20),
 	"discord_role_id" varchar(20),
+	"briefed_at" timestamp with time zone,
+	"archived_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -393,7 +412,9 @@ CREATE TABLE "trial_templates" (
 	"active" boolean DEFAULT true NOT NULL,
 	"created_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "trial_templates_team_size_ck" CHECK ("trial_templates"."team_size_min" >= 1 and "trial_templates"."team_size_max" >= "trial_templates"."team_size_min"),
+	CONSTRAINT "trial_templates_duration_ck" CHECK ("trial_templates"."duration_minutes" > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "trials" (
@@ -402,6 +423,7 @@ CREATE TABLE "trials" (
 	"template_id" uuid,
 	"title" varchar(120) NOT NULL,
 	"category" "trial_category" NOT NULL,
+	"summary" varchar(280) DEFAULT '' NOT NULL,
 	"brief" text NOT NULL,
 	"rubric" jsonb NOT NULL,
 	"facet_keys" text[] DEFAULT '{}'::text[] NOT NULL,
@@ -412,17 +434,24 @@ CREATE TABLE "trials" (
 	"scheduled_start_at" timestamp with time zone,
 	"duration_minutes" integer NOT NULL,
 	"deadline_at" timestamp with time zone,
+	"grace_minutes" smallint DEFAULT 0 NOT NULL,
+	"assignment_strategy" varchar(16),
+	"assignment_seed" varchar(64),
 	"started_at" timestamp with time zone,
 	"submissions_closed_at" timestamp with time zone,
 	"completed_at" timestamp with time zone,
 	"cancelled_at" timestamp with time zone,
+	"cancel_reason" text,
 	"adversarial_enabled" boolean DEFAULT false NOT NULL,
 	"discord_category_id" varchar(20),
 	"announcement_channel_id" varchar(20),
 	"announcement_message_id" varchar(20),
 	"created_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "trials_team_size_ck" CHECK ("trials"."team_size" >= 1),
+	CONSTRAINT "trials_duration_ck" CHECK ("trials"."duration_minutes" > 0),
+	CONSTRAINT "trials_grace_ck" CHECK ("trials"."grace_minutes" >= 0)
 );
 --> statement-breakpoint
 CREATE TABLE "adversarial_evaluations" (
@@ -430,10 +459,14 @@ CREATE TABLE "adversarial_evaluations" (
 	"role_id" uuid NOT NULL,
 	"evaluator_user_id" uuid NOT NULL,
 	"security_culture_score" smallint NOT NULL,
+	"suggested_score" smallint,
+	"override_justification" text,
 	"summary" text NOT NULL,
 	"debrief" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "adversarial_evaluations_score_ck" CHECK ("adversarial_evaluations"."security_culture_score" between 0 and 10),
+	CONSTRAINT "adversarial_evaluations_suggested_ck" CHECK ("adversarial_evaluations"."suggested_score" is null or "adversarial_evaluations"."suggested_score" between 0 and 10)
 );
 --> statement-breakpoint
 CREATE TABLE "adversarial_observations" (
@@ -455,16 +488,30 @@ CREATE TABLE "adversarial_roles" (
 	"operative_member_id" uuid NOT NULL,
 	"scenario_id" uuid NOT NULL,
 	"objective" text NOT NULL,
+	"guardrails" text NOT NULL,
+	"sandbox_assets" text NOT NULL,
 	"status" "adversarial_role_status" DEFAULT 'planned' NOT NULL,
 	"authorized_by_user_id" uuid,
 	"authorized_at" timestamp with time zone,
 	"sandbox_attested" boolean DEFAULT false NOT NULL,
 	"briefed_at" timestamp with time zone,
+	"briefing_revision" smallint DEFAULT 1 NOT NULL,
+	"briefing_delivery" "adversarial_delivery",
+	"briefing_delivered_at" timestamp with time zone,
 	"activated_at" timestamp with time zone,
 	"concluded_at" timestamp with time zone,
 	"revealed_at" timestamp with time zone,
 	"aborted_at" timestamp with time zone,
 	"abort_reason" text,
+	"aborted_by_user_id" uuid,
+	"red_flag_raised_at" timestamp with time zone,
+	"red_flag_raised_by_user_id" uuid,
+	"stop_notice_delivery" "adversarial_delivery",
+	"stop_notice_delivered_at" timestamp with time zone,
+	"debrief_delivery" "adversarial_delivery",
+	"debrief_channel_id" varchar(20),
+	"debrief_message_id" varchar(20),
+	"debrief_posted_at" timestamp with time zone,
 	"created_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -492,12 +539,15 @@ CREATE TABLE "adversarial_triggers" (
 	"description" text NOT NULL,
 	"planned_for" timestamp with time zone,
 	"fired_at" timestamp with time zone,
+	"fired_by_user_id" uuid,
+	"created_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ticket_events" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"ticket_id" uuid NOT NULL,
+	"seq" integer GENERATED ALWAYS AS IDENTITY (sequence name "ticket_events_seq_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"type" "ticket_event_type" NOT NULL,
 	"actor_user_id" uuid,
 	"data" jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -506,10 +556,13 @@ CREATE TABLE "ticket_events" (
 --> statement-breakpoint
 CREATE TABLE "ticket_messages" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"seq" integer GENERATED ALWAYS AS IDENTITY (sequence name "ticket_messages_seq_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"ticket_id" uuid NOT NULL,
 	"author_user_id" uuid,
+	"author_role" "ticket_author_role" DEFAULT 'participant' NOT NULL,
 	"discord_message_id" varchar(20),
 	"body" text NOT NULL,
+	"original_body" text,
 	"attachments" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"is_internal" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -528,6 +581,7 @@ CREATE TABLE "tickets" (
 	"assignee_user_id" uuid,
 	"discord_channel_id" varchar(20),
 	"discord_thread_id" varchar(20),
+	"discord_card_message_id" varchar(20),
 	"sla_first_response_due_at" timestamp with time zone,
 	"first_response_at" timestamp with time zone,
 	"sla_breached_at" timestamp with time zone,
@@ -552,10 +606,15 @@ CREATE TABLE "mod_cases" (
 	"reason" text NOT NULL,
 	"duration_seconds" integer,
 	"expires_at" timestamp with time zone,
+	"delete_message_days" smallint,
 	"source" "mod_source" DEFAULT 'manual' NOT NULL,
 	"security_event_id" uuid,
+	"reverts_case_id" uuid,
 	"discord_sync" "discord_sync_state" DEFAULT 'pending' NOT NULL,
 	"discord_error" text,
+	"discord_synced_at" timestamp with time zone,
+	"ended_at" timestamp with time zone,
+	"ended_reason" "mod_case_end_reason",
 	"revoked_at" timestamp with time zone,
 	"revoked_by_user_id" uuid,
 	"revoke_reason" text,
@@ -565,17 +624,24 @@ CREATE TABLE "mod_cases" (
 --> statement-breakpoint
 CREATE TABLE "security_events" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"number" integer GENERATED ALWAYS AS IDENTITY (sequence name "security_events_number_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"user_id" uuid,
 	"risk_score" smallint NOT NULL,
 	"trigger" "security_trigger" NOT NULL,
+	"source" "security_event_source" DEFAULT 'system' NOT NULL,
 	"evidence" jsonb NOT NULL,
 	"action_taken" "security_action" DEFAULT 'none' NOT NULL,
 	"status" "security_event_status" DEFAULT 'open' NOT NULL,
 	"channel_id" varchar(20),
+	"reported_by_user_id" uuid,
+	"dedupe_key" varchar(128),
+	"alert_channel_id" varchar(20),
+	"alert_message_id" varchar(20),
 	"reviewed_by_user_id" uuid,
 	"reviewed_at" timestamp with time zone,
 	"review_note" text,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "campaigns" (
@@ -598,6 +664,7 @@ CREATE TABLE "invite_codes" (
 	"uses" integer DEFAULT 0 NOT NULL,
 	"max_uses" integer,
 	"temporary" boolean DEFAULT false NOT NULL,
+	"is_vanity" boolean DEFAULT false NOT NULL,
 	"campaign_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"expires_at" timestamp with time zone,
@@ -610,6 +677,8 @@ CREATE TABLE "referral_codes" (
 	"owner_user_id" uuid NOT NULL,
 	"campaign_id" uuid,
 	"active" boolean DEFAULT true NOT NULL,
+	"created_by_user_id" uuid,
+	"deactivated_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -622,12 +691,16 @@ CREATE TABLE "referrals" (
 	"campaign_id" uuid,
 	"method" "referral_method" NOT NULL,
 	"status" "referral_status" DEFAULT 'joined' NOT NULL,
+	"status_reason" varchar(64),
 	"joined_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"left_at" timestamp with time zone,
 	"retained_at" timestamp with time zone,
 	"validated_at" timestamp with time zone,
 	"anomaly_flags" text[] DEFAULT '{}'::text[] NOT NULL,
 	"anomaly_score" smallint DEFAULT 0 NOT NULL,
+	"reviewed_by_user_id" uuid,
+	"reviewed_at" timestamp with time zone,
+	"review_note" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -636,6 +709,7 @@ CREATE TABLE "achievement_definitions" (
 	"key" varchar(64) PRIMARY KEY NOT NULL,
 	"title" varchar(64) NOT NULL,
 	"description" text NOT NULL,
+	"summary" varchar(120) DEFAULT '' NOT NULL,
 	"category" varchar(32) NOT NULL,
 	"rarity" "achievement_rarity" DEFAULT 'standard' NOT NULL,
 	"visibility" "achievement_visibility" DEFAULT 'public' NOT NULL,
@@ -660,7 +734,11 @@ CREATE TABLE "member_achievements" (
 	"verified_at" timestamp with time zone,
 	"note" text,
 	"revoked_at" timestamp with time zone,
-	"revoke_reason" text
+	"revoke_reason" text,
+	"revoked_by_user_id" uuid,
+	"announcement_channel_id" varchar(20),
+	"announcement_message_id" varchar(20),
+	"announced_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE "contributions" (
@@ -676,6 +754,9 @@ CREATE TABLE "contributions" (
 	"status" "contribution_status" DEFAULT 'submitted' NOT NULL,
 	"verified_by_user_id" uuid,
 	"verified_at" timestamp with time zone,
+	"reviewed_by_user_id" uuid,
+	"reviewed_at" timestamp with time zone,
+	"review_note" varchar(1000),
 	"occurred_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -686,7 +767,8 @@ CREATE TABLE "project_links" (
 	"project_id" uuid NOT NULL,
 	"label" varchar(48) NOT NULL,
 	"url" text NOT NULL,
-	"ordinal" smallint DEFAULT 0 NOT NULL
+	"ordinal" smallint DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "project_members" (
@@ -727,6 +809,7 @@ CREATE TABLE "projects" (
 	"website_url" text,
 	"shipped_at" timestamp with time zone,
 	"archived_at" timestamp with time zone,
+	"archived_from_status" "project_status",
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"deleted_at" timestamp with time zone
@@ -744,10 +827,17 @@ CREATE TABLE "mission_assignments" (
 	"due_at" timestamp with time zone,
 	"submitted_at" timestamp with time zone,
 	"submission" text,
+	"submission_evidence_title" varchar(200),
+	"submission_evidence_url" text,
+	"submitted_by_member_id" uuid,
+	"attempts" integer DEFAULT 0 NOT NULL,
 	"evidence_id" uuid,
 	"verified_by_user_id" uuid,
 	"verified_at" timestamp with time zone,
+	"reviewed_by_user_id" uuid,
+	"reviewed_at" timestamp with time zone,
 	"feedback" text,
+	"reminder_due_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -770,7 +860,11 @@ CREATE TABLE "missions" (
 	"created_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"archived_at" timestamp with time zone
+	"published_at" timestamp with time zone,
+	"closed_at" timestamp with time zone,
+	"archived_at" timestamp with time zone,
+	"announcement_channel_id" varchar(20),
+	"announcement_message_id" varchar(20)
 );
 --> statement-breakpoint
 CREATE TABLE "event_rsvps" (
@@ -784,6 +878,7 @@ CREATE TABLE "event_rsvps" (
 --> statement-breakpoint
 CREATE TABLE "event_team_members" (
 	"team_id" uuid NOT NULL,
+	"event_id" uuid NOT NULL,
 	"member_id" uuid NOT NULL,
 	CONSTRAINT "event_team_members_team_id_member_id_pk" PRIMARY KEY("team_id","member_id")
 );
@@ -803,15 +898,22 @@ CREATE TABLE "events" (
 	"kind" "event_kind" NOT NULL,
 	"status" "event_status" DEFAULT 'scheduled' NOT NULL,
 	"starts_at" timestamp with time zone NOT NULL,
-	"ends_at" timestamp with time zone,
+	"ends_at" timestamp with time zone NOT NULL,
 	"location" varchar(200),
 	"discord_scheduled_event_id" varchar(20),
+	"announcement_channel_id" varchar(20),
+	"announcement_message_id" varchar(20),
 	"capacity" integer,
 	"rsvp_closes_at" timestamp with time zone,
 	"check_in_code_hash" varchar(64),
+	"check_in_code_issued_at" timestamp with time zone,
 	"host_member_id" uuid,
 	"created_by_user_id" uuid,
+	"revision" integer DEFAULT 0 NOT NULL,
+	"live_at" timestamp with time zone,
+	"completed_at" timestamp with time zone,
 	"cancelled_at" timestamp with time zone,
+	"cancel_reason" varchar(500),
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -829,6 +931,7 @@ CREATE TABLE "tournament_matches" (
 	"status" "match_status" DEFAULT 'pending' NOT NULL,
 	"next_match_id" uuid,
 	"next_slot" "bracket_slot",
+	"reported_by_user_id" uuid,
 	"completed_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -873,6 +976,7 @@ CREATE TABLE "ai_action_proposals" (
 	"requested_by_user_id" uuid NOT NULL,
 	"ai_request_id" uuid,
 	"payload" jsonb NOT NULL,
+	"payload_hash" varchar(64) NOT NULL,
 	"preview" text NOT NULL,
 	"status" "ai_proposal_status" DEFAULT 'pending' NOT NULL,
 	"decided_by_user_id" uuid,
@@ -888,6 +992,7 @@ CREATE TABLE "ai_requests" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid,
 	"feature" varchar(32) NOT NULL,
+	"surface" varchar(16),
 	"provider" varchar(32) NOT NULL,
 	"model" varchar(64) NOT NULL,
 	"status" "ai_request_status" NOT NULL,
@@ -902,6 +1007,7 @@ CREATE TABLE "ai_requests" (
 CREATE TABLE "research_items" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"title" varchar(300) NOT NULL,
+	"title_guessed" boolean DEFAULT false NOT NULL,
 	"authors" text[] DEFAULT '{}'::text[] NOT NULL,
 	"source" varchar(120),
 	"url" text,
@@ -919,12 +1025,28 @@ CREATE TABLE "research_items" (
 	"reviewed_at" timestamp with time zone,
 	"discord_message_id" varchar(20),
 	"discord_message_url" text,
+	"enrichment_status" "research_enrichment_status" DEFAULT 'pending' NOT NULL,
+	"enriched_at" timestamp with time zone,
+	"enrichment_error" text,
 	"sidus_sync_status" "sidus_sync_status" DEFAULT 'not_synced' NOT NULL,
 	"sidus_external_id" varchar(128),
 	"sidus_synced_at" timestamp with time zone,
+	"sidus_sync_error" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"deleted_at" timestamp with time zone
+);
+--> statement-breakpoint
+CREATE TABLE "external_accounts" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"member_id" uuid NOT NULL,
+	"provider" "external_account_provider" NOT NULL,
+	"external_id" varchar(64),
+	"username" varchar(64) NOT NULL,
+	"verified_at" timestamp with time zone,
+	"verified_by_user_id" uuid,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "integrations" (
@@ -935,6 +1057,7 @@ CREATE TABLE "integrations" (
 	"enabled" boolean DEFAULT true NOT NULL,
 	"config" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"secret_ciphertext" text,
+	"secret_rotated_at" timestamp with time zone,
 	"last_event_at" timestamp with time zone,
 	"last_error_at" timestamp with time zone,
 	"last_error" text,
@@ -962,9 +1085,14 @@ CREATE TABLE "outbound_webhooks" (
 	"url" text NOT NULL,
 	"event_types" text[] DEFAULT '{}'::text[] NOT NULL,
 	"secret_ciphertext" text NOT NULL,
+	"secret_rotated_at" timestamp with time zone,
 	"enabled" boolean DEFAULT true NOT NULL,
 	"consecutive_failures" integer DEFAULT 0 NOT NULL,
 	"last_delivery_at" timestamp with time zone,
+	"last_failure_at" timestamp with time zone,
+	"last_error" varchar(500),
+	"disabled_at" timestamp with time zone,
+	"disabled_reason" varchar(200),
 	"created_by_user_id" uuid,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -972,14 +1100,18 @@ CREATE TABLE "outbound_webhooks" (
 --> statement-breakpoint
 CREATE TABLE "webhook_deliveries" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"integration_id" uuid,
+	"integration_id" uuid NOT NULL,
 	"provider" "integration_provider" NOT NULL,
 	"delivery_id" varchar(128) NOT NULL,
 	"event_type" varchar(64) NOT NULL,
+	"signature_digest" varchar(64) NOT NULL,
 	"status" "webhook_delivery_status" DEFAULT 'received' NOT NULL,
+	"status_reason" varchar(200),
 	"payload" jsonb NOT NULL,
 	"attempts" smallint DEFAULT 0 NOT NULL,
 	"last_error" text,
+	"relay_message_id" varchar(20),
+	"relayed_at" timestamp with time zone,
 	"received_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"processed_at" timestamp with time zone
 );
@@ -1062,6 +1194,7 @@ CREATE TABLE "game_players" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"session_id" uuid NOT NULL,
 	"user_id" uuid NOT NULL,
+	"seat" integer NOT NULL,
 	"team" varchar(32),
 	"score" integer DEFAULT 0 NOT NULL,
 	"placement" smallint,
@@ -1081,6 +1214,9 @@ CREATE TABLE "game_sessions" (
 	"config" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"state" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"version" integer DEFAULT 0 NOT NULL,
+	"player_count" smallint,
+	"last_activity_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"end_reason" varchar(200),
 	"started_at" timestamp with time zone,
 	"ended_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -1162,9 +1298,13 @@ ALTER TABLE "adversarial_roles" ADD CONSTRAINT "adversarial_roles_team_id_trial_
 ALTER TABLE "adversarial_roles" ADD CONSTRAINT "adversarial_roles_operative_member_id_members_id_fk" FOREIGN KEY ("operative_member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD CONSTRAINT "adversarial_roles_scenario_id_adversarial_scenarios_id_fk" FOREIGN KEY ("scenario_id") REFERENCES "public"."adversarial_scenarios"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD CONSTRAINT "adversarial_roles_authorized_by_user_id_users_id_fk" FOREIGN KEY ("authorized_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "adversarial_roles" ADD CONSTRAINT "adversarial_roles_aborted_by_user_id_users_id_fk" FOREIGN KEY ("aborted_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "adversarial_roles" ADD CONSTRAINT "adversarial_roles_red_flag_raised_by_user_id_users_id_fk" FOREIGN KEY ("red_flag_raised_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD CONSTRAINT "adversarial_roles_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_scenarios" ADD CONSTRAINT "adversarial_scenarios_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_role_id_adversarial_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."adversarial_roles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_fired_by_user_id_users_id_fk" FOREIGN KEY ("fired_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_events" ADD CONSTRAINT "ticket_events_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_events" ADD CONSTRAINT "ticket_events_actor_user_id_users_id_fk" FOREIGN KEY ("actor_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_messages" ADD CONSTRAINT "ticket_messages_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1175,26 +1315,32 @@ ALTER TABLE "tickets" ADD CONSTRAINT "tickets_closed_by_user_id_users_id_fk" FOR
 ALTER TABLE "mod_cases" ADD CONSTRAINT "mod_cases_target_user_id_users_id_fk" FOREIGN KEY ("target_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mod_cases" ADD CONSTRAINT "mod_cases_moderator_user_id_users_id_fk" FOREIGN KEY ("moderator_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mod_cases" ADD CONSTRAINT "mod_cases_security_event_id_security_events_id_fk" FOREIGN KEY ("security_event_id") REFERENCES "public"."security_events"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mod_cases" ADD CONSTRAINT "mod_cases_reverts_case_id_mod_cases_id_fk" FOREIGN KEY ("reverts_case_id") REFERENCES "public"."mod_cases"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mod_cases" ADD CONSTRAINT "mod_cases_revoked_by_user_id_users_id_fk" FOREIGN KEY ("revoked_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "security_events" ADD CONSTRAINT "security_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "security_events" ADD CONSTRAINT "security_events_reported_by_user_id_users_id_fk" FOREIGN KEY ("reported_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "security_events" ADD CONSTRAINT "security_events_reviewed_by_user_id_users_id_fk" FOREIGN KEY ("reviewed_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "campaigns" ADD CONSTRAINT "campaigns_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invite_codes" ADD CONSTRAINT "invite_codes_inviter_user_id_users_id_fk" FOREIGN KEY ("inviter_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invite_codes" ADD CONSTRAINT "invite_codes_campaign_id_campaigns_id_fk" FOREIGN KEY ("campaign_id") REFERENCES "public"."campaigns"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "referral_codes" ADD CONSTRAINT "referral_codes_owner_user_id_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "referral_codes" ADD CONSTRAINT "referral_codes_campaign_id_campaigns_id_fk" FOREIGN KEY ("campaign_id") REFERENCES "public"."campaigns"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "referral_codes" ADD CONSTRAINT "referral_codes_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "referrals" ADD CONSTRAINT "referrals_invitee_user_id_users_id_fk" FOREIGN KEY ("invitee_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "referrals" ADD CONSTRAINT "referrals_inviter_user_id_users_id_fk" FOREIGN KEY ("inviter_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "referrals" ADD CONSTRAINT "referrals_referral_code_referral_codes_code_fk" FOREIGN KEY ("referral_code") REFERENCES "public"."referral_codes"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "referrals" ADD CONSTRAINT "referrals_campaign_id_campaigns_id_fk" FOREIGN KEY ("campaign_id") REFERENCES "public"."campaigns"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "referrals" ADD CONSTRAINT "referrals_reviewed_by_user_id_users_id_fk" FOREIGN KEY ("reviewed_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "achievement_definitions" ADD CONSTRAINT "achievement_definitions_facet_key_capability_facets_key_fk" FOREIGN KEY ("facet_key") REFERENCES "public"."capability_facets"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "member_achievements" ADD CONSTRAINT "member_achievements_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "member_achievements" ADD CONSTRAINT "member_achievements_achievement_key_achievement_definitions_key_fk" FOREIGN KEY ("achievement_key") REFERENCES "public"."achievement_definitions"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "member_achievements" ADD CONSTRAINT "member_achievements_awarded_by_user_id_users_id_fk" FOREIGN KEY ("awarded_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "member_achievements" ADD CONSTRAINT "member_achievements_verified_by_user_id_users_id_fk" FOREIGN KEY ("verified_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "member_achievements" ADD CONSTRAINT "member_achievements_revoked_by_user_id_users_id_fk" FOREIGN KEY ("revoked_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contributions" ADD CONSTRAINT "contributions_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contributions" ADD CONSTRAINT "contributions_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contributions" ADD CONSTRAINT "contributions_verified_by_user_id_users_id_fk" FOREIGN KEY ("verified_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "contributions" ADD CONSTRAINT "contributions_reviewed_by_user_id_users_id_fk" FOREIGN KEY ("reviewed_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_links" ADD CONSTRAINT "project_links_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_members" ADD CONSTRAINT "project_members_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_members" ADD CONSTRAINT "project_members_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -1204,14 +1350,17 @@ ALTER TABLE "projects" ADD CONSTRAINT "projects_domain_key_capability_domains_ke
 ALTER TABLE "mission_assignments" ADD CONSTRAINT "mission_assignments_mission_id_missions_id_fk" FOREIGN KEY ("mission_id") REFERENCES "public"."missions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mission_assignments" ADD CONSTRAINT "mission_assignments_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mission_assignments" ADD CONSTRAINT "mission_assignments_assigned_by_user_id_users_id_fk" FOREIGN KEY ("assigned_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mission_assignments" ADD CONSTRAINT "mission_assignments_submitted_by_member_id_members_id_fk" FOREIGN KEY ("submitted_by_member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mission_assignments" ADD CONSTRAINT "mission_assignments_evidence_id_evidence_id_fk" FOREIGN KEY ("evidence_id") REFERENCES "public"."evidence"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mission_assignments" ADD CONSTRAINT "mission_assignments_verified_by_user_id_users_id_fk" FOREIGN KEY ("verified_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mission_assignments" ADD CONSTRAINT "mission_assignments_reviewed_by_user_id_users_id_fk" FOREIGN KEY ("reviewed_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "missions" ADD CONSTRAINT "missions_facet_key_capability_facets_key_fk" FOREIGN KEY ("facet_key") REFERENCES "public"."capability_facets"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "missions" ADD CONSTRAINT "missions_reward_achievement_key_achievement_definitions_key_fk" FOREIGN KEY ("reward_achievement_key") REFERENCES "public"."achievement_definitions"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "missions" ADD CONSTRAINT "missions_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "event_rsvps" ADD CONSTRAINT "event_rsvps_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "event_rsvps" ADD CONSTRAINT "event_rsvps_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "event_team_members" ADD CONSTRAINT "event_team_members_team_id_event_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."event_teams"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "event_team_members" ADD CONSTRAINT "event_team_members_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "event_team_members" ADD CONSTRAINT "event_team_members_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "event_teams" ADD CONSTRAINT "event_teams_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "events" ADD CONSTRAINT "events_host_member_id_members_id_fk" FOREIGN KEY ("host_member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -1221,6 +1370,7 @@ ALTER TABLE "tournament_matches" ADD CONSTRAINT "tournament_matches_team_a_id_ev
 ALTER TABLE "tournament_matches" ADD CONSTRAINT "tournament_matches_team_b_id_event_teams_id_fk" FOREIGN KEY ("team_b_id") REFERENCES "public"."event_teams"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tournament_matches" ADD CONSTRAINT "tournament_matches_winner_team_id_event_teams_id_fk" FOREIGN KEY ("winner_team_id") REFERENCES "public"."event_teams"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tournament_matches" ADD CONSTRAINT "tournament_matches_next_match_id_tournament_matches_id_fk" FOREIGN KEY ("next_match_id") REFERENCES "public"."tournament_matches"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "tournament_matches" ADD CONSTRAINT "tournament_matches_reported_by_user_id_users_id_fk" FOREIGN KEY ("reported_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notification_deliveries" ADD CONSTRAINT "notification_deliveries_notification_id_notifications_id_fk" FOREIGN KEY ("notification_id") REFERENCES "public"."notifications"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notification_preferences" ADD CONSTRAINT "notification_preferences_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_recipient_user_id_users_id_fk" FOREIGN KEY ("recipient_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -1230,6 +1380,8 @@ ALTER TABLE "ai_action_proposals" ADD CONSTRAINT "ai_action_proposals_decided_by
 ALTER TABLE "ai_requests" ADD CONSTRAINT "ai_requests_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "research_items" ADD CONSTRAINT "research_items_submitted_by_user_id_users_id_fk" FOREIGN KEY ("submitted_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "research_items" ADD CONSTRAINT "research_items_reviewed_by_user_id_users_id_fk" FOREIGN KEY ("reviewed_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "external_accounts" ADD CONSTRAINT "external_accounts_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "external_accounts" ADD CONSTRAINT "external_accounts_verified_by_user_id_users_id_fk" FOREIGN KEY ("verified_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "integrations" ADD CONSTRAINT "integrations_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "outbound_deliveries" ADD CONSTRAINT "outbound_deliveries_webhook_id_outbound_webhooks_id_fk" FOREIGN KEY ("webhook_id") REFERENCES "public"."outbound_webhooks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "outbound_webhooks" ADD CONSTRAINT "outbound_webhooks_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -1260,6 +1412,7 @@ CREATE UNIQUE INDEX "users_discord_id_uq" ON "users" USING btree ("discord_id");
 CREATE UNIQUE INDEX "application_reviews_reviewer_uq" ON "application_reviews" USING btree ("application_id","reviewer_user_id");--> statement-breakpoint
 CREATE INDEX "application_status_changes_app_idx" ON "application_status_changes" USING btree ("application_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "applications_number_uq" ON "applications" USING btree ("number");--> statement-breakpoint
+CREATE INDEX "applications_user_idx" ON "applications" USING btree ("user_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "applications_open_per_user_uq" ON "applications" USING btree ("user_id") WHERE "applications"."status" in ('draft', 'submitted', 'review', 'interview');--> statement-breakpoint
 CREATE INDEX "applications_status_idx" ON "applications" USING btree ("status","submitted_at");--> statement-breakpoint
 CREATE INDEX "verification_evidence_evidence_idx" ON "verification_evidence" USING btree ("evidence_id");--> statement-breakpoint
@@ -1273,7 +1426,9 @@ CREATE UNIQUE INDEX "trial_evaluations_team_uq" ON "trial_evaluations" USING btr
 CREATE UNIQUE INDEX "trial_evaluations_member_uq" ON "trial_evaluations" USING btree ("trial_id","member_id","evaluator_user_id") WHERE "trial_evaluations"."member_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "trial_participants_member_uq" ON "trial_participants" USING btree ("trial_id","member_id");--> statement-breakpoint
 CREATE INDEX "trial_participants_team_idx" ON "trial_participants" USING btree ("team_id");--> statement-breakpoint
+CREATE INDEX "trial_participants_member_idx" ON "trial_participants" USING btree ("member_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "trial_results_member_uq" ON "trial_results" USING btree ("trial_id","member_id");--> statement-breakpoint
+CREATE INDEX "trial_results_member_idx" ON "trial_results" USING btree ("member_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "trial_submissions_version_uq" ON "trial_submissions" USING btree ("team_id","version");--> statement-breakpoint
 CREATE UNIQUE INDEX "trial_teams_name_uq" ON "trial_teams" USING btree ("trial_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "trial_templates_key_uq" ON "trial_templates" USING btree ("key");--> statement-breakpoint
@@ -1282,7 +1437,11 @@ CREATE INDEX "trials_status_idx" ON "trials" USING btree ("status");--> statemen
 CREATE UNIQUE INDEX "adversarial_evaluations_role_uq" ON "adversarial_evaluations" USING btree ("role_id");--> statement-breakpoint
 CREATE INDEX "adversarial_observations_role_idx" ON "adversarial_observations" USING btree ("role_id");--> statement-breakpoint
 CREATE INDEX "adversarial_roles_trial_idx" ON "adversarial_roles" USING btree ("trial_id");--> statement-breakpoint
+CREATE INDEX "adversarial_roles_operative_idx" ON "adversarial_roles" USING btree ("operative_member_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "adversarial_roles_operative_uq" ON "adversarial_roles" USING btree ("trial_id","operative_member_id") WHERE "adversarial_roles"."aborted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "adversarial_roles_team_uq" ON "adversarial_roles" USING btree ("team_id") WHERE "adversarial_roles"."aborted_at" is null;--> statement-breakpoint
 CREATE UNIQUE INDEX "adversarial_scenarios_key_uq" ON "adversarial_scenarios" USING btree ("key");--> statement-breakpoint
+CREATE INDEX "adversarial_triggers_role_idx" ON "adversarial_triggers" USING btree ("role_id");--> statement-breakpoint
 CREATE INDEX "ticket_events_ticket_idx" ON "ticket_events" USING btree ("ticket_id","created_at");--> statement-breakpoint
 CREATE INDEX "ticket_messages_ticket_idx" ON "ticket_messages" USING btree ("ticket_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "ticket_messages_discord_uq" ON "ticket_messages" USING btree ("discord_message_id");--> statement-breakpoint
@@ -1291,25 +1450,41 @@ CREATE UNIQUE INDEX "tickets_thread_uq" ON "tickets" USING btree ("discord_threa
 CREATE INDEX "tickets_status_idx" ON "tickets" USING btree ("status","created_at");--> statement-breakpoint
 CREATE INDEX "tickets_assignee_idx" ON "tickets" USING btree ("assignee_user_id");--> statement-breakpoint
 CREATE INDEX "tickets_opener_idx" ON "tickets" USING btree ("opener_user_id");--> statement-breakpoint
+CREATE INDEX "tickets_sla_pending_idx" ON "tickets" USING btree ("sla_first_response_due_at") WHERE "tickets"."first_response_at" is null and "tickets"."sla_breached_at" is null;--> statement-breakpoint
 CREATE UNIQUE INDEX "mod_cases_number_uq" ON "mod_cases" USING btree ("number");--> statement-breakpoint
 CREATE INDEX "mod_cases_target_idx" ON "mod_cases" USING btree ("target_user_id","created_at");--> statement-breakpoint
 CREATE INDEX "mod_cases_time_idx" ON "mod_cases" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "mod_cases_security_event_idx" ON "mod_cases" USING btree ("security_event_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "mod_cases_live_uq" ON "mod_cases" USING btree ("target_user_id","action") WHERE "mod_cases"."ended_at" is null and "mod_cases"."action" in ('timeout', 'quarantine', 'ban');--> statement-breakpoint
+CREATE INDEX "mod_cases_expiry_idx" ON "mod_cases" USING btree ("expires_at") WHERE "mod_cases"."ended_at" is null and "mod_cases"."expires_at" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "security_events_number_uq" ON "security_events" USING btree ("number");--> statement-breakpoint
+CREATE UNIQUE INDEX "security_events_dedupe_uq" ON "security_events" USING btree ("dedupe_key");--> statement-breakpoint
 CREATE INDEX "security_events_time_idx" ON "security_events" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "security_events_user_idx" ON "security_events" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "security_events_status_idx" ON "security_events" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "campaigns_key_uq" ON "campaigns" USING btree ("key");--> statement-breakpoint
 CREATE INDEX "invite_codes_inviter_idx" ON "invite_codes" USING btree ("inviter_user_id");--> statement-breakpoint
+CREATE INDEX "invite_codes_campaign_idx" ON "invite_codes" USING btree ("campaign_id");--> statement-breakpoint
 CREATE INDEX "referral_codes_owner_idx" ON "referral_codes" USING btree ("owner_user_id");--> statement-breakpoint
 CREATE INDEX "referrals_inviter_idx" ON "referrals" USING btree ("inviter_user_id","status");--> statement-breakpoint
 CREATE INDEX "referrals_invitee_idx" ON "referrals" USING btree ("invitee_user_id");--> statement-breakpoint
 CREATE INDEX "referrals_joined_idx" ON "referrals" USING btree ("joined_at");--> statement-breakpoint
+CREATE INDEX "referrals_status_idx" ON "referrals" USING btree ("status","joined_at");--> statement-breakpoint
+CREATE INDEX "referrals_campaign_idx" ON "referrals" USING btree ("campaign_id","status");--> statement-breakpoint
+CREATE UNIQUE INDEX "referrals_invitee_joined_uq" ON "referrals" USING btree ("invitee_user_id","joined_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "referrals_live_invitee_uq" ON "referrals" USING btree ("invitee_user_id") WHERE "referrals"."status" in ('joined', 'retained');--> statement-breakpoint
+CREATE UNIQUE INDEX "referrals_valid_invitee_uq" ON "referrals" USING btree ("invitee_user_id") WHERE "referrals"."status" = 'valid';--> statement-breakpoint
+CREATE UNIQUE INDEX "referrals_code_claim_uq" ON "referrals" USING btree ("invitee_user_id") WHERE "referrals"."referral_code" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "member_achievements_active_uq" ON "member_achievements" USING btree ("member_id","achievement_key") WHERE "member_achievements"."revoked_at" is null;--> statement-breakpoint
 CREATE INDEX "member_achievements_key_idx" ON "member_achievements" USING btree ("achievement_key");--> statement-breakpoint
+CREATE INDEX "member_achievements_member_idx" ON "member_achievements" USING btree ("member_id","awarded_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "contributions_external_ref_uq" ON "contributions" USING btree ("external_ref");--> statement-breakpoint
 CREATE INDEX "contributions_member_idx" ON "contributions" USING btree ("member_id","status");--> statement-breakpoint
 CREATE INDEX "contributions_project_idx" ON "contributions" USING btree ("project_id");--> statement-breakpoint
+CREATE INDEX "project_links_project_idx" ON "project_links" USING btree ("project_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "project_members_uq" ON "project_members" USING btree ("project_id","member_id");--> statement-breakpoint
 CREATE INDEX "project_members_member_idx" ON "project_members" USING btree ("member_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "project_members_one_owner_uq" ON "project_members" USING btree ("project_id") WHERE "project_members"."role" = 'owner' and "project_members"."left_at" is null;--> statement-breakpoint
 CREATE INDEX "project_milestones_project_idx" ON "project_milestones" USING btree ("project_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "projects_slug_uq" ON "projects" USING btree ("slug");--> statement-breakpoint
 CREATE UNIQUE INDEX "projects_github_repo_uq" ON "projects" USING btree ("github_repo");--> statement-breakpoint
@@ -1318,27 +1493,41 @@ CREATE INDEX "projects_owner_idx" ON "projects" USING btree ("owner_member_id");
 CREATE UNIQUE INDEX "mission_assignments_member_uq" ON "mission_assignments" USING btree ("mission_id","member_id");--> statement-breakpoint
 CREATE INDEX "mission_assignments_member_idx" ON "mission_assignments" USING btree ("member_id","status");--> statement-breakpoint
 CREATE INDEX "mission_assignments_due_idx" ON "mission_assignments" USING btree ("status","due_at");--> statement-breakpoint
+CREATE INDEX "mission_assignments_team_idx" ON "mission_assignments" USING btree ("mission_id","team_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "missions_number_uq" ON "missions" USING btree ("number");--> statement-breakpoint
 CREATE INDEX "missions_status_idx" ON "missions" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "event_rsvps_uq" ON "event_rsvps" USING btree ("event_id","member_id");--> statement-breakpoint
 CREATE INDEX "event_rsvps_member_idx" ON "event_rsvps" USING btree ("member_id");--> statement-breakpoint
+CREATE INDEX "event_rsvps_status_idx" ON "event_rsvps" USING btree ("event_id","status","responded_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "event_team_members_event_member_uq" ON "event_team_members" USING btree ("event_id","member_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "event_teams_name_uq" ON "event_teams" USING btree ("event_id","name");--> statement-breakpoint
 CREATE INDEX "events_starts_idx" ON "events" USING btree ("status","starts_at");--> statement-breakpoint
+CREATE INDEX "events_ends_idx" ON "events" USING btree ("ends_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "tournament_matches_pos_uq" ON "tournament_matches" USING btree ("event_id","round","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "notification_deliveries_uq" ON "notification_deliveries" USING btree ("notification_id","channel");--> statement-breakpoint
 CREATE INDEX "notification_deliveries_status_idx" ON "notification_deliveries" USING btree ("status","deliver_after");--> statement-breakpoint
 CREATE UNIQUE INDEX "notifications_dedupe_uq" ON "notifications" USING btree ("dedupe_key");--> statement-breakpoint
 CREATE INDEX "notifications_recipient_idx" ON "notifications" USING btree ("recipient_user_id","created_at");--> statement-breakpoint
 CREATE INDEX "ai_action_proposals_status_idx" ON "ai_action_proposals" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "ai_action_proposals_requester_idx" ON "ai_action_proposals" USING btree ("requested_by_user_id","status");--> statement-breakpoint
+CREATE INDEX "ai_action_proposals_expiry_idx" ON "ai_action_proposals" USING btree ("status","expires_at");--> statement-breakpoint
 CREATE INDEX "ai_requests_user_idx" ON "ai_requests" USING btree ("user_id","created_at");--> statement-breakpoint
 CREATE INDEX "ai_requests_time_idx" ON "ai_requests" USING btree ("created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_items_doi_uq" ON "research_items" USING btree ("doi");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_items_canonical_url_uq" ON "research_items" USING btree ("canonical_url");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_items_discord_message_uq" ON "research_items" USING btree ("discord_message_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "research_items_arxiv_uq" ON "research_items" USING btree ("arxiv_id");--> statement-breakpoint
 CREATE INDEX "research_items_status_idx" ON "research_items" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "research_items_submitter_idx" ON "research_items" USING btree ("submitted_by_user_id","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "external_accounts_member_provider_uq" ON "external_accounts" USING btree ("member_id","provider");--> statement-breakpoint
+CREATE UNIQUE INDEX "external_accounts_username_uq" ON "external_accounts" USING btree ("provider","username");--> statement-breakpoint
+CREATE UNIQUE INDEX "external_accounts_external_id_uq" ON "external_accounts" USING btree ("provider","external_id") WHERE "external_accounts"."external_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "integrations_slug_uq" ON "integrations" USING btree ("slug");--> statement-breakpoint
 CREATE UNIQUE INDEX "outbound_deliveries_uq" ON "outbound_deliveries" USING btree ("webhook_id","event_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "webhook_deliveries_idempotency_uq" ON "webhook_deliveries" USING btree ("provider","delivery_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "webhook_deliveries_idempotency_uq" ON "webhook_deliveries" USING btree ("integration_id","delivery_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "webhook_deliveries_signature_uq" ON "webhook_deliveries" USING btree ("integration_id","signature_digest");--> statement-breakpoint
+CREATE UNIQUE INDEX "webhook_deliveries_github_delivery_uq" ON "webhook_deliveries" USING btree ("provider","delivery_id") WHERE "webhook_deliveries"."provider" = 'github';--> statement-breakpoint
+CREATE UNIQUE INDEX "webhook_deliveries_github_signature_uq" ON "webhook_deliveries" USING btree ("provider","signature_digest") WHERE "webhook_deliveries"."provider" = 'github';--> statement-breakpoint
 CREATE INDEX "webhook_deliveries_status_idx" ON "webhook_deliveries" USING btree ("status","received_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "analytics_snapshots_uq" ON "analytics_snapshots" USING btree ("day","metric","dimension");--> statement-breakpoint
 CREATE INDEX "audit_logs_time_idx" ON "audit_logs" USING btree ("created_at");--> statement-breakpoint
@@ -1352,6 +1541,10 @@ CREATE INDEX "jobs_ready_idx" ON "jobs" USING btree ("status","run_at");--> stat
 CREATE UNIQUE INDEX "jobs_dedupe_live_uq" ON "jobs" USING btree ("dedupe_key") WHERE "jobs"."status" in ('pending', 'running');--> statement-breakpoint
 CREATE UNIQUE INDEX "game_moves_round_uq" ON "game_moves" USING btree ("session_id","user_id","round");--> statement-breakpoint
 CREATE UNIQUE INDEX "game_players_uq" ON "game_players" USING btree ("session_id","user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "game_players_seat_uq" ON "game_players" USING btree ("session_id","seat");--> statement-breakpoint
 CREATE INDEX "game_players_user_idx" ON "game_players" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "game_sessions_status_idx" ON "game_sessions" USING btree ("game_key","status");--> statement-breakpoint
-CREATE INDEX "game_sessions_activity_idx" ON "game_sessions" USING btree ("activity_instance_id");
+CREATE INDEX "game_sessions_activity_idx" ON "game_sessions" USING btree ("activity_instance_id");--> statement-breakpoint
+CREATE INDEX "game_sessions_sweep_idx" ON "game_sessions" USING btree ("status","last_activity_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "game_sessions_live_channel_uq" ON "game_sessions" USING btree ("discord_channel_id") WHERE "game_sessions"."status" in ('lobby', 'active') and "game_sessions"."discord_channel_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "game_sessions_live_activity_uq" ON "game_sessions" USING btree ("activity_instance_id") WHERE "game_sessions"."status" in ('lobby', 'active') and "game_sessions"."activity_instance_id" is not null;

@@ -1,1 +1,0 @@
-ALTER TYPE "public"."ticket_event_type" ADD VALUE 'sla_breach_retracted';

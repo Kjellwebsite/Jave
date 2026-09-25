@@ -14,7 +14,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[✓]` passed · `[!]` blocke
 
 ## Phases
 
-| # | Phase | Status | Tests |
-| - | ----- | ------ | ----- |
-| 0 | Repository intelligence | [✓] | Repo was empty (no commits, no assets). Greenfield. |
-| 1 | Architecture | [~] | Monorepo, schema, core kernel in place |
+| #   | Phase                   | Status | Tests                                               |
+| --- | ----------------------- | ------ | --------------------------------------------------- |
+| 0   | Repository intelligence | [✓]    | Repo was empty (no commits, no assets). Greenfield. |
+| 1   | Architecture            | [~]    | Monorepo, schema, core kernel in place              |

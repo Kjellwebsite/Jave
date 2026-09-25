@@ -32,13 +32,6 @@ export const NOTIFICATION_TYPES = {
     severity: 'important',
     channels: ['discord_dm'],
   },
-  'verification.assigned': {
-    label: 'Verification assigned',
-    description: 'A verification was assigned to you for review.',
-    severity: 'notice',
-    channels: ['discord_dm'],
-    staff: true,
-  },
   'rank.updated': {
     label: 'Rank updated',
     description: 'An evaluator updated one of your verified ranks.',
@@ -62,19 +55,6 @@ export const NOTIFICATION_TYPES = {
     description: 'Your trial result is available.',
     severity: 'important',
     channels: ['discord_dm'],
-  },
-  'trial.update': {
-    label: 'Trial update',
-    description: 'Selection, team assignment, closing or cancellation of a trial you joined.',
-    severity: 'notice',
-    channels: ['discord_dm'],
-  },
-  'trial.evaluation_requested': {
-    label: 'Trial evaluation',
-    description: 'A trial closed submissions and is ready for evaluation.',
-    severity: 'notice',
-    channels: ['discord_dm'],
-    staff: true,
   },
   'mission.assigned': {
     label: 'Mission assigned',
@@ -100,13 +80,6 @@ export const NOTIFICATION_TYPES = {
     severity: 'notice',
     channels: ['discord_dm'],
   },
-  'ticket.attention': {
-    label: 'Ticket needs attention',
-    description: 'A high-priority ticket was opened or missed its response target.',
-    severity: 'important',
-    channels: ['discord_dm'],
-    staff: true,
-  },
   'project.updated': {
     label: 'Project update',
     description: 'A project you belong to changed.',
@@ -116,12 +89,6 @@ export const NOTIFICATION_TYPES = {
   'achievement.unlocked': {
     label: 'Achievement unlocked',
     description: 'You unlocked an achievement.',
-    severity: 'notice',
-    channels: ['discord_dm'],
-  },
-  'achievement.updated': {
-    label: 'Achievement updated',
-    description: 'One of your achievements was verified or revoked.',
     severity: 'notice',
     channels: ['discord_dm'],
   },
@@ -144,17 +111,12 @@ export const NOTIFICATION_TYPES = {
     severity: 'notice',
     channels: ['discord_dm'],
   },
-  'event.updated': {
-    label: 'Event update',
-    description: 'An event you responded to was rescheduled or cancelled.',
+  'achievement.updated': {
+    label: 'Achievement updated',
+    description: 'One of your achievements was verified or revoked.',
     severity: 'notice',
     channels: ['discord_dm'],
   },
-  'event.waitlist': {
-    label: 'Waitlist',
-    description: 'A spot opened for you at an event you waitlisted for.',
-    severity: 'notice',
-    channels: ['discord_dm'],
   'adversarial.briefing': {
     label: 'Confidential briefing',
     description: 'Updates about an authorized exercise you operate in.',
@@ -199,6 +161,18 @@ export const NOTIFICATION_TYPES = {
     severity: 'info',
     channels: [],
   },
+  'event.updated': {
+    label: 'Event update',
+    description: 'An event you responded to was rescheduled or cancelled.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
+  'event.waitlist': {
+    label: 'Waitlist',
+    description: 'A spot opened for you at an event you waitlisted for.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
   'referral.validated': {
     label: 'Referral validated',
     description: 'Someone you referred passed retention and became a valid referral.',
@@ -216,6 +190,10 @@ export const NOTIFICATION_TYPES = {
   'moderation.sync_failed': {
     label: 'Moderation sync failed',
     description: 'A moderation action could not be applied in Discord.',
+    severity: 'important',
+    channels: ['discord_dm'],
+    staff: true,
+  },
   'contribution.updated': {
     label: 'Contribution update',
     description: 'A contribution of yours was recorded, verified or rejected.',
@@ -226,6 +204,33 @@ export const NOTIFICATION_TYPES = {
     label: 'Integration alert',
     description: 'An integration or outbound webhook needs attention.',
     severity: 'important',
+    channels: ['discord_dm'],
+    staff: true,
+  },
+  'ticket.attention': {
+    label: 'Ticket needs attention',
+    description: 'A high-priority ticket was opened or missed its response target.',
+    severity: 'important',
+    channels: ['discord_dm'],
+    staff: true,
+  },
+  'trial.update': {
+    label: 'Trial update',
+    description: 'Selection, team assignment, closing or cancellation of a trial you joined.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
+  'trial.evaluation_requested': {
+    label: 'Trial evaluation',
+    description: 'A trial closed submissions and is ready for evaluation.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+    staff: true,
+  },
+  'verification.assigned': {
+    label: 'Verification assigned',
+    description: 'A verification was assigned to you for review.',
+    severity: 'notice',
     channels: ['discord_dm'],
     staff: true,
   },

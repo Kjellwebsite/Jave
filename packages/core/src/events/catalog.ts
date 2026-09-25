@@ -21,7 +21,6 @@ export const DOMAIN_EVENTS = {
   'capability.verified': { description: 'An evaluator set a verified rank.', external: true },
   'evidence.submitted': { description: 'Evidence was submitted.', external: false },
   'evidence.reviewed': { description: 'Evidence was accepted or rejected.', external: false },
-
   'application.submitted': { description: 'An application was submitted.', external: true },
   'application.status_changed': {
     description: 'An application moved to a new state.',
@@ -30,24 +29,10 @@ export const DOMAIN_EVENTS = {
   'application.accepted': { description: 'An application was accepted.', external: true },
   'application.rejected': { description: 'An application was rejected.', external: false },
   'application.withdrawn': { description: 'An applicant withdrew.', external: false },
-  'application.reviewed': {
-    description: 'A reviewer recorded or updated a recommendation.',
-    external: false,
-  },
-  'application.interview_scheduled': {
-    description: 'An application interview was scheduled or moved.',
-    external: false,
-  },
-
   'verification.requested': { description: 'A verification was requested.', external: false },
   'verification.approved': { description: 'A verification was approved.', external: true },
   'verification.rejected': { description: 'A verification was rejected.', external: false },
   'verification.revoked': { description: 'A verification was revoked.', external: false },
-  'verification.expired': {
-    description: 'A verification expired without a decision.',
-    external: false,
-  },
-
   'trial.created': { description: 'A trial was created.', external: false },
   'trial.recruiting': { description: 'A trial opened recruitment.', external: true },
   'trial.participant_applied': { description: 'A member applied to a trial.', external: false },
@@ -66,61 +51,33 @@ export const DOMAIN_EVENTS = {
   },
   'trial.passed': { description: 'A participant passed a trial.', external: true },
   'trial.cancelled': { description: 'A trial was cancelled.', external: false },
-  'trial.participant_withdrawn': {
-    description: 'A member withdrew from a trial.',
-    external: false,
-  },
-  'trial.evaluation_recorded': {
-    description: 'An evaluator scored a trial team or participant.',
-    external: false,
-  },
-  'trial.deadline_extended': { description: 'A trial deadline was extended.', external: false },
-
   'adversarial.revealed': {
     description: 'An adversarial role was revealed after a trial.',
     external: false,
   },
-
   'mission.published': { description: 'A mission opened.', external: true },
   'mission.assigned': { description: 'A mission was assigned.', external: false },
   'mission.submitted': { description: 'A mission submission was received.', external: false },
   'mission.completed': { description: 'A mission submission was verified.', external: true },
   'mission.rejected': { description: 'A mission submission was rejected.', external: false },
   'mission.expired': { description: 'A mission assignment expired.', external: false },
-
   'project.created': { description: 'A project was created.', external: true },
   'project.status_changed': { description: 'A project changed status.', external: true },
   'project.shipped': { description: 'A project shipped.', external: true },
   'project.member_added': { description: 'A member joined a project.', external: false },
   'contribution.submitted': { description: 'A contribution was recorded.', external: false },
   'contribution.verified': { description: 'A contribution was verified.', external: true },
-
   'event.created': { description: 'An event was scheduled.', external: true },
   'event.rsvp': { description: 'A member responded to an event.', external: false },
   'event.checked_in': { description: 'A member checked in to an event.', external: false },
   'event.completed': { description: 'An event concluded.', external: true },
   'tournament.match_completed': { description: 'A tournament match concluded.', external: false },
-
   'ticket.opened': { description: 'A ticket was opened.', external: false },
   'ticket.claimed': { description: 'A ticket was claimed.', external: false },
   'ticket.closed': { description: 'A ticket was closed.', external: false },
   'ticket.reopened': { description: 'A ticket was reopened.', external: false },
-  'ticket.transferred': {
-    description: 'A ticket was assigned to another handler.',
-    external: false,
-  },
-  'ticket.sla_breached': {
-    description: 'A ticket missed its first-response target.',
-    external: false,
-  },
-  'ticket.sla_breach_retracted': {
-    description: 'A recorded ticket breach was withdrawn: the first reply was on time.',
-    external: false,
-  },
-
   'moderation.case_created': { description: 'A moderation case was recorded.', external: false },
   'security.event_raised': { description: 'A security event was raised.', external: false },
-
   'achievement.unlocked': { description: 'A member unlocked an achievement.', external: true },
   'research.submitted': { description: 'A research item was saved.', external: true },
   'research.reviewed': { description: 'A research item was reviewed.', external: false },
@@ -132,14 +89,6 @@ export const DOMAIN_EVENTS = {
     external: false,
   },
   'settings.updated': { description: 'Server settings changed.', external: false },
-  'event.updated': { description: 'An event was edited or rescheduled.', external: false },
-  'event.started': { description: 'An event went live.', external: true },
-  'event.cancelled': { description: 'An event was cancelled.', external: false },
-  'tournament.completed': {
-    description: 'A tournament final concluded (one event per participant).',
-    external: true,
-  },
-
   'achievement.verified': {
     description: 'An unverified achievement award was verified by staff.',
     external: false,
@@ -148,17 +97,35 @@ export const DOMAIN_EVENTS = {
   'mission.accepted': { description: 'A member accepted a mission assignment.', external: false },
   'mission.abandoned': { description: 'A member abandoned a mission.', external: false },
   'mission.closed': { description: 'A mission closed or was archived.', external: false },
+  'application.reviewed': {
+    description: 'A reviewer recorded or updated a recommendation.',
+    external: false,
+  },
+  'application.interview_scheduled': {
+    description: 'An application interview was scheduled or moved.',
+    external: false,
+  },
+  'event.updated': { description: 'An event was edited or rescheduled.', external: false },
+  'event.started': { description: 'An event went live.', external: true },
+  'event.cancelled': { description: 'An event was cancelled.', external: false },
+  'tournament.completed': {
+    description: 'A tournament final concluded (one event per participant).',
+    external: true,
+  },
   'referral.recorded': {
     description: 'A join was attributed to a referral source.',
     external: false,
   },
   'referral.invalidated': {
     description: 'A referral was invalidated after staff review.',
+    external: false,
+  },
   'moderation.case_revoked': { description: 'A moderation case was revoked.', external: false },
   'security.event_reviewed': { description: 'A security event was reviewed.', external: false },
   'security.raid_mode_changed': {
     description: 'Raid mode was switched on or off.',
-
+    external: false,
+  },
   'project.updated': {
     description: 'Project details, links or milestones changed.',
     external: false,
@@ -195,6 +162,31 @@ export const DOMAIN_EVENTS = {
   },
   'integration.account_verified': {
     description: 'Staff verified or unverified an external account.',
+    external: false,
+  },
+  'ticket.transferred': {
+    description: 'A ticket was assigned to another handler.',
+    external: false,
+  },
+  'ticket.sla_breached': {
+    description: 'A ticket missed its first-response target.',
+    external: false,
+  },
+  'ticket.sla_breach_retracted': {
+    description: 'A recorded ticket breach was withdrawn: the first reply was on time.',
+    external: false,
+  },
+  'trial.participant_withdrawn': {
+    description: 'A member withdrew from a trial.',
+    external: false,
+  },
+  'trial.evaluation_recorded': {
+    description: 'An evaluator scored a trial team or participant.',
+    external: false,
+  },
+  'trial.deadline_extended': { description: 'A trial deadline was extended.', external: false },
+  'verification.expired': {
+    description: 'A verification expired without a decision.',
     external: false,
   },
 } as const satisfies Record<string, DomainEventDefinition>;

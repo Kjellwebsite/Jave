@@ -1,5 +1,5 @@
 {
-  "id": "9095ec26-1781-47e1-9ed7-e56e94114198",
+  "id": "4f04cf78-0d03-4ecd-954b-8d6af86a1e02",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1715,6 +1715,23 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "application_status_changes_sequence_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
         }
       },
       "indexes": {
@@ -1907,6 +1924,56 @@
           "primaryKey": false,
           "notNull": false
         },
+        "review_assigned_at": {
+          "name": "review_assigned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_reminder_sent_at": {
+          "name": "review_reminder_sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_channel_id": {
+          "name": "review_channel_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_message_id": {
+          "name": "review_message_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_card_revision": {
+          "name": "review_card_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "review_card_rendered_revision": {
+          "name": "review_card_rendered_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "review_card_lease_id": {
+          "name": "review_card_lease_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_card_lease_expires_at": {
+          "name": "review_card_lease_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1934,6 +2001,27 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "applications_user_idx": {
+          "name": "applications_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2709,7 +2797,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "trial_evaluations_score_ck": {
+          "name": "trial_evaluations_score_ck",
+          "value": "\"trial_evaluations\".\"overall_score\" between 0 and 10"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.trial_participants": {
@@ -2810,6 +2903,21 @@
           "columns": [
             {
               "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "trial_participants_member_idx": {
+          "name": "trial_participants_member_idx",
+          "columns": [
+            {
+              "expression": "member_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2982,6 +3090,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "trial_results_member_idx": {
+          "name": "trial_results_member_idx",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -3107,7 +3230,12 @@
       },
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "trial_scores_range_ck": {
+          "name": "trial_scores_range_ck",
+          "value": "\"trial_scores\".\"score\" between 0 and 10"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.trial_submissions": {
@@ -3282,6 +3410,18 @@
         "discord_role_id": {
           "name": "discord_role_id",
           "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "briefed_at": {
+          "name": "briefed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -3482,7 +3622,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "trial_templates_team_size_ck": {
+          "name": "trial_templates_team_size_ck",
+          "value": "\"trial_templates\".\"team_size_min\" >= 1 and \"trial_templates\".\"team_size_max\" >= \"trial_templates\".\"team_size_min\""
+        },
+        "trial_templates_duration_ck": {
+          "name": "trial_templates_duration_ck",
+          "value": "\"trial_templates\".\"duration_minutes\" > 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.trials": {
@@ -3531,6 +3680,13 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
+        },
+        "summary": {
+          "name": "summary",
+          "type": "varchar(280)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
         },
         "brief": {
           "name": "brief",
@@ -3596,6 +3752,25 @@
           "primaryKey": false,
           "notNull": false
         },
+        "grace_minutes": {
+          "name": "grace_minutes",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "assignment_strategy": {
+          "name": "assignment_strategy",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignment_seed": {
+          "name": "assignment_seed",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "started_at": {
           "name": "started_at",
           "type": "timestamp with time zone",
@@ -3617,6 +3792,12 @@
         "cancelled_at": {
           "name": "cancelled_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -3729,7 +3910,20 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "trials_team_size_ck": {
+          "name": "trials_team_size_ck",
+          "value": "\"trials\".\"team_size\" >= 1"
+        },
+        "trials_duration_ck": {
+          "name": "trials_duration_ck",
+          "value": "\"trials\".\"duration_minutes\" > 0"
+        },
+        "trials_grace_ck": {
+          "name": "trials_grace_ck",
+          "value": "\"trials\".\"grace_minutes\" >= 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.adversarial_evaluations": {
@@ -3760,6 +3954,18 @@
           "type": "smallint",
           "primaryKey": false,
           "notNull": true
+        },
+        "suggested_score": {
+          "name": "suggested_score",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "override_justification": {
+          "name": "override_justification",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "summary": {
           "name": "summary",
@@ -3836,7 +4042,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "adversarial_evaluations_score_ck": {
+          "name": "adversarial_evaluations_score_ck",
+          "value": "\"adversarial_evaluations\".\"security_culture_score\" between 0 and 10"
+        },
+        "adversarial_evaluations_suggested_ck": {
+          "name": "adversarial_evaluations_suggested_ck",
+          "value": "\"adversarial_evaluations\".\"suggested_score\" is null or \"adversarial_evaluations\".\"suggested_score\" between 0 and 10"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.adversarial_observations": {
@@ -4020,6 +4235,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "guardrails": {
+          "name": "guardrails",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sandbox_assets": {
+          "name": "sandbox_assets",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "status": {
           "name": "status",
           "type": "adversarial_role_status",
@@ -4053,6 +4280,26 @@
           "primaryKey": false,
           "notNull": false
         },
+        "briefing_revision": {
+          "name": "briefing_revision",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "briefing_delivery": {
+          "name": "briefing_delivery",
+          "type": "adversarial_delivery",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "briefing_delivered_at": {
+          "name": "briefing_delivered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "activated_at": {
           "name": "activated_at",
           "type": "timestamp with time zone",
@@ -4080,6 +4327,62 @@
         "abort_reason": {
           "name": "abort_reason",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aborted_by_user_id": {
+          "name": "aborted_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "red_flag_raised_at": {
+          "name": "red_flag_raised_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "red_flag_raised_by_user_id": {
+          "name": "red_flag_raised_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stop_notice_delivery": {
+          "name": "stop_notice_delivery",
+          "type": "adversarial_delivery",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stop_notice_delivered_at": {
+          "name": "stop_notice_delivered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "debrief_delivery": {
+          "name": "debrief_delivery",
+          "type": "adversarial_delivery",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "debrief_channel_id": {
+          "name": "debrief_channel_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "debrief_message_id": {
+          "name": "debrief_message_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "debrief_posted_at": {
+          "name": "debrief_posted_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -4116,6 +4419,59 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "adversarial_roles_operative_idx": {
+          "name": "adversarial_roles_operative_idx",
+          "columns": [
+            {
+              "expression": "operative_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "adversarial_roles_operative_uq": {
+          "name": "adversarial_roles_operative_uq",
+          "columns": [
+            {
+              "expression": "trial_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "operative_member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"adversarial_roles\".\"aborted_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "adversarial_roles_team_uq": {
+          "name": "adversarial_roles_team_uq",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"adversarial_roles\".\"aborted_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4180,6 +4536,32 @@
           "tableTo": "users",
           "columnsFrom": [
             "authorized_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "adversarial_roles_aborted_by_user_id_users_id_fk": {
+          "name": "adversarial_roles_aborted_by_user_id_users_id_fk",
+          "tableFrom": "adversarial_roles",
+          "tableTo": "users",
+          "columnsFrom": [
+            "aborted_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "adversarial_roles_red_flag_raised_by_user_id_users_id_fk": {
+          "name": "adversarial_roles_red_flag_raised_by_user_id_users_id_fk",
+          "tableFrom": "adversarial_roles",
+          "tableTo": "users",
+          "columnsFrom": [
+            "red_flag_raised_by_user_id"
           ],
           "columnsTo": [
             "id"
@@ -4368,6 +4750,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "fired_by_user_id": {
+          "name": "fired_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4376,7 +4770,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "adversarial_triggers_role_idx": {
+          "name": "adversarial_triggers_role_idx",
+          "columns": [
+            {
+              "expression": "role_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "adversarial_triggers_role_id_adversarial_roles_id_fk": {
           "name": "adversarial_triggers_role_id_adversarial_roles_id_fk",
@@ -4389,6 +4799,32 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "adversarial_triggers_fired_by_user_id_users_id_fk": {
+          "name": "adversarial_triggers_fired_by_user_id_users_id_fk",
+          "tableFrom": "adversarial_triggers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "fired_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "adversarial_triggers_created_by_user_id_users_id_fk": {
+          "name": "adversarial_triggers_created_by_user_id_users_id_fk",
+          "tableFrom": "adversarial_triggers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -4414,6 +4850,23 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "ticket_events_seq_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
         },
         "type": {
           "name": "type",
@@ -4511,6 +4964,23 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "ticket_messages_seq_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
         "ticket_id": {
           "name": "ticket_id",
           "type": "uuid",
@@ -4523,6 +4993,14 @@
           "primaryKey": false,
           "notNull": false
         },
+        "author_role": {
+          "name": "author_role",
+          "type": "ticket_author_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'participant'"
+        },
         "discord_message_id": {
           "name": "discord_message_id",
           "type": "varchar(20)",
@@ -4534,6 +5012,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "original_body": {
+          "name": "original_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "attachments": {
           "name": "attachments",
@@ -4722,6 +5206,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "discord_card_message_id": {
+          "name": "discord_card_message_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sla_first_response_due_at": {
           "name": "sla_first_response_due_at",
           "type": "timestamp with time zone",
@@ -4886,6 +5376,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "tickets_sla_pending_idx": {
+          "name": "tickets_sla_pending_idx",
+          "columns": [
+            {
+              "expression": "sla_first_response_due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tickets\".\"first_response_at\" is null and \"tickets\".\"sla_breached_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -5000,6 +5506,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "delete_message_days": {
+          "name": "delete_message_days",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "source": {
           "name": "source",
           "type": "mod_source",
@@ -5010,6 +5522,12 @@
         },
         "security_event_id": {
           "name": "security_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reverts_case_id": {
+          "name": "reverts_case_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -5025,6 +5543,25 @@
         "discord_error": {
           "name": "discord_error",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "discord_synced_at": {
+          "name": "discord_synced_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_reason": {
+          "name": "ended_reason",
+          "type": "mod_case_end_reason",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": false
         },
@@ -5112,6 +5649,59 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "mod_cases_security_event_idx": {
+          "name": "mod_cases_security_event_idx",
+          "columns": [
+            {
+              "expression": "security_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "mod_cases_live_uq": {
+          "name": "mod_cases_live_uq",
+          "columns": [
+            {
+              "expression": "target_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "action",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"mod_cases\".\"ended_at\" is null and \"mod_cases\".\"action\" in ('timeout', 'quarantine', 'ban')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "mod_cases_expiry_idx": {
+          "name": "mod_cases_expiry_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"mod_cases\".\"ended_at\" is null and \"mod_cases\".\"expires_at\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -5154,6 +5744,19 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "mod_cases_reverts_case_id_mod_cases_id_fk": {
+          "name": "mod_cases_reverts_case_id_mod_cases_id_fk",
+          "tableFrom": "mod_cases",
+          "tableTo": "mod_cases",
+          "columnsFrom": [
+            "reverts_case_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "mod_cases_revoked_by_user_id_users_id_fk": {
           "name": "mod_cases_revoked_by_user_id_users_id_fk",
           "tableFrom": "mod_cases",
@@ -5185,6 +5788,23 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "number": {
+          "name": "number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "security_events_number_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
         "user_id": {
           "name": "user_id",
           "type": "uuid",
@@ -5203,6 +5823,14 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "security_event_source",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'system'"
         },
         "evidence": {
           "name": "evidence",
@@ -5232,6 +5860,30 @@
           "primaryKey": false,
           "notNull": false
         },
+        "reported_by_user_id": {
+          "name": "reported_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "alert_channel_id": {
+          "name": "alert_channel_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "alert_message_id": {
+          "name": "alert_message_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "reviewed_by_user_id": {
           "name": "reviewed_by_user_id",
           "type": "uuid",
@@ -5256,9 +5908,46 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {
+        "security_events_number_uq": {
+          "name": "security_events_number_uq",
+          "columns": [
+            {
+              "expression": "number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "security_events_dedupe_uq": {
+          "name": "security_events_dedupe_uq",
+          "columns": [
+            {
+              "expression": "dedupe_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "security_events_time_idx": {
           "name": "security_events_time_idx",
           "columns": [
@@ -5312,6 +6001,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "security_events_reported_by_user_id_users_id_fk": {
+          "name": "security_events_reported_by_user_id_users_id_fk",
+          "tableFrom": "security_events",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reported_by_user_id"
           ],
           "columnsTo": [
             "id"
@@ -5488,6 +6190,13 @@
           "notNull": true,
           "default": false
         },
+        "is_vanity": {
+          "name": "is_vanity",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "campaign_id": {
           "name": "campaign_id",
           "type": "uuid",
@@ -5526,6 +6235,21 @@
           "columns": [
             {
               "expression": "inviter_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "invite_codes_campaign_idx": {
+          "name": "invite_codes_campaign_idx",
+          "columns": [
+            {
+              "expression": "campaign_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5600,6 +6324,18 @@
           "notNull": true,
           "default": true
         },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deactivated_at": {
+          "name": "deactivated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -5645,6 +6381,19 @@
           "tableTo": "campaigns",
           "columnsFrom": [
             "campaign_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "referral_codes_created_by_user_id_users_id_fk": {
+          "name": "referral_codes_created_by_user_id_users_id_fk",
+          "tableFrom": "referral_codes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by_user_id"
           ],
           "columnsTo": [
             "id"
@@ -5715,6 +6464,12 @@
           "notNull": true,
           "default": "'joined'"
         },
+        "status_reason": {
+          "name": "status_reason",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "joined_at": {
           "name": "joined_at",
           "type": "timestamp with time zone",
@@ -5753,6 +6508,24 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "reviewed_by_user_id": {
+          "name": "reviewed_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_note": {
+          "name": "review_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -5820,6 +6593,117 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "referrals_status_idx": {
+          "name": "referrals_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "joined_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "referrals_campaign_idx": {
+          "name": "referrals_campaign_idx",
+          "columns": [
+            {
+              "expression": "campaign_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "referrals_invitee_joined_uq": {
+          "name": "referrals_invitee_joined_uq",
+          "columns": [
+            {
+              "expression": "invitee_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "joined_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "referrals_live_invitee_uq": {
+          "name": "referrals_live_invitee_uq",
+          "columns": [
+            {
+              "expression": "invitee_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"referrals\".\"status\" in ('joined', 'retained')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "referrals_valid_invitee_uq": {
+          "name": "referrals_valid_invitee_uq",
+          "columns": [
+            {
+              "expression": "invitee_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"referrals\".\"status\" = 'valid'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "referrals_code_claim_uq": {
+          "name": "referrals_code_claim_uq",
+          "columns": [
+            {
+              "expression": "invitee_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"referrals\".\"referral_code\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -5874,6 +6758,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "referrals_reviewed_by_user_id_users_id_fk": {
+          "name": "referrals_reviewed_by_user_id_users_id_fk",
+          "tableFrom": "referrals",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reviewed_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -5903,6 +6800,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "summary": {
+          "name": "summary",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
         },
         "category": {
           "name": "category",
@@ -6075,6 +6979,30 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "revoked_by_user_id": {
+          "name": "revoked_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announcement_channel_id": {
+          "name": "announcement_channel_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announcement_message_id": {
+          "name": "announcement_message_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announced_at": {
+          "name": "announced_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -6105,6 +7033,27 @@
           "columns": [
             {
               "expression": "achievement_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "member_achievements_member_idx": {
+          "name": "member_achievements_member_idx",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "awarded_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -6162,6 +7111,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "verified_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "member_achievements_revoked_by_user_id_users_id_fk": {
+          "name": "member_achievements_revoked_by_user_id_users_id_fk",
+          "tableFrom": "member_achievements",
+          "tableTo": "users",
+          "columnsFrom": [
+            "revoked_by_user_id"
           ],
           "columnsTo": [
             "id"
@@ -6255,6 +7217,24 @@
         "verified_at": {
           "name": "verified_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_by_user_id": {
+          "name": "reviewed_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_note": {
+          "name": "review_note",
+          "type": "varchar(1000)",
           "primaryKey": false,
           "notNull": false
         },
@@ -6372,6 +7352,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "contributions_reviewed_by_user_id_users_id_fk": {
+          "name": "contributions_reviewed_by_user_id_users_id_fk",
+          "tableFrom": "contributions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reviewed_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -6415,9 +7408,32 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "project_links_project_idx": {
+          "name": "project_links_project_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "project_links_project_id_projects_id_fk": {
           "name": "project_links_project_id_projects_id_fk",
@@ -6517,6 +7533,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "project_members_one_owner_uq": {
+          "name": "project_members_one_owner_uq",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"project_members\".\"role\" = 'owner' and \"project_members\".\"left_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -6764,6 +7796,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "archived_from_status": {
+          "name": "archived_from_status",
+          "type": "project_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -6955,6 +7994,31 @@
           "primaryKey": false,
           "notNull": false
         },
+        "submission_evidence_title": {
+          "name": "submission_evidence_title",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "submission_evidence_url": {
+          "name": "submission_evidence_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "submitted_by_member_id": {
+          "name": "submitted_by_member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "evidence_id": {
           "name": "evidence_id",
           "type": "uuid",
@@ -6973,9 +8037,27 @@
           "primaryKey": false,
           "notNull": false
         },
+        "reviewed_by_user_id": {
+          "name": "reviewed_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "feedback": {
           "name": "feedback",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reminder_due_at": {
+          "name": "reminder_due_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -7057,6 +8139,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "mission_assignments_team_idx": {
+          "name": "mission_assignments_team_idx",
+          "columns": [
+            {
+              "expression": "mission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "team_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -7099,6 +8202,19 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
+        "mission_assignments_submitted_by_member_id_members_id_fk": {
+          "name": "mission_assignments_submitted_by_member_id_members_id_fk",
+          "tableFrom": "mission_assignments",
+          "tableTo": "members",
+          "columnsFrom": [
+            "submitted_by_member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "mission_assignments_evidence_id_evidence_id_fk": {
           "name": "mission_assignments_evidence_id_evidence_id_fk",
           "tableFrom": "mission_assignments",
@@ -7118,6 +8234,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "verified_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mission_assignments_reviewed_by_user_id_users_id_fk": {
+          "name": "mission_assignments_reviewed_by_user_id_users_id_fk",
+          "tableFrom": "mission_assignments",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reviewed_by_user_id"
           ],
           "columnsTo": [
             "id"
@@ -7257,9 +8386,33 @@
           "notNull": true,
           "default": "now()"
         },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "archived_at": {
           "name": "archived_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announcement_channel_id": {
+          "name": "announcement_channel_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announcement_message_id": {
+          "name": "announcement_message_id",
+          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false
         }
@@ -7423,6 +8576,33 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "event_rsvps_status_idx": {
+          "name": "event_rsvps_status_idx",
+          "columns": [
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "responded_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -7469,6 +8649,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "member_id": {
           "name": "member_id",
           "type": "uuid",
@@ -7476,7 +8662,29 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "event_team_members_event_member_uq": {
+          "name": "event_team_members_event_member_uq",
+          "columns": [
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "event_team_members_team_id_event_teams_id_fk": {
           "name": "event_team_members_team_id_event_teams_id_fk",
@@ -7484,6 +8692,19 @@
           "tableTo": "event_teams",
           "columnsFrom": [
             "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "event_team_members_event_id_events_id_fk": {
+          "name": "event_team_members_event_id_events_id_fk",
+          "tableFrom": "event_team_members",
+          "tableTo": "events",
+          "columnsFrom": [
+            "event_id"
           ],
           "columnsTo": [
             "id"
@@ -7648,7 +8869,7 @@
           "name": "ends_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "location": {
           "name": "location",
@@ -7658,6 +8879,18 @@
         },
         "discord_scheduled_event_id": {
           "name": "discord_scheduled_event_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announcement_channel_id": {
+          "name": "announcement_channel_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "announcement_message_id": {
+          "name": "announcement_message_id",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false
@@ -7680,6 +8913,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "check_in_code_issued_at": {
+          "name": "check_in_code_issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "host_member_id": {
           "name": "host_member_id",
           "type": "uuid",
@@ -7692,9 +8931,34 @@
           "primaryKey": false,
           "notNull": false
         },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "live_at": {
+          "name": "live_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cancelled_at": {
           "name": "cancelled_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "varchar(500)",
           "primaryKey": false,
           "notNull": false
         },
@@ -7725,6 +8989,21 @@
             },
             {
               "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "events_ends_idx": {
+          "name": "events_ends_idx",
+          "columns": [
+            {
+              "expression": "ends_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -7850,6 +9129,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "reported_by_user_id": {
+          "name": "reported_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "completed_at": {
           "name": "completed_at",
           "type": "timestamp with time zone",
@@ -7952,6 +9237,19 @@
           "tableTo": "tournament_matches",
           "columnsFrom": [
             "next_match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tournament_matches_reported_by_user_id_users_id_fk": {
+          "name": "tournament_matches_reported_by_user_id_users_id_fk",
+          "tableFrom": "tournament_matches",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reported_by_user_id"
           ],
           "columnsTo": [
             "id"
@@ -8327,6 +9625,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "preview": {
           "name": "preview",
           "type": "text",
@@ -8397,6 +9701,48 @@
             },
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ai_action_proposals_requester_idx": {
+          "name": "ai_action_proposals_requester_idx",
+          "columns": [
+            {
+              "expression": "requested_by_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ai_action_proposals_expiry_idx": {
+          "name": "ai_action_proposals_expiry_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -8477,6 +9823,12 @@
           "type": "varchar(32)",
           "primaryKey": false,
           "notNull": true
+        },
+        "surface": {
+          "name": "surface",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": false
         },
         "provider": {
           "name": "provider",
@@ -8614,6 +9966,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "title_guessed": {
+          "name": "title_guessed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "authors": {
           "name": "authors",
           "type": "text[]",
@@ -8722,6 +10081,26 @@
           "primaryKey": false,
           "notNull": false
         },
+        "enrichment_status": {
+          "name": "enrichment_status",
+          "type": "research_enrichment_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "enriched_at": {
+          "name": "enriched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enrichment_error": {
+          "name": "enrichment_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sidus_sync_status": {
           "name": "sidus_sync_status",
           "type": "sidus_sync_status",
@@ -8739,6 +10118,12 @@
         "sidus_synced_at": {
           "name": "sidus_synced_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sidus_sync_error": {
+          "name": "sidus_sync_error",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -8809,11 +10194,47 @@
           "method": "btree",
           "with": {}
         },
+        "research_items_arxiv_uq": {
+          "name": "research_items_arxiv_uq",
+          "columns": [
+            {
+              "expression": "arxiv_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "research_items_status_idx": {
           "name": "research_items_status_idx",
           "columns": [
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "research_items_submitter_idx": {
+          "name": "research_items_submitter_idx",
+          "columns": [
+            {
+              "expression": "submitted_by_user_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -8851,6 +10272,169 @@
           "tableTo": "users",
           "columnsFrom": [
             "reviewed_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.external_accounts": {
+      "name": "external_accounts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "external_account_provider",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "username": {
+          "name": "username",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verified_by_user_id": {
+          "name": "verified_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "external_accounts_member_provider_uq": {
+          "name": "external_accounts_member_provider_uq",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "external_accounts_username_uq": {
+          "name": "external_accounts_username_uq",
+          "columns": [
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "username",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "external_accounts_external_id_uq": {
+          "name": "external_accounts_external_id_uq",
+          "columns": [
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "external_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"external_accounts\".\"external_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "external_accounts_member_id_members_id_fk": {
+          "name": "external_accounts_member_id_members_id_fk",
+          "tableFrom": "external_accounts",
+          "tableTo": "members",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "external_accounts_verified_by_user_id_users_id_fk": {
+          "name": "external_accounts_verified_by_user_id_users_id_fk",
+          "tableFrom": "external_accounts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "verified_by_user_id"
           ],
           "columnsTo": [
             "id"
@@ -8912,6 +10496,12 @@
         "secret_ciphertext": {
           "name": "secret_ciphertext",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "secret_rotated_at": {
+          "name": "secret_rotated_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -9142,6 +10732,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "secret_rotated_at": {
+          "name": "secret_rotated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "enabled": {
           "name": "enabled",
           "type": "boolean",
@@ -9159,6 +10755,30 @@
         "last_delivery_at": {
           "name": "last_delivery_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_failure_at": {
+          "name": "last_failure_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "disabled_at": {
+          "name": "disabled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "disabled_reason": {
+          "name": "disabled_reason",
+          "type": "varchar(200)",
           "primaryKey": false,
           "notNull": false
         },
@@ -9220,7 +10840,7 @@
           "name": "integration_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "provider": {
           "name": "provider",
@@ -9241,6 +10861,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "signature_digest": {
+          "name": "signature_digest",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "status": {
           "name": "status",
           "type": "webhook_delivery_status",
@@ -9248,6 +10874,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'received'"
+        },
+        "status_reason": {
+          "name": "status_reason",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
         },
         "payload": {
           "name": "payload",
@@ -9265,6 +10897,18 @@
         "last_error": {
           "name": "last_error",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "relay_message_id": {
+          "name": "relay_message_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "relayed_at": {
+          "name": "relayed_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -9287,6 +10931,48 @@
           "name": "webhook_deliveries_idempotency_uq",
           "columns": [
             {
+              "expression": "integration_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "delivery_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "webhook_deliveries_signature_uq": {
+          "name": "webhook_deliveries_signature_uq",
+          "columns": [
+            {
+              "expression": "integration_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "signature_digest",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "webhook_deliveries_github_delivery_uq": {
+          "name": "webhook_deliveries_github_delivery_uq",
+          "columns": [
+            {
               "expression": "provider",
               "isExpression": false,
               "asc": true,
@@ -9300,6 +10986,29 @@
             }
           ],
           "isUnique": true,
+          "where": "\"webhook_deliveries\".\"provider\" = 'github'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "webhook_deliveries_github_signature_uq": {
+          "name": "webhook_deliveries_github_signature_uq",
+          "columns": [
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "signature_digest",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"webhook_deliveries\".\"provider\" = 'github'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -10144,6 +11853,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "seat": {
+          "name": "seat",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
         "team": {
           "name": "team",
           "type": "varchar(32)",
@@ -10183,6 +11898,27 @@
             },
             {
               "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "game_players_seat_uq": {
+          "name": "game_players_seat_uq",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seat",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -10326,6 +12062,25 @@
           "notNull": true,
           "default": 0
         },
+        "player_count": {
+          "name": "player_count",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_activity_at": {
+          "name": "last_activity_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "started_at": {
           "name": "started_at",
           "type": "timestamp with time zone",
@@ -10386,6 +12141,59 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "game_sessions_sweep_idx": {
+          "name": "game_sessions_sweep_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "last_activity_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "game_sessions_live_channel_uq": {
+          "name": "game_sessions_live_channel_uq",
+          "columns": [
+            {
+              "expression": "discord_channel_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"game_sessions\".\"status\" in ('lobby', 'active') and \"game_sessions\".\"discord_channel_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "game_sessions_live_activity_uq": {
+          "name": "game_sessions_live_activity_uq",
+          "columns": [
+            {
+              "expression": "activity_instance_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"game_sessions\".\"status\" in ('lobby', 'active') and \"game_sessions\".\"activity_instance_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -10627,6 +12435,15 @@
         "member"
       ]
     },
+    "public.adversarial_delivery": {
+      "name": "adversarial_delivery",
+      "schema": "public",
+      "values": [
+        "pending",
+        "sent",
+        "undeliverable"
+      ]
+    },
     "public.adversarial_outcome": {
       "name": "adversarial_outcome",
       "schema": "public",
@@ -10661,6 +12478,15 @@
         "verification_discipline"
       ]
     },
+    "public.ticket_author_role": {
+      "name": "ticket_author_role",
+      "schema": "public",
+      "values": [
+        "requester",
+        "handler",
+        "participant"
+      ]
+    },
     "public.ticket_category": {
       "name": "ticket_category",
       "schema": "public",
@@ -10691,7 +12517,8 @@
         "note_added",
         "summary_generated",
         "transcript_accessed",
-        "sla_breached"
+        "sla_breached",
+        "sla_breach_retracted"
       ]
     },
     "public.ticket_priority": {
@@ -10740,6 +12567,16 @@
         "note"
       ]
     },
+    "public.mod_case_end_reason": {
+      "name": "mod_case_end_reason",
+      "schema": "public",
+      "values": [
+        "expired",
+        "lifted",
+        "superseded",
+        "revoked"
+      ]
+    },
     "public.mod_source": {
       "name": "mod_source",
       "schema": "public",
@@ -10747,7 +12584,8 @@
         "manual",
         "automod",
         "ai_suggested",
-        "security_event"
+        "security_event",
+        "system"
       ]
     },
     "public.security_action": {
@@ -10762,6 +12600,17 @@
         "kick",
         "ban",
         "lockdown"
+      ]
+    },
+    "public.security_event_source": {
+      "name": "security_event_source",
+      "schema": "public",
+      "values": [
+        "automod",
+        "join_screening",
+        "manual",
+        "integration",
+        "system"
       ]
     },
     "public.security_event_status": {
@@ -11048,7 +12897,8 @@
         "error",
         "refused",
         "rate_limited",
-        "disabled"
+        "disabled",
+        "pending"
       ]
     },
     "public.evidence_level": {
@@ -11061,6 +12911,17 @@
         "experimental",
         "peer_reviewed",
         "meta_analysis"
+      ]
+    },
+    "public.research_enrichment_status": {
+      "name": "research_enrichment_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "enriched",
+        "not_found",
+        "failed",
+        "skipped"
       ]
     },
     "public.research_status": {
@@ -11082,6 +12943,13 @@
         "pending",
         "synced",
         "failed"
+      ]
+    },
+    "public.external_account_provider": {
+      "name": "external_account_provider",
+      "schema": "public",
+      "values": [
+        "github"
       ]
     },
     "public.integration_provider": {

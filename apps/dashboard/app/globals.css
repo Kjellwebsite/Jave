@@ -1,0 +1,5 @@
+@import 'tailwindcss';
+@import '@jave/ui/styles.css';
+
+/* The design system ships TSX source; Tailwind must scan it for class names. */
+@source '../../../packages/ui/src';

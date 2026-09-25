@@ -31,17 +31,51 @@ function sanitizeLabel(label: string): string {
   return cleaned || 'data';
 }
 
+interface MarkerSpan {
+  /** Code-point range in the text being neutralized. */
+  start: number;
+  end: number;
+  edge: string;
+}
+
+/**
+ * Find the marker phrase however it is spelled, including full-width,
+ * stylized or ligature letters. Matching runs over a folded copy (NFKC per
+ * code point) that remembers which original code point each folded
+ * character came from, so the spans map back onto the original text.
+ */
+function findMarkerSpans(points: readonly string[]): MarkerSpan[] {
+  let folded = '';
+  const origin: number[] = [];
+  points.forEach((point, index) => {
+    const form = point.normalize('NFKC');
+    folded += form;
+    for (let unit = 0; unit < form.length; unit++) origin.push(index);
+  });
+  return [...folded.matchAll(MARKER_PHRASE)].map((match) => ({
+    start: origin[match.index]!,
+    end: origin[match.index + match[0].length - 1]! + 1,
+    edge: match[1]!.toLowerCase(),
+  }));
+}
+
 /**
  * Neutralize anything in untrusted content that could impersonate our
- * delimiters: content is NFKC-normalized (so full-width or stylized letters
- * cannot spell the marker), invisible characters are removed, and the marker
- * phrase is rewritten so content cannot open or close a block.
+ * delimiters: invisible characters are removed and every spelling of the
+ * marker phrase is rewritten so content cannot open or close a block.
+ * Everything else keeps its exact characters (only canonical NFC
+ * composition is applied), so `10⁻⁶` or `mc²` reach the model unchanged.
  */
 export function neutralizeDelimiters(content: string): string {
-  return stripInvisible(content.normalize('NFKC')).replace(
-    MARKER_PHRASE,
-    (_match, edge: string) => `${edge.toLowerCase()}-quoted-untrusted-data`,
-  );
+  const points = Array.from(stripInvisible(content.normalize('NFC')));
+  let result = '';
+  let cursor = 0;
+  for (const span of findMarkerSpans(points)) {
+    result += points.slice(cursor, span.start).join('');
+    result += `${span.edge}-quoted-untrusted-data`;
+    cursor = span.end;
+  }
+  return result + points.slice(cursor).join('');
 }
 
 export interface UntrustedOptions {

@@ -16,6 +16,8 @@ export const MAX_AUTHOR_LENGTH = 120;
 export const MAX_URL_LENGTH = 2048;
 export const MAX_DOI_LENGTH = 200;
 export const MAX_REVIEW_NOTE_LENGTH = 1000;
+/** Upper bound for a submitted item version (Postgres integer). */
+export const MAX_ITEM_VERSION = 2_147_483_647;
 export const MAX_SEARCH_LENGTH = 100;
 
 /** Discord allows 4000 characters for boosted accounts; nothing longer is a real message. */

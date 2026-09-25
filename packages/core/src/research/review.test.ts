@@ -22,6 +22,15 @@ import { saveFromMessage, saveResearchItem } from './research.service';
 import { requestSidusSync, reviewResearchItem } from './review.service';
 import { HttpSidusClient, NotConfiguredSidusClient, type SidusClient } from './sidus';
 
+/** The revision a reviewer sees; reviews must name it. */
+async function currentVersion(kit: TestKit, id: string): Promise<number> {
+  const [item] = await kit.db
+    .select({ version: researchItems.version })
+    .from(researchItems)
+    .where(eq(researchItems.id, id));
+  return item!.version;
+}
+
 async function row(kit: TestKit, id: string) {
   const [item] = await kit.db.select().from(researchItems).where(eq(researchItems.id, id));
   return item!;
@@ -78,6 +87,7 @@ describe(
         await expect(
           reviewResearchItem(kit.as(peer), {
             itemId: item.id,
+            expectedVersion: await currentVersion(kit, item.id),
             status: 'verified',
             evidenceLevel: 'experimental',
           }),
@@ -90,6 +100,7 @@ describe(
         await expect(
           reviewResearchItem(kit.as(reviewer), {
             itemId: item.id,
+            expectedVersion: await currentVersion(kit, item.id),
             status: 'verified',
             evidenceLevel: 'meta_analysis',
           }),
@@ -108,10 +119,15 @@ describe(
       it('verifies with an evidence level, emits events about the submitter and notifies them', async () => {
         const { item } = await saveResearchItem(kit.as(member), { title: 'Sleep study' });
         await expect(
-          reviewResearchItem(kit.as(reviewer), { itemId: item.id, status: 'verified' }),
+          reviewResearchItem(kit.as(reviewer), {
+            itemId: item.id,
+            expectedVersion: await currentVersion(kit, item.id),
+            status: 'verified',
+          }),
         ).rejects.toBeInstanceOf(ValidationError);
         const verified = await reviewResearchItem(kit.as(reviewer), {
           itemId: item.id,
+          expectedVersion: await currentVersion(kit, item.id),
           status: 'verified',
           evidenceLevel: 'peer_reviewed',
           topic: 'Neuroscience',
@@ -148,38 +164,54 @@ describe(
       it('BREAK: rejects invalid transitions and nothing-to-do reviews', async () => {
         const { item } = await saveResearchItem(kit.as(member), { title: 'Paper' });
         await expect(
-          reviewResearchItem(kit.as(reviewer), { itemId: item.id }),
+          reviewResearchItem(kit.as(reviewer), {
+            itemId: item.id,
+            expectedVersion: await currentVersion(kit, item.id),
+          }),
         ).rejects.toBeInstanceOf(ValidationError);
         await expect(
           reviewResearchItem(kit.as(reviewer), {
             itemId: item.id,
+            expectedVersion: await currentVersion(kit, item.id),
             status: 'archived' as 'verified',
           }),
         ).rejects.toBeInstanceOf(ValidationError);
         await expect(
-          reviewResearchItem(kit.as(reviewer), { itemId: item.id, status: 'new' as 'verified' }),
+          reviewResearchItem(kit.as(reviewer), {
+            itemId: item.id,
+            expectedVersion: await currentVersion(kit, item.id),
+            status: 'new' as 'verified',
+          }),
         ).rejects.toBeInstanceOf(ValidationError);
         const { archiveResearchItem } = await import('./research.service');
         await archiveResearchItem(kit.as(member), { itemId: item.id });
         await expect(
           reviewResearchItem(kit.as(reviewer), {
             itemId: item.id,
+            expectedVersion: await currentVersion(kit, item.id),
             status: 'verified',
             evidenceLevel: 'anecdotal',
           }),
         ).rejects.toBeInstanceOf(InvalidStateError);
         await expect(
-          reviewResearchItem(kit.as(reviewer), { itemId: item.id, evidenceLevel: 'anecdotal' }),
+          reviewResearchItem(kit.as(reviewer), {
+            itemId: item.id,
+            expectedVersion: await currentVersion(kit, item.id),
+            evidenceLevel: 'anecdotal',
+          }),
         ).rejects.toBeInstanceOf(InvalidStateError);
       });
 
       it('BREAK: concurrent reviews verify an item exactly once', async () => {
         const { item } = await saveResearchItem(kit.as(member), { title: 'Contested paper' });
         const second = await kit.member({ roles: ['operations'] });
+        // Every reviewer opened the same revision.
+        const seen = await currentVersion(kit, item.id);
         const results = await Promise.allSettled(
           [reviewer, second, reviewer].map((actor) =>
             reviewResearchItem(kit.as(actor), {
               itemId: item.id,
+              expectedVersion: seen,
               status: 'verified',
               evidenceLevel: 'experimental',
             }),
@@ -290,6 +322,7 @@ describe(
         const { item } = await saveResearchItem(kit.as(member), { title, doi: '10.4242/verified' });
         await reviewResearchItem(kit.as(reviewer), {
           itemId: item.id,
+          expectedVersion: await currentVersion(kit, item.id),
           status: 'verified',
           evidenceLevel: 'experimental',
         });
@@ -351,6 +384,7 @@ describe(
         expect(item.title).toBe('sleep study 2024');
         await reviewResearchItem(kit.as(reviewer), {
           itemId: item.id,
+          expectedVersion: await currentVersion(kit, item.id),
           status: 'verified',
           evidenceLevel: 'observational',
         });
@@ -409,7 +443,11 @@ describe(
         );
         const queued = await requestSidusSync(kit.as(reviewer), { itemId: item.id });
         expect(queued.sidusSyncStatus).toBe('pending');
-        await reviewResearchItem(kit.as(reviewer), { itemId: item.id, status: 'reviewed' });
+        await reviewResearchItem(kit.as(reviewer), {
+          itemId: item.id,
+          expectedVersion: await currentVersion(kit, item.id),
+          status: 'reviewed',
+        });
         const fake = createFakeFetch([json(200, { id: 'x' })]);
         await kit.drain(
           handlers({

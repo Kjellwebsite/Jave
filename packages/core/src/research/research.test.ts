@@ -20,7 +20,16 @@ import {
   saveResearchItem,
   updateResearchItem,
 } from './research.service';
-import { reviewResearchItem } from './review.service';
+import { requestSidusSync, reviewResearchItem } from './review.service';
+
+/** The revision a reviewer sees; reviews must name it. */
+async function currentVersion(kit: TestKit, id: string): Promise<number> {
+  const [item] = await kit.db
+    .select({ version: researchItems.version })
+    .from(researchItems)
+    .where(eq(researchItems.id, id));
+  return item!.version;
+}
 
 const MESSAGE_ID = '1234567890123456789';
 const MESSAGE_URL = `https://discord.com/channels/111111111111111111/222222222222222222/${MESSAGE_ID}`;
@@ -211,7 +220,11 @@ describe('research library', { timeout: INTEGRATION_TEST_TIMEOUT_MS }, () => {
   describe('editing and archiving', () => {
     it('lets the submitter edit; a reviewed item returns to NEEDS REVIEW', async () => {
       const { item } = await saveResearchItem(kit.as(member), { title: 'Draft title' });
-      await reviewResearchItem(kit.as(reviewer), { itemId: item.id, status: 'reviewed' });
+      await reviewResearchItem(kit.as(reviewer), {
+        itemId: item.id,
+        expectedVersion: await currentVersion(kit, item.id),
+        status: 'reviewed',
+      });
       const edited = await updateResearchItem(kit.as(member), {
         itemId: item.id,
         title: 'Final title',
@@ -241,26 +254,88 @@ describe('research library', { timeout: INTEGRATION_TEST_TIMEOUT_MS }, () => {
       expect((await getResearchItem(kit.as(member), { itemId: item.id })).title).toBe('Mine');
     });
 
-    it('locks verified items for the submitter but not for reviewers', async () => {
+    it('locks verified items for the submitter; reviewers curate in place but reference edits reopen review', async () => {
       const { item } = await saveResearchItem(kit.as(member), { title: 'Locked' });
       await reviewResearchItem(kit.as(reviewer), {
         itemId: item.id,
+        expectedVersion: await currentVersion(kit, item.id),
         status: 'verified',
         evidenceLevel: 'experimental',
       });
       await expect(
         updateResearchItem(kit.as(member), { itemId: item.id, title: 'Changed' }),
       ).rejects.toBeInstanceOf(InvalidStateError);
-      const fixed = await updateResearchItem(kit.as(reviewer), {
+      const curated = await updateResearchItem(kit.as(reviewer), {
+        itemId: item.id,
+        tags: ['sleep', 'performance'],
+      });
+      expect(curated.status).toBe('verified');
+      const retitled = await updateResearchItem(kit.as(reviewer), {
         itemId: item.id,
         title: 'Typo fixed',
       });
-      expect(fixed.status).toBe('verified');
+      // A verification attests to the reference itself; changing it needs a fresh review.
+      expect(retitled.status).toBe('needs_review');
       const audit = await kit.db
         .select()
         .from(auditLogs)
         .where(eq(auditLogs.action, 'research.updated'));
-      expect(audit).toHaveLength(1);
+      expect(audit).toHaveLength(2);
+    });
+
+    it('BREAK: a reviewer-submitter cannot rewrite their own verified item or push it to Sidus', async () => {
+      const author = await kit.member({ roles: ['operations'] });
+      const { item } = await saveResearchItem(kit.as(author), {
+        title: 'Real paper',
+        doi: '10.1000/real',
+      });
+      await reviewResearchItem(kit.as(reviewer), {
+        itemId: item.id,
+        expectedVersion: await currentVersion(kit, item.id),
+        status: 'verified',
+        evidenceLevel: 'peer_reviewed',
+      });
+      await expect(
+        updateResearchItem(kit.as(author), {
+          itemId: item.id,
+          title: 'Swapped claim',
+          doi: '10.1000/swapped',
+        }),
+      ).rejects.toBeInstanceOf(InvalidStateError);
+      const [stored] = await kit.db
+        .select()
+        .from(researchItems)
+        .where(eq(researchItems.id, item.id));
+      expect(stored).toMatchObject({
+        title: 'Real paper',
+        doi: '10.1000/real',
+        status: 'verified',
+      });
+      await expect(requestSidusSync(kit.as(author), { itemId: item.id })).rejects.toBeInstanceOf(
+        ForbiddenError,
+      );
+    });
+
+    it('BREAK: a review applies only to the revision the reviewer saw', async () => {
+      const { item } = await saveResearchItem(kit.as(member), {
+        title: 'Good paper',
+        doi: '10.1000/good',
+      });
+      const seen = await currentVersion(kit, item.id);
+      await updateResearchItem(kit.as(member), { itemId: item.id, doi: '10.1000/junk' });
+      await expect(
+        reviewResearchItem(kit.as(reviewer), {
+          itemId: item.id,
+          expectedVersion: seen,
+          status: 'verified',
+          evidenceLevel: 'meta_analysis',
+        }),
+      ).rejects.toBeInstanceOf(ConflictError);
+      const [stored] = await kit.db
+        .select()
+        .from(researchItems)
+        .where(eq(researchItems.id, item.id));
+      expect(stored!.status).not.toBe('verified');
     });
 
     it('refuses an edit that would duplicate another item', async () => {
@@ -297,6 +372,7 @@ describe('research library', { timeout: INTEGRATION_TEST_TIMEOUT_MS }, () => {
       ).rejects.toBeInstanceOf(InvalidStateError);
       const restored = await reviewResearchItem(kit.as(reviewer), {
         itemId: item.id,
+        expectedVersion: await currentVersion(kit, item.id),
         status: 'needs_review',
       });
       expect(restored.status).toBe('needs_review');
@@ -316,7 +392,11 @@ describe('research library', { timeout: INTEGRATION_TEST_TIMEOUT_MS }, () => {
         tags: ['proteins'],
       });
       await saveResearchItem(kit.as(other), { title: '100% effective? A_B test', tags: ['stats'] });
-      await reviewResearchItem(kit.as(reviewer), { itemId: a.item.id, status: 'reviewed' });
+      await reviewResearchItem(kit.as(reviewer), {
+        itemId: a.item.id,
+        expectedVersion: await currentVersion(kit, a.item.id),
+        status: 'reviewed',
+      });
 
       const viewer = kit.as(other);
       expect((await listResearchItems(viewer, {})).total).toBe(3);

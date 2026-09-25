@@ -20,8 +20,10 @@ import {
   AI_BURST_LIMIT,
   AI_BURST_WINDOW_SECONDS,
   type AiFeature,
+  EMPTY_RESPONSE_CODE,
   FEATURE_MAX_TOKENS,
   MAX_OUTPUT_CHARS,
+  UNEXPECTED_ERROR_CODE,
 } from './constants';
 import { finalizeRequest, type LedgerEntry, recordDenied, reserveRequest } from './ledger';
 import { FEATURE_INSTRUCTIONS, JAVE_SYSTEM_PROMPT } from './prompts';
@@ -214,13 +216,13 @@ export async function runCompletion(
   } catch (error) {
     await finalizeRequest(ctx, reservation.id, {
       status: isAIError(error) && error.kind === 'refusal' ? 'refused' : 'error',
-      errorCode: isAIError(error) ? error.kind : 'unexpected',
+      errorCode: isAIError(error) ? error.kind : UNEXPECTED_ERROR_CODE,
     });
     ctx.logger.warn(
       {
         feature: spec.feature,
         provider: provider.name,
-        kind: isAIError(error) ? error.kind : 'unexpected',
+        kind: isAIError(error) ? error.kind : UNEXPECTED_ERROR_CODE,
       },
       'AI request failed',
     );
@@ -234,7 +236,7 @@ export async function runCompletion(
     inputTokens: response.usage.inputTokens,
     outputTokens: response.usage.outputTokens,
     latencyMs: response.latencyMs,
-    errorCode: empty ? 'empty_response' : undefined,
+    errorCode: empty ? EMPTY_RESPONSE_CODE : undefined,
   });
   if (empty) {
     throw new ExternalServiceError(AI_SERVICE, 'JAVE AI returned an empty answer. Try again.');

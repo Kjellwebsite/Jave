@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, isNull, ne, or, type SQL, sql } from 'drizzle-orm';
+import type { z } from 'zod';
 import { researchItems } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
@@ -14,8 +15,20 @@ import {
 import type { Page } from '../kernel/pagination';
 import { parseInput } from '../kernel/validation';
 import { authorize, requireMember } from '../permissions/authorize';
+import { getSettings } from '../settings/settings.service';
 import { ENRICH_MAX_ATTEMPTS, RESEARCH_ENRICH_JOB } from './constants';
 import { canonicalizeUrl, extractResearchCandidate } from './extraction';
+import {
+  assertVersion,
+  changedFields,
+  type ItemEdits,
+  type ItemField,
+  nextVersion,
+  queueSidusSync,
+  statusAfterEdit,
+  syncStateAfterChange,
+  touchesSidus,
+} from './lifecycle';
 import {
   assertTransition,
   canSee,
@@ -64,6 +77,9 @@ interface NewItemFields {
   discordMessageId: string | null;
   discordMessageUrl: string | null;
 }
+
+type UpdateResearchItemData = z.output<typeof updateResearchItemSchema>;
+type ItemPatch = Partial<typeof researchItems.$inferInsert>;
 
 const DUPLICATE_REFERENCE_MESSAGE = 'Another research item already uses that DOI, arXiv ID or URL.';
 const CONCURRENT_EDIT_MESSAGE =
@@ -218,10 +234,37 @@ export async function saveFromMessage(
   );
 }
 
+function requestedEdits(data: UpdateResearchItemData): ItemEdits {
+  const edits: ItemEdits = {};
+  if (data.title !== undefined) edits.title = data.title;
+  if (data.authors !== undefined) edits.authors = data.authors;
+  if (data.source !== undefined) edits.source = data.source;
+  if (data.url !== undefined) edits.url = data.url;
+  if (data.doi !== undefined) edits.doi = data.doi;
+  if (data.arxivId !== undefined) edits.arxivId = data.arxivId;
+  if (data.publishedOn !== undefined) edits.publishedOn = data.publishedOn;
+  if (data.topic !== undefined) edits.topic = data.topic;
+  if (data.tags !== undefined) edits.tags = data.tags;
+  if (data.summary !== undefined) edits.summary = data.summary || null;
+  return edits;
+}
+
+/** Only the fields that change, plus what derives from them. */
+function editPatch(edits: ItemEdits, changed: readonly ItemField[]): ItemPatch {
+  const patch: ItemPatch = {};
+  for (const field of changed) Object.assign(patch, { [field]: edits[field] });
+  if (changed.includes('title')) patch.titleGuessed = false;
+  if (changed.includes('url')) patch.canonicalUrl = edits.url ? canonicalizeUrl(edits.url) : null;
+  return patch;
+}
+
 /**
- * Edit bibliographic fields. Submitters edit their own items until they are
- * verified (a reviewed item returns to NEEDS REVIEW); reviewers edit any
- * non-archived item.
+ * Edit an item. Submitters always edit under submitter rules, even when they
+ * also review research: their own items until VERIFIED, and any change
+ * reopens a REVIEWED item. Reviewers edit others' non-archived items; a change
+ * to the reference itself (title, authors, source, URL, DOI, arXiv id, date)
+ * reopens a REVIEWED or VERIFIED item, while topic, tags and summary can be
+ * curated in place. Every edit is audited and bumps the item version.
  */
 export async function updateResearchItem(
   ctx: ServiceContext,
@@ -231,52 +274,50 @@ export async function updateResearchItem(
   requireMember(ctx);
   const item = await loadItem(ctx, data.itemId);
   if (!canSee(ctx, item)) throw new NotFoundError('Research item');
-  const reviewer = isReviewer(ctx);
   const submitter = isSubmitter(ctx, item);
-  const target = { type: 'research_item', id: item.id };
-  if (!submitter && !reviewer) await authorize(ctx, 'canReviewResearch', target);
-  if (!reviewer) await requireContributor(ctx);
+  if (submitter) await requireContributor(ctx);
+  else await authorize(ctx, 'canReviewResearch', { type: 'research_item', id: item.id });
+  assertVersion(item, data.expectedVersion, CONCURRENT_EDIT_MESSAGE);
   if (item.status === 'archived') {
     throw new InvalidStateError('Archived items cannot be edited. Restore it first.');
   }
-  if (!reviewer && item.status === 'verified') {
+  if (submitter && item.status === 'verified') {
     throw new InvalidStateError('Verified items are locked. Ask a reviewer to reopen it.');
   }
 
-  const patch: Partial<typeof researchItems.$inferInsert> = {};
-  if (data.title !== undefined) Object.assign(patch, { title: data.title, titleGuessed: false });
-  if (data.authors !== undefined) patch.authors = data.authors;
-  if (data.source !== undefined) patch.source = data.source;
-  if (data.summary !== undefined) patch.summary = data.summary || null;
-  if (data.publishedOn !== undefined) patch.publishedOn = data.publishedOn;
-  if (data.topic !== undefined) patch.topic = data.topic;
-  if (data.tags !== undefined) patch.tags = data.tags;
-  if (data.doi !== undefined) patch.doi = data.doi;
-  if (data.arxivId !== undefined) patch.arxivId = data.arxivId;
-  if (data.url !== undefined) {
-    patch.url = data.url;
-    patch.canonicalUrl = data.url ? canonicalizeUrl(data.url) : null;
+  const edits = requestedEdits(data);
+  const changed = changedFields(item, edits);
+  // Confirming a guessed title is a change: enrichment no longer replaces it.
+  if (edits.title !== undefined && item.titleGuessed && !changed.includes('title')) {
+    changed.push('title');
   }
-  if (!reviewer && item.status === 'reviewed') patch.status = 'needs_review';
-  patch.updatedAt = ctx.clock.now();
+  if (changed.length === 0) return toView(item);
+  const status = statusAfterEdit(item.status, changed, submitter);
+  const resync = status === 'verified' && touchesSidus(changed);
+  const autoSync = resync && (await getSettings(ctx, 'integrations')).sidusAutoSync;
 
   try {
     return await withTransaction(ctx, async (tx) => {
       const [row] = await tx.db
         .update(researchItems)
-        .set(patch)
-        // Optimistic guard: the status checks above must still hold (e.g. not verified meanwhile).
-        .where(and(eq(researchItems.id, item.id), eq(researchItems.status, item.status)))
+        .set({
+          ...editPatch(edits, changed),
+          status,
+          ...(resync && syncStateAfterChange(autoSync, item.sidusSyncStatus)),
+          version: nextVersion(),
+          updatedAt: tx.clock.now(),
+        })
+        // Optimistic guard: every check above was made against this version.
+        .where(and(eq(researchItems.id, item.id), eq(researchItems.version, item.version)))
         .returning();
       if (!row) throw new ConflictError(CONCURRENT_EDIT_MESSAGE);
-      if (!submitter) {
-        await recordAudit(tx, {
-          action: 'research.updated',
-          targetType: 'research_item',
-          targetId: item.id,
-          context: { fields: Object.keys(data).filter((key) => key !== 'itemId') },
-        });
-      }
+      await recordAudit(tx, {
+        action: 'research.updated',
+        targetType: 'research_item',
+        targetId: item.id,
+        context: { fields: changed, from: item.status, to: status, bySubmitter: submitter },
+      });
+      if (resync && autoSync) await queueSidusSync(tx, row);
       return toView(row);
     });
   } catch (error) {
@@ -285,7 +326,10 @@ export async function updateResearchItem(
   }
 }
 
-/** Archive an item (submitter withdraws it, or a reviewer retires it). */
+/**
+ * Archive an item: a submitter in good standing withdraws their own, or a
+ * reviewer retires any.
+ */
 export async function archiveResearchItem(
   ctx: ServiceContext,
   input: { itemId: string; reason?: string },
@@ -294,15 +338,14 @@ export async function archiveResearchItem(
   requireMember(ctx);
   const item = await loadItem(ctx, data.itemId);
   if (!canSee(ctx, item)) throw new NotFoundError('Research item');
-  if (!isSubmitter(ctx, item)) {
-    await authorize(ctx, 'canReviewResearch', { type: 'research_item', id: item.id });
-  }
+  if (isSubmitter(ctx, item) && !isReviewer(ctx)) await requireContributor(ctx);
+  else await authorize(ctx, 'canReviewResearch', { type: 'research_item', id: item.id });
   if (item.status === 'archived') throw new InvalidStateError('This item is already archived.');
   assertTransition(item.status, 'archived');
   return withTransaction(ctx, async (tx) => {
     const [row] = await tx.db
       .update(researchItems)
-      .set({ status: 'archived', updatedAt: tx.clock.now() })
+      .set({ status: 'archived', version: nextVersion(), updatedAt: tx.clock.now() })
       .where(and(eq(researchItems.id, item.id), ne(researchItems.status, 'archived')))
       .returning();
     if (!row) throw new InvalidStateError('This item is already archived.');

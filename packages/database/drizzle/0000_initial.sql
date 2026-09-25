@@ -1032,6 +1032,7 @@ CREATE TABLE "research_items" (
 	"sidus_external_id" varchar(128),
 	"sidus_synced_at" timestamp with time zone,
 	"sidus_sync_error" text,
+	"version" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"deleted_at" timestamp with time zone

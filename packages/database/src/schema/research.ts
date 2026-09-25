@@ -3,6 +3,7 @@ import {
   boolean,
   date,
   index,
+  integer,
   pgEnum,
   pgTable,
   text,
@@ -88,6 +89,12 @@ export const researchItems = pgTable(
     sidusSyncedAt: ts('sidus_synced_at'),
     /** Why the last sync did not happen or failed (e.g. integration not configured). */
     sidusSyncError: text('sidus_sync_error'),
+    /**
+     * Content revision, bumped by every change to what the item says or its
+     * review state (never by sync bookkeeping). Reviews and the Sidus sync
+     * guard on it so nobody acts on content they have not seen.
+     */
+    version: integer('version').notNull().default(1),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),

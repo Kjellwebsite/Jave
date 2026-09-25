@@ -99,6 +99,8 @@ export const settingsSchemas = {
       })
       .default({ low: 2880, normal: 1440, high: 240, urgent: 60 }),
     archiveAfterDays: z.number().int().min(1).max(365).default(7),
+    /** Tickets one user may open per rolling hour (anti-spam, on top of maxOpenPerUser). */
+    openRatePerHour: z.number().int().min(1).max(100).default(6),
   }),
   applications: z.object({
     open: z.boolean().default(true),

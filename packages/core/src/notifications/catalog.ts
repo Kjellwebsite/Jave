@@ -87,6 +87,13 @@ export const NOTIFICATION_TYPES = {
     severity: 'notice',
     channels: ['discord_dm'],
   },
+  'ticket.attention': {
+    label: 'Ticket needs attention',
+    description: 'A high-priority ticket was opened or missed its response target.',
+    severity: 'important',
+    channels: ['discord_dm'],
+    staff: true,
+  },
   'project.updated': {
     label: 'Project update',
     description: 'A project you belong to changed.',

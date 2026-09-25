@@ -7,6 +7,7 @@ import { NotFoundError } from '../kernel/errors';
 import { type Page, pageSchema } from '../kernel/pagination';
 import { parseInput } from '../kernel/validation';
 import { authorize } from '../permissions/authorize';
+import { canSeeSubject, visibleSubjectCondition } from './targets';
 import {
   type CaseEndReason,
   LIVE_ACTIONS,
@@ -140,7 +141,10 @@ export async function loadCaseView(ctx: ServiceContext, caseId: string): Promise
 export async function getCase(ctx: ServiceContext, caseId: string): Promise<ModCaseView> {
   const id = parseInput(z.uuid(), caseId);
   await authorize(ctx, 'canModerate', { type: 'mod_case', id });
-  return loadCaseView(ctx, id);
+  const view = await loadCaseView(ctx, id);
+  // Cases about yourself or about higher-ranked staff do not exist for you.
+  if (!(await canSeeSubject(ctx, view.target.userId))) throw new NotFoundError('Case');
+  return view;
 }
 
 export const listCasesSchema = pageSchema.extend({
@@ -172,6 +176,8 @@ export async function listCases(
   if (!q.includeRevoked) filters.push(isNull(modCases.revokedAt));
   if (q.since) filters.push(gte(modCases.createdAt, q.since));
   if (q.until) filters.push(lte(modCases.createdAt, q.until));
+  const visible = visibleSubjectCondition(ctx, modCases.targetUserId);
+  if (visible) filters.push(visible);
   const where = filters.length ? and(...filters) : undefined;
   const now = ctx.clock.now();
   const [rows, [total]] = await Promise.all([
@@ -234,7 +240,7 @@ export async function getCaseHistory(
     .where(
       q.targetUserId ? eq(users.id, q.targetUserId) : eq(users.discordId, q.targetDiscordId ?? ''),
     );
-  if (!user) throw new NotFoundError('User');
+  if (!user || !(await canSeeSubject(ctx, user.id))) throw new NotFoundError('User');
   const now = ctx.clock.now();
   const [rows, [totals]] = await Promise.all([
     caseQuery(ctx)

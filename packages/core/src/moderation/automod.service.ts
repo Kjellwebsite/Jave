@@ -160,23 +160,27 @@ export async function applyAutomodDecision(
 
     const now = tx.clock.now();
     const live = await loadLiveCases(tx, target.userId);
-    if (live.ban || live.quarantine) {
+    // A quarantine that never took effect in Discord does not restrain anyone:
+    // escalate to a timeout instead of treating the author as handled.
+    const quarantineHolds = live.quarantine !== null && live.quarantine.discordSync !== 'failed';
+    if (live.ban || quarantineHolds) {
       return { ...base, applied: 'delete', note: 'already quarantined or banned' };
     }
-    if (action === 'timeout' && timeoutInForce(live.timeout, now)) {
+    const caseAction = live.quarantine && action === 'quarantine' ? 'timeout' : action;
+    if (caseAction === 'timeout' && timeoutInForce(live.timeout, now)) {
       return { ...base, applied: 'delete', note: 'already timed out' };
     }
     try {
       const record = await executeCase(tx, {
-        action,
+        action: caseAction,
         // The message itself proves the author is in the server.
         target: { ...target, inGuild: true },
         reason: `Automod: ${TRIGGER_LABELS[trigger].toLowerCase()}, risk ${evaluation.riskScore}/100 (${reference}).`,
         source: 'automod',
-        durationSeconds: action === 'timeout' ? settings.spamTimeoutSeconds : null,
+        durationSeconds: caseAction === 'timeout' ? settings.spamTimeoutSeconds : null,
         securityEventId: event.id,
       });
-      return { ...base, applied: action, caseId: record.id, note: null };
+      return { ...base, applied: caseAction, caseId: record.id, note: null };
     } catch (error) {
       // A concurrent message already escalated this author: keep the event and deletion.
       if (error instanceof ConflictError || error instanceof InvalidStateError) {

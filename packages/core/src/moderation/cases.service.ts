@@ -9,16 +9,20 @@ import { parseInput } from '../kernel/validation';
 import { authorize } from '../permissions/authorize';
 import type { Capability } from '../permissions/capabilities';
 import {
+  applyDedupeKey,
   caseLiftedBy,
+  casesSupersededBy,
   cleanSyncError,
   executeCase,
   isLiveAction,
   isReversal,
+  buildApplyPayload,
   loadLiveCases,
   lockTarget,
   type ModCaseRecord,
   notifySyncFailure,
   REVERSAL_OF,
+  supersedeViolation,
   timeoutInForce,
 } from './case-engine';
 import { loadCaseView, type ModCaseView } from './cases.query';
@@ -33,6 +37,7 @@ import {
   MIN_TIMEOUT_SECONDS,
 } from './constants';
 import { caseReference, type ModAction } from './copy';
+import { enqueueDiscordJob, moderationApplyContract } from './discord-jobs';
 import {
   assertCanActOn,
   deny,
@@ -150,8 +155,12 @@ async function createManualCase(
   );
   await assertCanActOn(ctx, target, action);
 
+  const live = await loadLiveCases(ctx, target.userId);
+  const blocked = await supersedeViolation(ctx, casesSupersededBy(action, live, ctx.clock.now()));
+  if (blocked)
+    await deny(ctx, blocked.message, { type: 'mod_case', id: blocked.caseId }, { action });
   if (isReversal(action)) {
-    const lifted = caseLiftedBy(action, await loadLiveCases(ctx, target.userId), ctx.clock.now());
+    const lifted = caseLiftedBy(action, live, ctx.clock.now());
     const violation = overturnViolation(
       ctx.actor,
       await issuerRoles(ctx, lifted?.moderatorUserId ?? null),
@@ -375,6 +384,9 @@ export async function markCaseSynced(
       .where(and(eq(modCases.id, record.id), inArray(modCases.discordSync, ['pending', 'failed'])))
       .returning();
     if (!updated) return { discordSync: record.discordSync, changed: false };
+    if (data.status === 'applied' && updated.endedAt) {
+      await healLateApply(tx, updated);
+    }
     if (data.status === 'failed' && error) {
       await recordAudit(tx, {
         action: 'moderation.case_sync_failed',
@@ -386,5 +398,59 @@ export async function markCaseSynced(
       await notifySyncFailure(tx, updated, error);
     }
     return { discordSync: updated.discordSync, changed: true };
+  });
+}
+
+/** What the bot needs before applying a case (see the apply contract). System only. */
+export interface CaseSyncState {
+  caseId: string;
+  action: ModCaseRecord['action'];
+  /** False when the case no longer needs a Discord action (revoked, lifted, superseded, expired). */
+  apply: boolean;
+  reason: 'in_force' | 'ended' | 'revoked' | 'not_required';
+}
+
+export async function getCaseForSync(ctx: ServiceContext, caseId: string): Promise<CaseSyncState> {
+  const id = parseInput(z.uuid(), caseId);
+  await requireSystemActor(ctx, { type: 'mod_case', id });
+  const [record] = await ctx.db.select().from(modCases).where(eq(modCases.id, id));
+  if (!record) throw new NotFoundError('Case');
+  const base = { caseId: record.id, action: record.action };
+  if (record.discordSync === 'not_required')
+    return { ...base, apply: false, reason: 'not_required' };
+  if (record.revokedAt && isLiveAction(record.action))
+    return { ...base, apply: false, reason: 'revoked' };
+  if (record.endedAt && isLiveAction(record.action))
+    return { ...base, apply: false, reason: 'ended' };
+  return { ...base, apply: true, reason: 'in_force' };
+}
+
+/**
+ * An apply reported after its case already ended (the job was mid-flight when
+ * a reversal ran) left Discord more restrictive than JAVE. Re-send the
+ * reversal that ended it, so Discord converges on JAVE's state.
+ */
+async function healLateApply(ctx: ServiceContext, record: ModCaseRecord): Promise<void> {
+  const [reversal] = await ctx.db
+    .select()
+    .from(modCases)
+    .where(and(eq(modCases.revertsCaseId, record.id), isNull(modCases.revokedAt)));
+  await recordAudit(ctx, {
+    action: 'moderation.case_applied_after_end',
+    targetType: 'mod_case',
+    targetId: record.id,
+    context: { case: caseReference(record.number), reversalCaseId: reversal?.id ?? null },
+    result: 'failure',
+  });
+  if (!reversal || reversal.discordSync === 'not_required') return;
+  const target = await loadTarget(ctx, { userId: reversal.targetUserId });
+  const payload = await buildApplyPayload(ctx, reversal, target, { includeDm: false });
+  if (!payload) return;
+  await ctx.db
+    .update(modCases)
+    .set({ discordSync: 'pending', discordError: null, updatedAt: ctx.clock.now() })
+    .where(eq(modCases.id, reversal.id));
+  await enqueueDiscordJob(ctx, moderationApplyContract, payload, {
+    dedupeKey: `${applyDedupeKey(reversal.id)}:heal:${record.id}`,
   });
 }

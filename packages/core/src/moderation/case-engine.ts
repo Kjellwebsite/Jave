@@ -10,8 +10,10 @@ import {
 import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
 import { DISCORD_ROLE_SYNC_JOB } from '../identity/users.service';
-import { enqueueJob } from '../jobs/queue';
+import { cancelJob, enqueueJob } from '../jobs/queue';
+import { HOUR } from '../kernel/clock';
 import { type ServiceContext, withTransaction } from '../kernel/context';
+import { sha256Hex } from '../kernel/crypto';
 import {
   ConflictError,
   ForbiddenError,
@@ -23,7 +25,7 @@ import { notify, notifyCapabilityHolders } from '../notifications/notifications.
 import type { MemberStanding } from '../permissions/actor';
 import { getSettings } from '../settings/settings.service';
 import { enqueueAlertRefresh, type SecurityActionKey } from './alerts';
-import { MAX_SYNC_ERROR_LENGTH } from './constants';
+import { MAX_SYNC_ERROR_LENGTH, MAX_TIMEOUT_SECONDS } from './constants';
 import { auditReasonFor, caseReference, dmTextFor, type ModAction, noticeFor } from './copy';
 import {
   enqueueDiscordJob,
@@ -31,7 +33,12 @@ import {
   type ModerationApplyPayload,
   SECONDS_PER_DAY,
 } from './discord-jobs';
-import { hierarchyViolation, type ModerationTarget } from './targets';
+import {
+  hierarchyViolation,
+  issuerRoles,
+  type ModerationTarget,
+  overturnViolation,
+} from './targets';
 
 export type ModCaseRecord = typeof modCases.$inferSelect;
 export type ModSource = (typeof modSource.enumValues)[number];
@@ -120,6 +127,50 @@ async function endCase(
   if (rows.length === 0) {
     throw new ConflictError('This case changed while you were acting on it. Refresh and retry.');
   }
+  // A still-queued apply for this case must not run after it ended (e.g. a
+  // retried ban landing after the unban). Running jobs re-check via getCaseForSync.
+  await cancelJob(ctx, applyDedupeKey(record.id));
+}
+
+/** Dedupe key of a case's discord.moderation.apply job. */
+export function applyDedupeKey(caseId: string): string {
+  return `mod-case:${caseId}`;
+}
+
+/** Live cases this action ends by superseding them (not reversals). */
+export function casesSupersededBy(action: ModAction, live: LiveCases, now: Date): ModCaseRecord[] {
+  switch (action) {
+    case 'timeout':
+      return live.timeout && timeoutInForce(live.timeout, now) ? [live.timeout] : [];
+    case 'ban':
+      return [live.quarantine, timeoutInForce(live.timeout, now) ? live.timeout : null].filter(
+        (record): record is ModCaseRecord => record !== null,
+      );
+    default:
+      return [];
+  }
+}
+
+/**
+ * Superseding a case ends it just like lifting it does, so the overturn rule
+ * applies: staff cannot end a decision issued by someone who outranks them —
+ * not by reversing it, and not by replacing it with a shorter timeout or a
+ * ban they can later lift themselves. Returns a denial message or null.
+ */
+export async function supersedeViolation(
+  ctx: ServiceContext,
+  superseded: readonly ModCaseRecord[],
+): Promise<{ message: string; caseId: string } | null> {
+  for (const record of superseded) {
+    const violation = overturnViolation(ctx.actor, await issuerRoles(ctx, record.moderatorUserId));
+    if (violation) {
+      return {
+        message: 'A decision by higher-ranked staff is in force. Ask them to change it.',
+        caseId: record.id,
+      };
+    }
+  }
+  return null;
 }
 
 export interface CaseSpec {
@@ -139,11 +190,7 @@ interface SyncPlan {
   error: string | null;
 }
 
-function planDiscordSync(
-  action: ModAction,
-  target: ModerationTarget,
-  quarantineRoleId: string | undefined,
-): SyncPlan {
+function planDiscordSync(action: ModAction, target: ModerationTarget): SyncPlan {
   switch (action) {
     case 'note':
       return { state: 'not_required', error: null };
@@ -152,13 +199,9 @@ function planDiscordSync(
       return { state: 'pending', error: null };
     case 'quarantine':
     case 'release':
-      if (!target.inGuild) return { state: 'not_required', error: null };
-      return quarantineRoleId
-        ? { state: 'pending', error: null }
-        : {
-            state: 'failed',
-            error: 'Quarantine role is not configured (settings.roles.quarantineRoleId).',
-          };
+      // Without a quarantine role the bot falls back to a Discord timeout
+      // (see buildApplyPayload), so the member is still restricted in Discord.
+      return { state: target.inGuild ? 'pending' : 'not_required', error: null };
     default:
       return { state: target.inGuild ? 'pending' : 'not_required', error: null };
   }
@@ -171,6 +214,10 @@ async function settleLiveCases(
   now: Date,
 ): Promise<string | null> {
   const live = await loadLiveCases(ctx, spec.target.userId);
+  // Re-checked here, under the target lock: callers authorized against a
+  // snapshot, and a higher-ranked case may have landed since.
+  const blocked = await supersedeViolation(ctx, casesSupersededBy(spec.action, live, now));
+  if (blocked) throw new ForbiddenError(blocked.message);
   switch (spec.action) {
     case 'timeout':
       if (!spec.target.inGuild) throw new InvalidStateError('Member is not in the server.');
@@ -266,9 +313,17 @@ export async function buildApplyPayload(
     ...(record.action === 'ban' && {
       deleteMessageSeconds: (record.deleteMessageDays ?? 0) * SECONDS_PER_DAY,
     }),
-    ...((record.action === 'quarantine' || record.action === 'release') && {
-      quarantineRoleId: roles.quarantineRoleId,
-    }),
+    ...((record.action === 'quarantine' || record.action === 'release') &&
+      roles.quarantineRoleId && { quarantineRoleId: roles.quarantineRoleId }),
+    // No quarantine role configured: quarantine is enforced as a Discord
+    // timeout (capped at Discord's 28-day limit) and release lifts it.
+    ...(record.action === 'quarantine' &&
+      !roles.quarantineRoleId && {
+        quarantineFallback: 'timeout' as const,
+        timeoutUntil: quarantineFallbackUntil(record, ctx.clock.now()).toISOString(),
+      }),
+    ...(record.action === 'release' &&
+      !roles.quarantineRoleId && { quarantineFallback: 'timeout' as const }),
     ...(record.action === 'quarantine' && {
       managedRoleIds: [
         ...new Set(Object.values(roles.discordRoleIds).filter((id): id is string => Boolean(id))),
@@ -282,7 +337,20 @@ export async function buildApplyPayload(
   };
 }
 
-/** Tell the issuing moderator (or all moderators for automated cases) that Discord sync failed. */
+/** When a timeout standing in for a quarantine ends: the quarantine's expiry, at most 28 days out. */
+export function quarantineFallbackUntil(record: ModCaseRecord, now: Date): Date {
+  const cap = now.getTime() + MAX_TIMEOUT_SECONDS * 1000;
+  return new Date(Math.min(record.expiresAt?.getTime() ?? cap, cap));
+}
+
+/** One aggregated alert per failure cause per hour for automated cases. */
+export const SYNC_FAILURE_ALERT_WINDOW_MS = HOUR;
+
+/**
+ * Tell the issuing moderator that Discord sync failed. Automated cases have no
+ * issuer: all moderators get ONE alert per failure cause per hour, so a raid
+ * with a misconfiguration does not bury staff in per-case DMs.
+ */
 export async function notifySyncFailure(
   ctx: ServiceContext,
   record: ModCaseRecord,
@@ -297,9 +365,16 @@ export async function notifySyncFailure(
   };
   if (record.moderatorUserId) {
     await notify(ctx, { ...input, recipientUserId: record.moderatorUserId });
-  } else {
-    await notifyCapabilityHolders(ctx, 'canModerate', input);
+    return;
   }
+  const cause = sha256Hex(`${record.action}:${error}`).slice(0, 16);
+  const window = Math.floor(ctx.clock.now().getTime() / SYNC_FAILURE_ALERT_WINDOW_MS);
+  await notifyCapabilityHolders(ctx, 'canModerate', {
+    ...input,
+    title: 'DISCORD SYNC FAILED — AUTOMOD',
+    body: `${record.action.toUpperCase()} could not be applied in Discord: ${error}\nFirst seen on ${caseReference(record.number)}. Further failures with this cause in the next hour are not re-sent.`,
+    dedupeKey: `mod-sync-failed:${cause}:${window}`,
+  });
 }
 
 export function cleanSyncError(error: string): string {
@@ -342,8 +417,7 @@ export async function executeCase(ctx: ServiceContext, spec: CaseSpec): Promise<
     await lockTarget(tx, spec.target.userId);
     const now = tx.clock.now();
     const revertsCaseId = await settleLiveCases(tx, spec, now);
-    const roleSettings = await getSettings(tx, 'roles');
-    const sync = planDiscordSync(spec.action, spec.target, roleSettings.quarantineRoleId);
+    const sync = planDiscordSync(spec.action, spec.target);
     const expiresAt = spec.durationSeconds
       ? new Date(now.getTime() + spec.durationSeconds * 1000)
       : null;
@@ -417,7 +491,7 @@ export async function executeCase(ctx: ServiceContext, spec: CaseSpec): Promise<
       const payload = await buildApplyPayload(tx, record, spec.target, { includeDm: true });
       if (payload) {
         await enqueueDiscordJob(tx, moderationApplyContract, payload, {
-          dedupeKey: `mod-case:${record.id}`,
+          dedupeKey: applyDedupeKey(record.id),
         });
       }
     } else if (sync.state === 'failed' && sync.error) {
@@ -482,13 +556,12 @@ export async function reapplyCase(
 ): Promise<boolean> {
   const payload = await buildApplyPayload(ctx, record, target, { includeDm: false });
   if (!payload) return false;
-  if (record.action === 'quarantine' && !payload.quarantineRoleId) return false;
   await ctx.db
     .update(modCases)
     .set({ discordSync: 'pending', discordError: null, updatedAt: ctx.clock.now() })
     .where(eq(modCases.id, record.id));
   const jobId = await enqueueDiscordJob(ctx, moderationApplyContract, payload, {
-    dedupeKey: `mod-case:${record.id}`,
+    dedupeKey: applyDedupeKey(record.id),
   });
   return jobId !== null;
 }

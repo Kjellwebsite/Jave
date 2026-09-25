@@ -15,6 +15,7 @@ import { NotFoundError } from '../kernel/errors';
 import { type Page, pageSchema } from '../kernel/pagination';
 import { parseInput } from '../kernel/validation';
 import { authorize } from '../permissions/authorize';
+import { canSeeSubject, visibleSubjectCondition } from './targets';
 import { getSettings } from '../settings/settings.service';
 import {
   buildSecurityAlertCard,
@@ -129,6 +130,9 @@ export async function getSecurityEvent(
   const id = parseInput(z.uuid(), securityEventId);
   await authorize(ctx, 'canViewSecurityEvents', { type: 'security_event', id });
   const view = await loadSecurityEventView(ctx, id);
+  // Events about yourself or about higher-ranked staff do not exist for you.
+  if (!(await canSeeSubject(ctx, view.user?.userId ?? null)))
+    throw new NotFoundError('Security event');
   return { ...view, cases: await casesForSecurityEvent(ctx, id) };
 }
 
@@ -159,6 +163,8 @@ export async function listSecurityEvents(
   if (q.minRiskScore !== undefined) filters.push(gte(securityEvents.riskScore, q.minRiskScore));
   if (q.since) filters.push(gte(securityEvents.createdAt, q.since));
   if (q.until) filters.push(lte(securityEvents.createdAt, q.until));
+  const visible = visibleSubjectCondition(ctx, securityEvents.userId);
+  if (visible) filters.push(visible);
   const where = filters.length ? and(...filters) : undefined;
   const [rows, [total]] = await Promise.all([
     eventQuery(ctx)
@@ -182,7 +188,9 @@ export async function getSecurityAlertCard(
   const id = parseInput(z.uuid(), securityEventId);
   await authorize(ctx, 'canViewSecurityEvents', { type: 'security_event', id });
   const [row] = await eventQuery(ctx).where(eq(securityEvents.id, id));
-  if (!row) throw new NotFoundError('Security event');
+  if (!row || !(await canSeeSubject(ctx, row.event.userId))) {
+    throw new NotFoundError('Security event');
+  }
   const [settings, cases] = await Promise.all([
     getSettings(ctx, 'moderation'),
     casesForSecurityEvent(ctx, id),

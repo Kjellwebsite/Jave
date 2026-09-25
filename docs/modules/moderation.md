@@ -111,13 +111,36 @@ through a reversal case. Reversals themselves cannot be revoked.
 **Discord sync** (`discord_sync`): `pending → applied | failed`, `failed → applied`;
 `applied` is final; notes (and actions on members not in the server) are
 `not_required`. A quarantine without `settings.roles.quarantineRoleId` is
-`failed` immediately and staff are told.
+still enforced: the apply payload carries `quarantineFallback: 'timeout'` and
+the bot times the member out (capped at Discord's 28 days); release lifts it.
+Configure a quarantine role for indefinite quarantines — `/jave setup` flags it.
+
+Ending a case (lift, supersede, revoke) cancels its queued apply job, and the
+bot must call `getCaseForSync(caseId)` before acting and skip cases with
+`apply: false`. If an apply is still reported after its case ended (it was
+mid-flight), `markCaseSynced` audits `moderation.case_applied_after_end` and
+re-sends the reversal that ended it, so Discord converges on JAVE's state.
+
+Sync failures on automated cases notify moderators once per failure cause per
+hour (`mod-sync-failed:<cause>:<hour>`), never once per case — a raid cannot
+bury staff in DMs. Failures on manual cases go to the issuing moderator.
 
 **Member standing** (owned here): quarantine → `quarantined`; release →
 `good`; ban → `banned`; unban → `good`. Timeouts do not change standing.
 Quarantined and banned members hold no capabilities.
 
 ## Capabilities and rules
+
+**Superseding is overturning.** A new timeout ends a running timeout; a ban
+ends a live quarantine and timeout. Ending a case this way is subject to the
+same rule as lifting it: staff cannot supersede a case issued by someone who
+outranks them (checked before the action with a durable `access.denied`
+audit, and again inside the transaction under the target lock). Equal- and
+higher-ranked staff may replace each other's decisions.
+
+**Records about staff.** Case and security-event reads hide records whose
+subject is the caller or ranks at or above the caller (founders see all but
+their own). Such records read as not found — including who reported them.
 
 | Action                         | Capability                                                   |
 | ------------------------------ | ------------------------------------------------------------ |

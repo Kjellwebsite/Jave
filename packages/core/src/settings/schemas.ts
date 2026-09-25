@@ -131,6 +131,10 @@ export const settingsSchemas = {
     distinctionThreshold: z.number().min(0).max(10).default(8.5),
     teamWeight: z.number().min(0).max(1).default(0.6),
     deadlineWarningsMinutes: z.array(z.number().int().min(1).max(10_080)).max(5).default([60, 10]),
+    /** Minutes after the deadline during which submissions are still accepted, flagged late. */
+    submissionGraceMinutes: z.number().int().min(0).max(1440).default(15),
+    /** Also create a Discord role per trial team (requires Manage Roles). */
+    createTeamRoles: z.boolean().default(false),
     /** Global kill switch for adversarial roles. */
     adversarialEnabled: z.boolean().default(false),
   }),

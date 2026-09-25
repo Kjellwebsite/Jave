@@ -1,0 +1,139 @@
+.choice {
+  display: grid;
+  gap: 20px;
+}
+
+.choice-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.choice-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  padding: 14px 18px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  transition: border-color 160ms var(--ease), box-shadow 160ms var(--ease), background 160ms var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.choice-option:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+.choice-option.is-selected {
+  border-color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text), var(--shadow-1);
+}
+
+.choice-option.is-key {
+  border-color: var(--positive);
+  box-shadow: inset 0 0 0 1px var(--positive);
+}
+
+.choice-option.is-wrong {
+  border-color: var(--negative);
+  box-shadow: inset 0 0 0 1px var(--negative);
+}
+
+.choice-index {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.choice-option.is-selected .choice-index {
+  background: var(--inverse-bg);
+  color: var(--inverse-text);
+  border-color: var(--inverse-bg);
+}
+
+.choice-body {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.choice-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.entry {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+}
+
+.entry-field {
+  width: min(100%, 320px);
+}
+
+.entry-input {
+  width: 100%;
+  height: 64px;
+  padding: 0 18px;
+  font-size: 30px;
+  text-align: center;
+  letter-spacing: 0.04em;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 2px rgb(8 9 10 / 0.04);
+  transition: border-color 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+
+.entry-input:focus {
+  outline: none;
+  border-color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text);
+}
+
+.entry-text .entry-field { width: min(100%, 420px); }
+
+.entry-text .entry-input { font-size: 24px; }
+
+.entry-actions { display: flex; gap: 8px; }
+
+.keypad {
+  display: none;
+  grid-template-columns: repeat(3, 72px);
+  gap: 8px;
+}
+
+@media (pointer: coarse) {
+  .keypad { display: grid; }
+}
+
+.keypad-key {
+  height: 52px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 20px;
+  box-shadow: var(--shadow-1);
+}
+
+.keypad-key:active { background: var(--surface-2); }
+
+.key-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}

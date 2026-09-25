@@ -1,0 +1,213 @@
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), transform 120ms var(--ease), box-shadow var(--dur) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+}
+
+.btn-sm { min-height: 34px; padding: 0 14px; font-size: 13px; }
+.btn-md { min-height: 44px; padding: 0 20px; font-size: 15px; }
+.btn-lg { min-height: 54px; padding: 0 28px; font-size: 16px; }
+
+.btn-primary {
+  background: var(--inverse-bg);
+  color: var(--inverse-text);
+  box-shadow: var(--shadow-1);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--inverse-bg) 88%, var(--accent));
+}
+
+.btn-secondary {
+  background: var(--metal);
+  border-color: var(--line-strong);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  opacity: 0.55;
+}
+
+@media (pointer: coarse) {
+  .kbd { display: none; }
+}
+
+.rule {
+  border: 0;
+  height: 1px;
+  background: var(--line);
+  margin: 0;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tag-neutral { background: var(--surface-2); color: var(--muted); }
+.tag-strong { background: var(--inverse-bg); color: var(--inverse-text); }
+.tag-outline { border: 1px solid var(--line-strong); color: var(--muted); }
+
+.wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--text);
+}
+
+.wordmark-jvln {
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.32em;
+  margin-right: -0.32em;
+}
+
+.wordmark-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.frame {
+  position: relative;
+  padding: 28px;
+}
+
+.frame-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--aluminium);
+  border-style: solid;
+  border-width: 0;
+  pointer-events: none;
+}
+
+.frame-corner.tl { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.frame-corner.tr { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.frame-corner.bl { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+.frame-corner.br { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+
+.frame-label {
+  position: absolute;
+  top: -7px;
+  left: 22px;
+  padding: 0 6px;
+  background: var(--bg);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--faint);
+  text-transform: uppercase;
+}
+
+.progress-line {
+  position: relative;
+  height: 2px;
+  background: var(--line);
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.progress-line-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--metal-line);
+  background-color: var(--accent);
+  transform-origin: left center;
+}
+
+.ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.ring svg { position: absolute; inset: 0; }
+
+.ring-inner {
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.stat {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-note {
+  font-size: 13px;
+  color: var(--muted);
+}

@@ -1,6 +1,12 @@
-import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vitest/config';
 
-// Relative base so the build works on GitHub Pages, Netlify or any sub-path.
 export default defineConfig({
   base: './',
+  plugins: [react()],
+  build: { target: 'es2022', sourcemap: true },
+  test: {
+    include: ['tests/**/*.test.ts'],
+    environment: 'node',
+  },
 });

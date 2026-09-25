@@ -1,0 +1,99 @@
+/* JVLN design tokens — white / silver / graphite / black.
+   Light is primary. Dark is graphite, never neon. */
+
+:root {
+  color-scheme: light;
+
+  --white: #ffffff;
+  --off-white: #f7f8fa;
+  --silver: #e8eaed;
+  --aluminium: #b8bdc3;
+  --steel: #737981;
+  --graphite: #181a1d;
+  --black: #08090a;
+
+  --bg: var(--off-white);
+  --surface: var(--white);
+  --surface-2: #f1f2f4;
+  --line: #e4e6e9;
+  --line-strong: #cfd3d8;
+  --text: var(--graphite);
+  --text-2: #3b3f45;
+  --muted: var(--steel);
+  --faint: #9aa0a7;
+  --accent: #8d939a;
+  --accent-soft: #d9dce0;
+  --metal: linear-gradient(180deg, #ffffff 0%, #eef0f2 55%, #e3e6e9 100%);
+  --metal-line: linear-gradient(90deg, #c8ccd1, #8d939a 50%, #c8ccd1);
+  --inverse-bg: var(--graphite);
+  --inverse-text: #f4f5f6;
+  --focus: #5b6168;
+  --positive: #2f6b4f;
+  --negative: #8a3b3b;
+  --stimulus-paper: #ffffff;
+  --stimulus-ink: #181a1d;
+  --shadow-1: 0 1px 2px rgb(8 9 10 / 0.04), 0 1px 1px rgb(8 9 10 / 0.03);
+  --shadow-2: 0 10px 30px -12px rgb(8 9 10 / 0.12), 0 2px 6px rgb(8 9 10 / 0.04);
+
+  --font-sans: 'Geist Variable', 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius-s: 6px;
+  --radius: 10px;
+  --radius-l: 16px;
+  --gutter: clamp(16px, 4vw, 48px);
+  --maxw: 1200px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+  --dur: 240ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #0b0c0e;
+    --surface: #121417;
+    --surface-2: #171a1e;
+    --line: #23262b;
+    --line-strong: #33373e;
+    --text: #eceef1;
+    --text-2: #c6cad0;
+    --muted: #8a9099;
+    --faint: #5f656d;
+    --accent: #a9afb6;
+    --accent-soft: #2a2e34;
+    --metal: linear-gradient(180deg, #1a1d21 0%, #15171b 60%, #121417 100%);
+    --metal-line: linear-gradient(90deg, #3a3f46, #a9afb6 50%, #3a3f46);
+    --inverse-bg: #eceef1;
+    --inverse-text: #0b0c0e;
+    --focus: #c6cad0;
+    --positive: #7fb89a;
+    --negative: #d49a9a;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 12px 32px -12px rgb(0 0 0 / 0.6);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0b0c0e;
+  --surface: #121417;
+  --surface-2: #171a1e;
+  --line: #23262b;
+  --line-strong: #33373e;
+  --text: #eceef1;
+  --text-2: #c6cad0;
+  --muted: #8a9099;
+  --faint: #5f656d;
+  --accent: #a9afb6;
+  --accent-soft: #2a2e34;
+  --metal: linear-gradient(180deg, #1a1d21 0%, #15171b 60%, #121417 100%);
+  --metal-line: linear-gradient(90deg, #3a3f46, #a9afb6 50%, #3a3f46);
+  --inverse-bg: #eceef1;
+  --inverse-text: #0b0c0e;
+  --focus: #c6cad0;
+  --positive: #7fb89a;
+  --negative: #d49a9a;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 12px 32px -12px rgb(0 0 0 / 0.6);
+}

@@ -60,6 +60,32 @@ export interface ScheduledEventSpec {
   location?: string;
 }
 
+/** Discord's scheduled event states (Discord spells the last one CANCELED). */
+export type ScheduledEventStatus = 'scheduled' | 'active' | 'completed' | 'canceled';
+
+/**
+ * Fields to change on a scheduled event, plus the status it should end up in.
+ * The gateway applies only the transitions Discord allows (scheduled → active →
+ * completed) and skips edits Discord refuses (the start of an active event,
+ * anything on a completed or canceled one).
+ */
+export interface ScheduledEventEdit extends Partial<ScheduledEventSpec> {
+  status?: Exclude<ScheduledEventStatus, 'canceled'>;
+}
+
+/** Whose channel permissions to check: the bot itself or a guild member. */
+export type ChannelSubject = { kind: 'bot' } | { kind: 'member'; userId: string };
+
+/** Effective permissions of a subject in a channel (threads use Send Messages in Threads). */
+export interface ChannelAccess {
+  /** Messages can be posted in this channel at all (text, announcement or thread). */
+  textBased: boolean;
+  view: boolean;
+  send: boolean;
+  embedLinks: boolean;
+  readHistory: boolean;
+}
+
 export interface SentMessage {
   channelId: string;
   messageId: string;
@@ -131,10 +157,12 @@ export interface DiscordGateway {
 
   // Scheduled events
   createScheduledEvent(spec: ScheduledEventSpec & { reason: string }): Promise<string>;
-  editScheduledEvent(
-    eventId: string,
-    spec: Partial<ScheduledEventSpec>,
-    reason: string,
-  ): Promise<void>;
+  editScheduledEvent(eventId: string, spec: ScheduledEventEdit, reason: string): Promise<void>;
+  /** Scheduled → canceled; an active event cannot be canceled on Discord and is deleted. */
   cancelScheduledEvent(eventId: string, reason: string): Promise<void>;
+  deleteScheduledEvent(eventId: string, reason: string): Promise<void>;
+
+  // Permissions
+  /** Null when the channel or member is unknown, or the channel is outside the guild. */
+  channelAccess(channelId: string, subject: ChannelSubject): Promise<ChannelAccess | null>;
 }

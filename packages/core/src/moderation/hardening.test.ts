@@ -147,7 +147,7 @@ describe('BREAK: moderation hardening', () => {
     /** Make every future insert of a release case for `userId` fail, like a broken row would. */
     const breakReleasesFor = async (userId: string) => {
       expect(userId).toMatch(/^[0-9a-f-]{36}$/);
-      await kit.database.pg.exec(`
+      await kit.database.exec(`
         create function fail_release() returns trigger language plpgsql as $$
         begin
           if new.action = 'release' and new.target_user_id = '${userId}' then

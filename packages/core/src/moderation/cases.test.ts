@@ -309,7 +309,9 @@ describe('moderation cases', () => {
       const [job] = await applyJobs();
       expect(job).toMatchObject({ action: 'quarantine', quarantineFallback: 'timeout' });
       expect(await standing(target)).toBe('quarantined');
-      expect(await notificationsFor(kit, moderator.userId, 'moderation.sync_failed')).toHaveLength(0);
+      expect(await notificationsFor(kit, moderator.userId, 'moderation.sync_failed')).toHaveLength(
+        0,
+      );
     });
 
     it('records quarantine of departed members for re-application on rejoin', async () => {

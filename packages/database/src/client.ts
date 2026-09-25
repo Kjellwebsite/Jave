@@ -38,11 +38,32 @@ export function createDatabase(url: string, options: CreateDatabaseOptions = {})
     },
   });
   const db = drizzle(client, { schema, casing: undefined }) as unknown as Database;
+  serializeRawDates(client);
   return {
     db,
     ping: () => pingDatabase(db),
     close: () => client.end({ timeout: 5 }),
   };
+}
+
+/** Date-like type OIDs: date, timestamp, timestamptz. */
+const DATE_TYPE_OIDS = [1082, 1114, 1184] as const;
+
+/**
+ * Call after `drizzle(client)`. drizzle's postgres-js adapter replaces the
+ * driver's date serializers with pass-throughs, because drizzle maps column
+ * values itself. A Date bound outside a column (`sql\`… < ${date}\``) then
+ * reaches the wire as an object and the query fails ("Received an instance
+ * of Date"), while PGlite, used by the default tests, accepts it. Sending such
+ * Dates as ISO-8601 makes both drivers behave the same.
+ */
+export function serializeRawDates(client: postgres.Sql): void {
+  const serializers = client.options.serializers as Record<number, (value: unknown) => unknown>;
+  for (const oid of DATE_TYPE_OIDS) {
+    const inner = serializers[oid];
+    serializers[oid] = (value: unknown) =>
+      value instanceof Date ? value.toISOString() : inner ? inner(value) : value;
+  }
 }
 
 export async function pingDatabase(db: Database): Promise<number> {

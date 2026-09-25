@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-import type { Database } from '../client';
+import { type Database, serializeRawDates } from '../client';
 import { applyReferenceData } from '../reference-data';
 import * as schema from '../schema';
 
@@ -19,6 +19,7 @@ async function main(): Promise<void> {
   }
   const client = postgres(url, { max: 1, onnotice: () => undefined });
   const db = drizzle(client, { schema });
+  serializeRawDates(client);
   // Bundled deployments (the bot container) point this at the copied migrations folder.
   const migrationsFolder =
     process.env.JAVE_MIGRATIONS_DIR ??

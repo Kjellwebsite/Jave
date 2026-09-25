@@ -286,7 +286,7 @@ describe('applications: background jobs', () => {
         interviewAt: new Date(kit.clock.now().getTime() + 48 * HOUR),
       });
       // Fault injection in real SQL: the DM delivery row fails after the inbox row is written.
-      await kit.database.pg.exec(`
+      await kit.database.exec(`
         create function test_fail_delivery() returns trigger language plpgsql
           as $$ begin raise exception 'injected delivery failure'; end $$;
         create trigger test_fail_delivery before insert on notification_deliveries
@@ -300,7 +300,7 @@ describe('applications: background jobs', () => {
       expect(attempt?.error).toMatch(/insert into "notification_deliveries"/);
       expect(await titlesFor(kit, applicant.userId)).not.toContain('INTERVIEW IN 1 HOUR');
 
-      await kit.database.pg.exec('drop trigger test_fail_delivery on notification_deliveries;');
+      await kit.database.exec('drop trigger test_fail_delivery on notification_deliveries;');
       kit.clock.advance(MINUTE);
       const retried = await kit.drain(applicationHandlers());
       expect(retried.find((o) => o.type === APPLICATION_INTERVIEW_REMINDER_JOB)).toMatchObject({

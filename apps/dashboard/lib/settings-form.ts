@@ -105,6 +105,8 @@ export const SETTINGS_FORM: readonly SettingsSectionSpec[] = [
       channel('tickets', 'Tickets'),
       channel('ticketArchive', 'Ticket archive'),
       channel('trialsCategory', 'Trials category'),
+      channel('verificationQueue', 'Verification queue'),
+      channel('missions', 'Missions'),
       channel('events', 'Events'),
       channel('research', 'Research'),
       channel('achievements', 'Achievements'),
@@ -247,6 +249,12 @@ export const SETTINGS_FORM: readonly SettingsSectionSpec[] = [
         label: 'Archive after',
         control: { kind: 'integer', min: 1, max: 365, unit: 'd' },
       },
+      {
+        path: 'openRatePerHour',
+        label: 'Tickets per user per hour',
+        description: 'Anti-spam limit on top of the open-ticket cap.',
+        control: { kind: 'integer', min: 1, max: 100 },
+      },
     ],
   },
   {
@@ -265,6 +273,24 @@ export const SETTINGS_FORM: readonly SettingsSectionSpec[] = [
         path: 'cooldownDaysAfterRejection',
         label: 'Cooldown after rejection',
         control: { kind: 'integer', min: 0, max: 365, unit: 'd' },
+      },
+      {
+        path: 'draftExpiryDays',
+        label: 'Draft expiry',
+        description: 'Drafts untouched this long are withdrawn automatically.',
+        control: { kind: 'integer', min: 1, max: 365, unit: 'd' },
+      },
+      {
+        path: 'reviewReminderHours',
+        label: 'Review reminder',
+        description: 'Remind reviewers once when a submission waits this long.',
+        control: { kind: 'integer', min: 1, max: 720, unit: 'h' },
+      },
+      {
+        path: 'withdrawalCooldownHours',
+        label: 'Cooldown after withdrawal',
+        description: 'Blocks a new submission after withdrawing one. At least 1 hour.',
+        control: { kind: 'integer', min: 1, max: 720, unit: 'h' },
       },
     ],
   },
@@ -300,6 +326,18 @@ export const SETTINGS_FORM: readonly SettingsSectionSpec[] = [
         label: 'Deadline warnings',
         description: 'Minutes before a deadline, comma-separated. Up to 5.',
         control: { kind: 'minuteList', maxItems: 5 },
+      },
+      {
+        path: 'submissionGraceMinutes',
+        label: 'Submission grace',
+        description: 'Late submissions are still accepted this long, and flagged late.',
+        control: { kind: 'integer', min: 0, max: 1440, unit: 'min' },
+      },
+      {
+        path: 'createTeamRoles',
+        label: 'Team roles',
+        description: 'Also create a Discord role per trial team. Needs Manage Roles.',
+        control: { kind: 'boolean' },
       },
       {
         path: 'adversarialEnabled',
@@ -344,6 +382,13 @@ export const SETTINGS_FORM: readonly SettingsSectionSpec[] = [
         control: { kind: 'boolean' },
       },
       { path: 'sidusAutoSync', label: 'SIDUS auto-sync', control: { kind: 'boolean' } },
+      {
+        path: 'allowInsecureForDev',
+        label: 'Plain-HTTP webhooks (development only)',
+        description:
+          'DEVELOPMENT ONLY. Honoured only on a local http deployment; ignored in production.',
+        control: { kind: 'boolean' },
+      },
     ],
   },
   {

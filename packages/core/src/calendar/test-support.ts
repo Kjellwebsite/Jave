@@ -1,6 +1,3 @@
-import { drizzle } from 'drizzle-orm/pglite';
-import type { Database } from '@jave/database';
-import * as schema from '@jave/database/schema';
 import type { ServiceContext } from '../kernel/context';
 import type { Actor } from '../permissions/actor';
 import { createTestKit, type TestKit } from '../testing';
@@ -31,10 +28,7 @@ export function recordingContext(
   actor: Actor,
 ): { ctx: ServiceContext; statements: string[] } {
   const statements: string[] = [];
-  const db = drizzle(kit.database.pg, {
-    schema,
-    logger: { logQuery: (query) => statements.push(query.toLowerCase()) },
-  }) as unknown as Database;
+  const db = kit.database.withQueryLog((query) => statements.push(query.toLowerCase()));
   return { ctx: { ...kit.as(actor), db, rootDb: db }, statements };
 }
 

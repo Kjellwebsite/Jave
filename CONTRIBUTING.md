@@ -20,6 +20,21 @@ pnpm typecheck && pnpm lint && pnpm format:check && pnpm test
 Tests need no database server: they run against PGlite (PostgreSQL compiled
 to WebAssembly) with the real migrations applied.
 
+Before a release, and in CI, run the same suite against a real Postgres through
+the production driver. PGlite accepts things postgres-js rejects, and it runs
+one transaction at a time, so only a real server exercises row-lock races:
+
+```bash
+JAVE_TEST_BACKEND=postgres \
+JAVE_TEST_POSTGRES_URL=postgres://jave_test:jave_test@localhost:5432/postgres \
+pnpm test
+```
+
+The URL's role needs `CREATEDB`. Each test gets its own database, cloned from a
+template that is built once per migration set and dropped when the test ends.
+The same variable also enables the `*.pg.test.ts` lock suites on the default
+backend.
+
 ## How the code is organized
 
 Read `ARCHITECTURE.md` first. The rules that matter most:

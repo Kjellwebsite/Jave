@@ -237,9 +237,10 @@ describe('invites: referral codes and campaigns', () => {
       const owner = await kit.member();
       const attacker = await kit.member({ roles: ['moderator'] });
       const code = await createReferralCode(kit.as(owner));
+      // Answers like an unknown code, so the call is no oracle for valid codes.
       await expect(
         deactivateReferralCode(kit.as(attacker), { code: code.code }),
-      ).rejects.toBeInstanceOf(ForbiddenError);
+      ).rejects.toBeInstanceOf(NotFoundError);
       const staffOff = await deactivateReferralCode(kit.as(core), {
         code: code.code.toLowerCase(),
       });

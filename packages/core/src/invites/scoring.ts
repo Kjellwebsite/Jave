@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt, lte, ne } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, lte, max, ne } from 'drizzle-orm';
 import { guildMemberEvents, referrals, users } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
 import { getSettings } from '../settings/settings.service';
@@ -11,7 +11,7 @@ import {
   detectAnomalies,
   type ReferralSubject,
 } from './anomaly';
-import { REJOIN_GRACE_MS } from './constants';
+import { MAX_JOIN_CLOCK_SKEW_MS, REJOIN_GRACE_MS } from './constants';
 
 export type ReferralRecord = typeof referrals.$inferSelect;
 
@@ -51,16 +51,54 @@ export async function loadCohort(
   return rows;
 }
 
-/** Did this person join before (an earlier referral, or an older join event)? */
+export interface StayBounds {
+  /** The member's last recorded leave at or before the join, if any. */
+  lastLeaveAt: Date | null;
+  /**
+   * Earliest `joinedAt` a referral can carry and still describe this stay.
+   * Attributions of one join carry Discord's timestamp while JAVE records the
+   * join on its own clock, so they differ by up to MAX_JOIN_CLOCK_SKEW_MS; a
+   * recorded leave in between always separates two stays.
+   */
+  from: Date;
+}
+
+/** Where the stay that includes `joinedAt` begins, for matching referrals to it. */
+export async function stayBounds(
+  ctx: ServiceContext,
+  inviteeUserId: string,
+  joinedAt: Date,
+): Promise<StayBounds> {
+  const [row] = await ctx.db
+    .select({ at: max(guildMemberEvents.occurredAt) })
+    .from(guildMemberEvents)
+    .where(
+      and(
+        eq(guildMemberEvents.userId, inviteeUserId),
+        eq(guildMemberEvents.type, 'leave'),
+        lte(guildMemberEvents.occurredAt, joinedAt),
+      ),
+    );
+  const lastLeaveAt = row?.at ?? null;
+  const skewed = joinedAt.getTime() - MAX_JOIN_CLOCK_SKEW_MS;
+  return { lastLeaveAt, from: new Date(Math.max(skewed, lastLeaveAt?.getTime() ?? skewed)) };
+}
+
+/**
+ * Did this person join before this stay (an earlier stay's referral, or an
+ * older join event)? Referrals of this very stay never count, whichever clock
+ * stamped them.
+ */
 export async function hasPriorJoin(
   ctx: ServiceContext,
   inviteeUserId: string,
   joinedAt: Date,
   excludeReferralId: string | null,
 ): Promise<boolean> {
+  const stay = await stayBounds(ctx, inviteeUserId, joinedAt);
   const referralFilters = [
     eq(referrals.inviteeUserId, inviteeUserId),
-    lt(referrals.joinedAt, joinedAt),
+    lt(referrals.joinedAt, stay.from),
   ];
   if (excludeReferralId) referralFilters.push(ne(referrals.id, excludeReferralId));
   const [earlierReferral] = await ctx.db
@@ -69,8 +107,10 @@ export async function hasPriorJoin(
     .where(and(...referralFilters))
     .limit(1);
   if (earlierReferral) return true;
-  // recordGuildJoin logs this very join moments before attribution; only older joins count.
-  const graceStart = new Date(joinedAt.getTime() - REJOIN_GRACE_MS);
+  // recordGuildJoin logs this very join moments before attribution; only older
+  // joins count, and any join before a recorded leave belongs to an earlier stay.
+  const graceStart = joinedAt.getTime() - REJOIN_GRACE_MS;
+  const joinBound = new Date(Math.max(graceStart, stay.lastLeaveAt?.getTime() ?? graceStart));
   const [earlierJoin] = await ctx.db
     .select({ id: guildMemberEvents.id })
     .from(guildMemberEvents)
@@ -78,7 +118,7 @@ export async function hasPriorJoin(
       and(
         eq(guildMemberEvents.userId, inviteeUserId),
         eq(guildMemberEvents.type, 'join'),
-        lt(guildMemberEvents.occurredAt, graceStart),
+        lt(guildMemberEvents.occurredAt, joinBound),
       ),
     )
     .limit(1);

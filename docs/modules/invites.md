@@ -49,7 +49,7 @@ Database invariants (`packages/database/src/schema/invites.ts`):
 | `detectUsedInvite(before, after)`     | pure                                            | The invite whose uses rose by exactly 1, else `unknown`                   |
 | `attributeJoin(ctx, {…})`             | system only                                     | Create the referral for a join (idempotent per invitee + joinedAt)        |
 | `createReferralCode(ctx, {…})`        | member (own, ≤ 3 active) / `canManageCampaigns` | Random code; staff may pick the code, attach a campaign, issue for others |
-| `deactivateReferralCode(ctx, {code})` | owner / `canManageCampaigns`                    | Idempotent                                                                |
+| `deactivateReferralCode(ctx, {code})` | owner / `canManageCampaigns`                    | Idempotent; others get not-found                                          |
 | `claimReferralCode(ctx, {code})`      | member (the invitee), not quarantined/banned    | Once per person, never own code, within 30 days of an observed join       |
 | `createCampaign` / `updateCampaign`   | `canManageCampaigns`                            | Key, name, window, active flag; audited with a diff                       |
 | `deleteCampaign`                      | `canManageCampaigns`                            | Only when nothing was attributed; otherwise deactivate                    |
@@ -76,6 +76,17 @@ Attribution rules:
 - A code not yet mirrored is recorded for tracing with method `unknown`.
 - Claims require an **observed** join (a live referral or a recorded join
   event). Members synced before JAVE tracked joins cannot mint referrals.
+- Referrals are matched to a **stay**, not to an exact timestamp. Attributions
+  carry Discord's join time while JAVE records joins on its own clock, so the
+  two differ by up to `MAX_JOIN_CLOCK_SKEW_MS`. A stay starts at the later of
+  the last recorded leave and the join minus that skew (`stayBounds`). A stay
+  whose referral was closed (invalidated, self-invite) cannot be re-opened by
+  claiming a code. A live referral from an earlier stay whose leave is not yet
+  processed is closed as `superseded`. `rejoin` only counts earlier stays.
+- A claim on a live referral succeeds once: the update requires
+  `referral_code is null`, and a concurrent loser gets a conflict.
+- Deactivating someone else's code without `canManageCampaigns` answers like
+  an unknown code and writes no audit row, so it cannot probe for valid codes.
 
 ## Anomaly detection (`anomaly.ts`, pure)
 

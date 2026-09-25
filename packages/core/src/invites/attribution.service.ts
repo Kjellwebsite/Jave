@@ -10,7 +10,7 @@ import { requireSystemActor } from './access';
 import { campaignAccepts } from './campaigns.service';
 import { MAX_JOIN_CLOCK_SKEW_MS } from './constants';
 import { LIVE_REFERRAL_STATUSES } from './lifecycle';
-import { loadAnomalyRules, type ReferralRecord, scoreReferral } from './scoring';
+import { loadAnomalyRules, type ReferralRecord, scoreReferral, stayBounds } from './scoring';
 import { INVITE_CODE_PATTERN } from './sync.service';
 
 export const attributeJoinSchema = z.object({
@@ -133,21 +133,28 @@ export async function attributeJoin(
     rules,
   );
   const selfInvite = anomaly.flags.includes('self_invite');
+  const stay = await stayBounds(ctx, invitee.id, joinedAt);
 
   try {
     return await withTransaction(ctx, async (tx) => {
-      // An earlier join still marked live means its leave was never recorded.
+      // An earlier stay still marked live means its leave was never processed.
       await tx.db
         .update(referrals)
-        .set({ status: 'left', statusReason: 'superseded', leftAt: joinedAt })
+        .set({
+          status: 'left',
+          statusReason: 'superseded',
+          leftAt: stay.lastLeaveAt ?? joinedAt,
+          updatedAt: now,
+        })
         .where(
           and(
             eq(referrals.inviteeUserId, invitee.id),
             inArray(referrals.status, [...LIVE_REFERRAL_STATUSES]),
-            lt(referrals.joinedAt, joinedAt),
+            lt(referrals.joinedAt, stay.from),
           ),
         );
-      // Out-of-order delivery: a newer join is already live, so this one is history.
+      // Out-of-order delivery (a newer join is live), or a referral-code claim for
+      // this stay arrived first: either way this attribution is history.
       const [newer] = await tx.db
         .select({ joinedAt: referrals.joinedAt })
         .from(referrals)
@@ -168,7 +175,10 @@ export async function attributeJoin(
           status: selfInvite ? 'invalid' : newer ? 'left' : 'joined',
           statusReason: selfInvite ? 'self_invite' : newer ? 'superseded' : null,
           joinedAt,
-          leftAt: !selfInvite && newer ? newer.joinedAt : null,
+          leftAt:
+            !selfInvite && newer
+              ? new Date(Math.max(newer.joinedAt.getTime(), joinedAt.getTime()))
+              : null,
           anomalyFlags: anomaly.flags,
           anomalyScore: anomaly.score,
           createdAt: now,

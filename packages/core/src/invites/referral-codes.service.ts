@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, isNotNull, isNull, max } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, isNotNull, isNull, max } from 'drizzle-orm';
 import { z } from 'zod';
 import { guildMemberEvents, members, referralCodes, referrals } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
@@ -16,7 +16,7 @@ import {
 } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { actorUserId, type MemberStanding } from '../permissions/actor';
-import { authorize, isSelf, requireMember } from '../permissions/authorize';
+import { authorize, can, isSelf, requireMember } from '../permissions/authorize';
 import { consumeRateLimit } from '../rate-limit/rate-limit';
 import { getMemberById } from '../identity/users.service';
 import { acceptingCampaignId } from './attribution.service';
@@ -31,7 +31,7 @@ import {
   REFERRAL_CODE_LENGTH,
 } from './constants';
 import { LIVE_REFERRAL_STATUSES } from './lifecycle';
-import { loadAnomalyRules, type ReferralRecord, scoreReferral } from './scoring';
+import { loadAnomalyRules, type ReferralRecord, scoreReferral, stayBounds } from './scoring';
 
 export type ReferralCodeRecord = typeof referralCodes.$inferSelect;
 
@@ -155,10 +155,11 @@ export async function deactivateReferralCode(
 ): Promise<ReferralCodeRecord> {
   const data = parseInput(referralCodeRefSchema, input);
   const [row] = await ctx.db.select().from(referralCodes).where(eq(referralCodes.code, data.code));
-  if (!row) throw new NotFoundError('Referral code');
-  if (actorUserId(ctx.actor) !== row.ownerUserId) {
-    await authorize(ctx, 'canManageCampaigns', { type: 'referral_code', id: row.code });
-  }
+  // Someone else's code answers exactly like an unknown one, and leaves no audit
+  // row: otherwise this is a free oracle for valid codes (claims are rate-limited).
+  const mayManage =
+    row && (actorUserId(ctx.actor) === row.ownerUserId || can(ctx, 'canManageCampaigns'));
+  if (!row || !mayManage) throw new NotFoundError('Referral code');
   if (!row.active) return row;
   return withTransaction(ctx, async (tx) => {
     const now = tx.clock.now();
@@ -183,19 +184,6 @@ async function lastObservedJoin(ctx: ServiceContext, userId: string): Promise<Da
     .from(guildMemberEvents)
     .where(and(eq(guildMemberEvents.userId, userId), eq(guildMemberEvents.type, 'join')));
   return row?.at ?? null;
-}
-
-async function referralExistsForJoin(
-  ctx: ServiceContext,
-  userId: string,
-  joinedAt: Date,
-): Promise<boolean> {
-  const [row] = await ctx.db
-    .select({ id: referrals.id })
-    .from(referrals)
-    .where(and(eq(referrals.inviteeUserId, userId), eq(referrals.joinedAt, joinedAt)))
-    .limit(1);
-  return Boolean(row);
 }
 
 export interface ClaimResult {
@@ -275,7 +263,10 @@ export async function claimReferralCode(
     throw new InvalidStateError('Join the JAVELIN server before using a referral code.');
   }
   const now = ctx.clock.now();
-  const [live] = await ctx.db
+  // Only an observed join counts: members synced before JAVE tracked joins are not "new".
+  const observedJoin = await lastObservedJoin(ctx, actor.userId);
+  const stay = observedJoin ? await stayBounds(ctx, actor.userId, observedJoin) : null;
+  const liveRows = await ctx.db
     .select()
     .from(referrals)
     .where(
@@ -284,6 +275,9 @@ export async function claimReferralCode(
         inArray(referrals.status, [...LIVE_REFERRAL_STATUSES]),
       ),
     );
+  // A live referral from before the current stay is one whose leave is not processed yet.
+  const live = liveRows.find((row) => !stay || row.joinedAt >= stay.from);
+  const stale = liveRows.filter((row) => row !== live);
   if (!live) {
     const [counted] = await ctx.db
       .select({ id: referrals.id })
@@ -292,14 +286,18 @@ export async function claimReferralCode(
       .limit(1);
     if (counted) throw new InvalidStateError('Your referral is already recorded.');
   }
-  // Only an observed join counts: members synced before JAVE tracked joins are not "new".
-  const joinedAt = live?.joinedAt ?? (await lastObservedJoin(ctx, actor.userId));
+  const joinedAt = live?.joinedAt ?? observedJoin;
   if (!joinedAt) {
     throw new InvalidStateError('Referral codes are for members who joined recently.');
   }
-  if (!live && (await referralExistsForJoin(ctx, actor.userId, joinedAt))) {
-    // This join was already attributed and closed (e.g. invalidated): not re-openable.
-    throw new InvalidStateError('Your referral for this join can no longer change.');
+  if (!live && stay) {
+    // This stay was already attributed and closed (invalidated, self-invite): not re-openable.
+    const [closed] = await ctx.db
+      .select({ id: referrals.id })
+      .from(referrals)
+      .where(and(eq(referrals.inviteeUserId, actor.userId), gte(referrals.joinedAt, stay.from)))
+      .limit(1);
+    if (closed) throw new InvalidStateError('Your referral for this join can no longer change.');
   }
   if (now.getTime() - joinedAt.getTime() > REFERRAL_CLAIM_WINDOW_DAYS * DAY) {
     throw new InvalidStateError(
@@ -335,6 +333,26 @@ export async function claimReferralCode(
 
   try {
     return await withTransaction(ctx, async (tx) => {
+      if (stale.length > 0) {
+        // Same rule as attributeJoin: a new stay supersedes an earlier one still marked live.
+        await tx.db
+          .update(referrals)
+          .set({
+            status: 'left',
+            statusReason: 'superseded',
+            leftAt: stay?.lastLeaveAt ?? joinedAt,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              inArray(
+                referrals.id,
+                stale.map((row) => row.id),
+              ),
+              inArray(referrals.status, [...LIVE_REFERRAL_STATUSES]),
+            ),
+          );
+      }
       const [row] = live
         ? await tx.db
             .update(referrals)
@@ -343,6 +361,8 @@ export async function claimReferralCode(
               and(
                 eq(referrals.id, live.id),
                 inArray(referrals.status, [...LIVE_REFERRAL_STATUSES]),
+                // A concurrent claim that won the row makes this one a no-op.
+                isNull(referrals.referralCode),
               ),
             )
             .returning()
@@ -356,7 +376,17 @@ export async function claimReferralCode(
               createdAt: now,
             })
             .returning();
-      if (!row) throw new InvalidStateError('Your referral changed meanwhile. Retry.');
+      if (!row) {
+        const [current] = live
+          ? await tx.db
+              .select({ referralCode: referrals.referralCode })
+              .from(referrals)
+              .where(eq(referrals.id, live.id))
+          : [];
+        if (current?.referralCode)
+          throw new ConflictError('You have already used a referral code.');
+        throw new InvalidStateError('Your referral changed meanwhile. Retry.');
+      }
       await recordAudit(tx, {
         action: 'referral.code_claimed',
         targetType: 'referral',

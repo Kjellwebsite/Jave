@@ -105,8 +105,13 @@ export async function markInviteeLeft(
     member.joinedGuildAt.getTime() > leftAt.getTime()
       ? member.joinedGuildAt
       : null;
+  // The ended stay's referrals joined before the leave; the new stay's carry a
+  // timestamp near the rejoin (within the clock skew), which is never earlier.
   const scope = rejoinedAt
-    ? lt(referrals.joinedAt, new Date(rejoinedAt.getTime() - MAX_JOIN_CLOCK_SKEW_MS))
+    ? lt(
+        referrals.joinedAt,
+        new Date(Math.max(leftAt.getTime(), rejoinedAt.getTime() - MAX_JOIN_CLOCK_SKEW_MS)),
+      )
     : undefined;
   return withTransaction(ctx, async (tx) => {
     const live = await tx.db

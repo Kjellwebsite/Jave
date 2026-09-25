@@ -1,11 +1,13 @@
-import { and, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
 import { aiRequests } from '@jave/database';
 import { DAY } from '../kernel/clock';
 import { type ServiceContext, withTransaction } from '../kernel/context';
 import { RateLimitedError } from '../kernel/errors';
 import {
+  ABANDONED_REQUEST_CODE,
   AI_LEDGER_LOCK_NAMESPACE,
   type AiFeature,
+  COUNTED_ERROR_CODES,
   COUNTED_REQUEST_STATUSES,
   STALE_PENDING_REQUEST_MS,
 } from './constants';
@@ -46,7 +48,10 @@ export function nextUtcMidnight(now: Date): Date {
   return new Date(startOfUtcDay(now).getTime() + DAY);
 }
 
-/** Requests that count against today's limit (UTC day). */
+/**
+ * Requests that count against today's limit (UTC day): answered, refused or
+ * in-flight requests, and failures the provider probably billed.
+ */
 export async function countToday(ctx: ServiceContext, userId: string): Promise<number> {
   const [row] = await ctx.db
     .select({ used: sql<number>`count(*)::int` })
@@ -55,7 +60,13 @@ export async function countToday(ctx: ServiceContext, userId: string): Promise<n
       and(
         eq(aiRequests.userId, userId),
         gte(aiRequests.createdAt, startOfUtcDay(ctx.clock.now())),
-        inArray(aiRequests.status, [...COUNTED_REQUEST_STATUSES]),
+        or(
+          inArray(aiRequests.status, [...COUNTED_REQUEST_STATUSES]),
+          and(
+            eq(aiRequests.status, 'error'),
+            inArray(aiRequests.errorCode, [...COUNTED_ERROR_CODES]),
+          ),
+        ),
       ),
     );
   return row?.used ?? 0;
@@ -139,7 +150,7 @@ export async function abandonStaleRequests(ctx: ServiceContext): Promise<number>
   const cutoff = new Date(ctx.clock.now().getTime() - STALE_PENDING_REQUEST_MS);
   const rows = await ctx.db
     .update(aiRequests)
-    .set({ status: 'error', errorCode: 'abandoned' })
+    .set({ status: 'error', errorCode: ABANDONED_REQUEST_CODE })
     .where(and(eq(aiRequests.status, 'pending'), lt(aiRequests.createdAt, cutoff)))
     .returning({ id: aiRequests.id });
   return rows.length;

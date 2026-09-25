@@ -15,6 +15,13 @@
       "when": 1790249228934,
       "tag": "0001_ai_research",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790272020251,
+      "tag": "0002_research",
+      "breakpoints": true
     }
   ]
 }

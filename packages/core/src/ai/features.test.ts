@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
+  AIMalformedResponseError,
   AIOverloadedError,
+  AIRateLimitError,
   AIRefusalError,
   AITimeoutError,
+  AIUnavailableError,
   DisabledProvider,
   MockProvider,
   type MockResponder,
@@ -329,6 +332,54 @@ describe('AI features', { timeout: INTEGRATION_TEST_TIMEOUT_MS }, () => {
         TypeError,
       );
       expect((await ledger()).map((r) => r.errorCode)).toEqual(['empty_response', 'unexpected']);
+    });
+
+    it('BREAK: timeouts, unusable and empty answers count toward the daily limit', async () => {
+      await updateSettings(kit.system, 'ai', { dailyRequestsPerUser: 3 });
+      const ctx = kit.as(member);
+      const failures = [
+        () => {
+          throw new AITimeoutError({ provider: 'mock', timeoutMs: 1 });
+        },
+        () => {
+          throw new AIMalformedResponseError({ provider: 'mock' }, 'response too large');
+        },
+        () => '   ',
+      ];
+      for (const failure of failures) {
+        reply = failure;
+        await expect(ask(ctx, deps(), { question: 'expensive' })).rejects.toBeInstanceOf(
+          ExternalServiceError,
+        );
+      }
+      await expect(getUsage(ctx)).resolves.toMatchObject({ used: 3, remaining: 0 });
+      reply = undefined;
+      await expect(ask(ctx, deps(), { question: 'one more' })).rejects.toBeInstanceOf(
+        RateLimitedError,
+      );
+      expect(mock.calls).toHaveLength(3);
+    });
+
+    it('requests turned away by the provider before any work do not count', async () => {
+      await updateSettings(kit.system, 'ai', { dailyRequestsPerUser: 1 });
+      const ctx = kit.as(member);
+      for (const failure of [
+        new AIOverloadedError({ provider: 'mock' }),
+        new AIRateLimitError({ provider: 'mock' }),
+        new AIUnavailableError({ provider: 'mock' }),
+      ]) {
+        reply = () => {
+          throw failure;
+        };
+        await expect(ask(ctx, deps(), { question: 'q' })).rejects.toBeInstanceOf(
+          ExternalServiceError,
+        );
+      }
+      await expect(getUsage(ctx)).resolves.toMatchObject({ used: 0, remaining: 1 });
+      reply = undefined;
+      await expect(ask(ctx, deps(), { question: 'q' })).resolves.toMatchObject({
+        text: 'Calm answer.',
+      });
     });
 
     it('caps oversized output and flags truncation', async () => {

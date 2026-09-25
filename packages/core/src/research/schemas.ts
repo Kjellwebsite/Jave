@@ -5,6 +5,7 @@ import {
   MAX_ATTACHMENT_NAME_LENGTH,
   MAX_ATTACHMENTS,
   MAX_AUTHOR_LENGTH,
+  MAX_ITEM_VERSION,
   MAX_AUTHORS,
   MAX_MESSAGE_CONTENT_LENGTH,
   MAX_REVIEW_NOTE_LENGTH,
@@ -72,6 +73,9 @@ const authorsSchema = z.array(z.string().trim().min(1).max(MAX_AUTHOR_LENGTH)).m
 
 const publishedOnSchema = z.iso.date();
 
+/** The item version a surface rendered (`ResearchItemView.version`). */
+const versionSchema = z.number().int().min(1).max(MAX_ITEM_VERSION);
+
 const titleSchema = z.string().trim().min(1).max(MAX_TITLE_LENGTH);
 const topicSchema = z.string().trim().min(1).max(MAX_TOPIC_LENGTH);
 const summarySchema = z.string().trim().max(MAX_SUMMARY_LENGTH);
@@ -128,6 +132,8 @@ export const saveFromMessageSchema = z
 export const updateResearchItemSchema = z
   .object({
     itemId: z.uuid(),
+    /** Optional here; when sent, an edit of a newer version is refused. */
+    expectedVersion: versionSchema.optional(),
     title: titleSchema.optional(),
     authors: authorsSchema.optional(),
     source: sourceSchema.nullable().optional(),
@@ -139,7 +145,10 @@ export const updateResearchItemSchema = z
     summary: summarySchema.nullable().optional(),
     publishedOn: publishedOnSchema.nullable().optional(),
   })
-  .refine((data) => Object.keys(data).some((key) => key !== 'itemId'), 'Nothing to update.');
+  .refine(
+    (data) => Object.keys(data).some((key) => key !== 'itemId' && key !== 'expectedVersion'),
+    'Nothing to update.',
+  );
 
 /** Statuses a reviewer can set. Archiving has its own service; NEW is never set by hand. */
 export const reviewStatusSchema = z.enum(['needs_review', 'reviewed', 'verified']);
@@ -147,6 +156,8 @@ export const reviewStatusSchema = z.enum(['needs_review', 'reviewed', 'verified'
 export const reviewResearchItemSchema = z
   .object({
     itemId: z.uuid(),
+    /** Required: a reviewer decides on the version they saw, never on newer content. */
+    expectedVersion: versionSchema,
     status: reviewStatusSchema.optional(),
     evidenceLevel: z.enum(evidenceLevel.enumValues).optional(),
     topic: topicSchema.nullable().optional(),

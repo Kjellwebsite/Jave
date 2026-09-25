@@ -1,3 +1,4 @@
+import type { AIErrorKind } from '@jave/ai';
 import { HOUR, MINUTE } from '../kernel/clock';
 
 export const AI_FEATURES = [
@@ -39,8 +40,33 @@ export const MAX_SUMMARIZE_MESSAGES = 200;
 export const MAX_MESSAGE_AUTHOR_LENGTH = 64;
 export const MAX_SUMMARIZE_MESSAGE_LENGTH = 4000;
 
-/** Ledger statuses that count toward the daily limit. Provider outages do not. */
+/** Ledger error codes JAVE sets itself; provider failures use the AIError kind. */
+export const EMPTY_RESPONSE_CODE = 'empty_response';
+export const UNEXPECTED_ERROR_CODE = 'unexpected';
+export const ABANDONED_REQUEST_CODE = 'abandoned';
+type LedgerErrorCode =
+  | AIErrorKind
+  | typeof EMPTY_RESPONSE_CODE
+  | typeof UNEXPECTED_ERROR_CODE
+  | typeof ABANDONED_REQUEST_CODE;
+
+/** Ledger statuses that always count toward the daily limit. */
 export const COUNTED_REQUEST_STATUSES = ['pending', 'ok', 'refused'] as const;
+/**
+ * Failed requests (`error` rows) that still count: the model probably ran —
+ * and was billed — before the failure (timeout, unusable or empty output), or
+ * the outcome is unknown (aborted, abandoned by a crash, unexpected error).
+ * Requests turned away before any work (rate limit, overload, 5xx, auth,
+ * invalid request) do not count.
+ */
+export const COUNTED_ERROR_CODES = [
+  'timeout',
+  'malformed_response',
+  'aborted',
+  EMPTY_RESPONSE_CODE,
+  ABANDONED_REQUEST_CODE,
+  UNEXPECTED_ERROR_CODE,
+] as const satisfies readonly LedgerErrorCode[];
 /** Advisory-lock namespace serializing daily-limit reservations per user. */
 export const AI_LEDGER_LOCK_NAMESPACE = 424_201;
 

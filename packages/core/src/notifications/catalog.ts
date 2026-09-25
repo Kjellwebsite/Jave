@@ -203,6 +203,15 @@ export const NOTIFICATION_TYPES = {
   'moderation.sync_failed': {
     label: 'Moderation sync failed',
     description: 'A moderation action could not be applied in Discord.',
+  'contribution.updated': {
+    label: 'Contribution update',
+    description: 'A contribution of yours was recorded, verified or rejected.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
+  'integration.alert': {
+    label: 'Integration alert',
+    description: 'An integration or outbound webhook needs attention.',
     severity: 'important',
     channels: ['discord_dm'],
     staff: true,

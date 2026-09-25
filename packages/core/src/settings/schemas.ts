@@ -143,6 +143,11 @@ export const settingsSchemas = {
   integrations: z.object({
     githubAutoContributions: z.boolean().default(true),
     sidusAutoSync: z.boolean().default(false),
+    /**
+     * DEVELOPMENT ONLY: allow plain http:// outbound webhook targets. Private,
+     * loopback and link-local addresses stay blocked regardless.
+     */
+    allowInsecureForDev: z.boolean().default(false),
   }),
   notifications: z.object({
     dmEnabled: z.boolean().default(true),

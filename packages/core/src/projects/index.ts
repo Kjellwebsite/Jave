@@ -1,7 +1,24 @@
 import type { EventSubscriber } from '../events/bus';
 import type { JobHandlerMap, RecurringJob } from '../jobs/worker';
 
-// Module: projects — services are exported from this file.
+// Module: projects — projects, membership, links, milestones, activity and contributions.
+export {
+  canViewProject,
+  type ProjectAccess,
+  type ProjectRecord,
+  type ProjectRole,
+  type ProjectVisibility,
+} from './access';
+export * from './status';
+export * from './slug';
+export * from './schemas';
+export * from './ordering';
+export * from './projects.service';
+export * from './members.service';
+export * from './links.service';
+export * from './milestones.service';
+export * from './queries.service';
+export * from './contributions.service';
 
 /** Job handlers owned by this module (non-Discord). */
 export const jobHandlers: JobHandlerMap = {};

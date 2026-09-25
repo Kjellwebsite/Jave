@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   index,
   pgEnum,
@@ -40,8 +41,11 @@ export const projects = pgTable(
     githubRepo: varchar('github_repo', { length: 140 }),
     repoUrl: text('repo_url'),
     websiteUrl: text('website_url'),
+    /** First time the project shipped. Re-shipping never moves it (no achievement farming). */
     shippedAt: ts('shipped_at'),
     archivedAt: ts('archived_at'),
+    /** Status before archiving; staff unarchive restores it. */
+    archivedFromStatus: projectStatus('archived_from_status'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
@@ -77,18 +81,27 @@ export const projectMembers = pgTable(
   (t) => [
     uniqueIndex('project_members_uq').on(t.projectId, t.memberId),
     index('project_members_member_idx').on(t.memberId),
+    /** Exactly one active owner per project. */
+    uniqueIndex('project_members_one_owner_uq')
+      .on(t.projectId)
+      .where(sql`${t.role} = 'owner' and ${t.leftAt} is null`),
   ],
 );
 
-export const projectLinks = pgTable('project_links', {
-  id: id(),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  label: varchar('label', { length: 48 }).notNull(),
-  url: text('url').notNull(),
-  ordinal: smallint('ordinal').notNull().default(0),
-});
+export const projectLinks = pgTable(
+  'project_links',
+  {
+    id: id(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    label: varchar('label', { length: 48 }).notNull(),
+    url: text('url').notNull(),
+    ordinal: smallint('ordinal').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('project_links_project_idx').on(t.projectId)],
+);
 
 export const milestoneStatus = pgEnum('milestone_status', ['planned', 'active', 'done', 'dropped']);
 
@@ -144,8 +157,12 @@ export const contributions = pgTable(
     /** Idempotency key for integration-sourced contributions, e.g. github:pr:owner/repo#12 */
     externalRef: varchar('external_ref', { length: 200 }),
     status: contributionStatus('status').notNull().default('submitted'),
+    /** Null with a verifiedAt means auto-verified (merged PR by a verified GitHub account). */
     verifiedByUserId: uuid('verified_by_user_id').references(() => users.id),
     verifiedAt: ts('verified_at'),
+    reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id),
+    reviewedAt: ts('reviewed_at'),
+    reviewNote: varchar('review_note', { length: 1000 }),
     occurredAt: ts('occurred_at').notNull().defaultNow(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

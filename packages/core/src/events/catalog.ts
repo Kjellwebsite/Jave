@@ -149,6 +149,43 @@ export const DOMAIN_EVENTS = {
   'security.event_reviewed': { description: 'A security event was reviewed.', external: false },
   'security.raid_mode_changed': {
     description: 'Raid mode was switched on or off.',
+
+  'project.updated': {
+    description: 'Project details, links or milestones changed.',
+    external: false,
+  },
+  'project.member_removed': {
+    description: 'A member left or was removed from a project.',
+    external: false,
+  },
+  'project.member_role_changed': { description: 'A project member changed role.', external: false },
+  'project.ownership_transferred': {
+    description: 'Project ownership moved to another member.',
+    external: false,
+  },
+  'project.milestone_completed': {
+    description: 'A project milestone was completed.',
+    external: false,
+  },
+  'project.repo_linked': {
+    description: 'A GitHub repository was linked or unlinked.',
+    external: false,
+  },
+  'project.github_push': {
+    description: 'Commits landed on a linked repository’s default branch.',
+    external: false,
+  },
+  'project.release_published': {
+    description: 'A linked repository published a release.',
+    external: true,
+  },
+  'contribution.rejected': { description: 'A contribution was rejected.', external: false },
+  'integration.account_linked': {
+    description: 'A member linked an external account.',
+    external: false,
+  },
+  'integration.account_verified': {
+    description: 'Staff verified or unverified an external account.',
     external: false,
   },
 } as const satisfies Record<string, DomainEventDefinition>;

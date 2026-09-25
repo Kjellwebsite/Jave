@@ -52,6 +52,8 @@ export const settingsSchemas = {
     staffAlerts: optionalSnowflake,
     /** Staff channel for verification queue cards (discord.verification.queue_card). Unset = no cards. */
     verificationQueue: optionalSnowflake,
+    /** Mission cards with an ACCEPT button. Falls back to `announcements` when unset. */
+    missions: optionalSnowflake,
   }),
   moderation: z.object({
     automodEnabled: z.boolean().default(true),

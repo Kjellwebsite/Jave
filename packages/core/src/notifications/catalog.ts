@@ -106,6 +106,12 @@ export const NOTIFICATION_TYPES = {
     severity: 'notice',
     channels: ['discord_dm'],
   },
+  'achievement.updated': {
+    label: 'Achievement updated',
+    description: 'One of your achievements was verified or revoked.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
   'event.reminder': {
     label: 'Event reminder',
     description: 'An event you RSVP’d to is starting soon.',

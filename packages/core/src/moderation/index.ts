@@ -20,6 +20,8 @@ export {
   banMember,
   banSchema,
   CASE_CAPABILITY,
+  type CaseSyncState,
+  getCaseForSync,
   kickMember,
   kickSchema,
   markCaseSynced,

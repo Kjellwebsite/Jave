@@ -59,6 +59,11 @@ export const moderationApplyPayloadSchema = z.object({
     .optional(),
   /** quarantine / release: the configured quarantine role. */
   quarantineRoleId: snowflake.optional(),
+  /**
+   * quarantine / release without a configured quarantine role: enforce the
+   * quarantine as a Discord timeout (until `timeoutUntil`) and lift it on release.
+   */
+  quarantineFallback: z.literal('timeout').optional(),
   /** quarantine: Discord role IDs JAVE manages, to strip while quarantined. */
   managedRoleIds: z.array(snowflake).max(50).optional(),
   /** Plain text DM to send the target (escape before sending). Warn: required. */
@@ -68,6 +73,11 @@ export type ModerationApplyPayload = z.infer<typeof moderationApplyPayloadSchema
 
 /**
  * `discord.moderation.apply` — apply one moderation case in Discord.
+ *
+ * FIRST call `moderation.getCaseForSync(ctx, caseId)`. When `apply` is false
+ * (the case was revoked, lifted or superseded while the job waited), complete
+ * the job without touching Discord. Cancellation covers queued jobs; this check
+ * covers a job that was already running or retrying.
  *
  * The bot must, by `action`:
  * - warn: DM `dmText` to the target. Closed DMs → report `failed` ("DMs closed").
@@ -80,9 +90,12 @@ export type ModerationApplyPayload = z.infer<typeof moderationApplyPayloadSchema
  *   `auditReason`. Works for users not in the server. Needs Ban Members.
  * - unban: unban with `auditReason`. "Unknown Ban" counts as applied. Needs Ban Members.
  * - quarantine: best-effort DM `dmText`, add `quarantineRoleId`, remove every
- *   `managedRoleIds` role the member holds. Needs Manage Roles.
+ *   `managedRoleIds` role the member holds. Needs Manage Roles. With
+ *   `quarantineFallback: 'timeout'` (no quarantine role configured) instead
+ *   time the member out until `timeoutUntil`. Needs Moderate Members.
  * - release: remove `quarantineRoleId`. Managed roles are restored by the
- *   `discord.roles.sync` job core enqueues alongside. Needs Manage Roles.
+ *   `discord.roles.sync` job core enqueues alongside. Needs Manage Roles. With
+ *   `quarantineFallback: 'timeout'` lift the timeout instead.
  *
  * Then call `moderation.markCaseSynced(ctx, { caseId, status: 'applied' | 'failed', error })`.
  * Missing permissions / hierarchy / unknown member are permanent failures:

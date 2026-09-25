@@ -1,11 +1,12 @@
-import { and, eq, isNull } from 'drizzle-orm';
-import { members, users } from '@jave/database';
+import { and, eq, exists, gt, inArray, isNull, ne, not, or, type SQL, sql } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { memberRoles, members, users } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
 import type { ServiceContext } from '../kernel/context';
 import { ForbiddenError, NotFoundError } from '../kernel/errors';
 import { activeRoles } from '../identity/users.service';
 import type { Actor, MemberStanding } from '../permissions/actor';
-import { highestRole, isStaffRole, type OrgRole, roleRank } from '../permissions/roles';
+import { highestRole, isStaffRole, type OrgRole, ROLES, roleRank } from '../permissions/roles';
 import type { ModAction } from './copy';
 
 /** A user a moderation action can target, with the data authorization needs. */
@@ -161,4 +162,58 @@ export async function requireSystemActor(
   if (ctx.actor.kind !== 'system') {
     await deny(ctx, 'Only JAVE internal processes can do that.', target);
   }
+}
+
+/**
+ * Roles ranked at or above the actor's highest role. Moderation records about
+ * members holding one of these are hidden from the actor (founders see all).
+ */
+export function rolesAtOrAbove(actorRoles: readonly OrgRole[]): OrgRole[] {
+  const mine = rankOf(actorRoles);
+  return ROLES.filter((role) => role.rank >= mine).map((role) => role.key);
+}
+
+/**
+ * SQL condition hiding moderation records whose subject is the caller, or a
+ * member who ranks at or above the caller. Staff cannot read investigations
+ * into themselves or into their superiors — including who reported them.
+ * Returns undefined for internal actors (the bot worker, sweeps), which see all.
+ * Rows without a subject (e.g. raid events) stay visible.
+ */
+export function visibleSubjectCondition(
+  ctx: ServiceContext,
+  subjectColumn: AnyPgColumn,
+): SQL | undefined {
+  if (ctx.actor.kind !== 'user') return undefined;
+  const self = ne(subjectColumn, ctx.actor.userId);
+  if (ctx.actor.roles.includes('founder')) return or(isNull(subjectColumn), self);
+  const hidden = rolesAtOrAbove(ctx.actor.roles);
+  // Typed operators (not raw template values) so timestamps bind correctly on every driver.
+  const outranks = exists(
+    ctx.db
+      .select({ one: sql`1` })
+      .from(memberRoles)
+      .innerJoin(members, eq(members.id, memberRoles.memberId))
+      .where(
+        and(
+          eq(members.userId, subjectColumn),
+          isNull(memberRoles.revokedAt),
+          or(isNull(memberRoles.expiresAt), gt(memberRoles.expiresAt, ctx.clock.now())),
+          inArray(memberRoles.role, hidden),
+        ),
+      ),
+  );
+  return or(isNull(subjectColumn), and(self, not(outranks)));
+}
+
+/** True when the caller may see moderation records about `subjectUserId`. */
+export async function canSeeSubject(
+  ctx: ServiceContext,
+  subjectUserId: string | null,
+): Promise<boolean> {
+  if (ctx.actor.kind !== 'user' || !subjectUserId) return true;
+  if (ctx.actor.userId === subjectUserId) return false;
+  if (ctx.actor.roles.includes('founder')) return true;
+  const target = await loadTarget(ctx, { userId: subjectUserId });
+  return rankOf(target.roles) < rankOf(ctx.actor.roles);
 }

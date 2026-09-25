@@ -298,18 +298,18 @@ describe('moderation cases', () => {
       ).rejects.toBeInstanceOf(InvalidStateError);
     });
 
-    it('fails loudly when no quarantine role is configured', async () => {
+    it('enforces quarantine as a Discord timeout when no quarantine role is configured', async () => {
       await updateSettings(kit.system, 'roles', { quarantineRoleId: undefined });
       const q = await quarantineMember(kit.as(moderator), {
         targetUserId: target.userId,
         reason: 'Hold.',
       });
-      expect(q.discordSync).toBe('failed');
-      expect(q.discordError).toContain('quarantineRoleId');
-      expect(await applyJobs()).toHaveLength(0);
+      // Never a silent no-op: the member is restricted in Discord either way.
+      expect(q.discordSync).toBe('pending');
+      const [job] = await applyJobs();
+      expect(job).toMatchObject({ action: 'quarantine', quarantineFallback: 'timeout' });
       expect(await standing(target)).toBe('quarantined');
-      const [alert] = await notificationsFor(kit, moderator.userId, 'moderation.sync_failed');
-      expect(alert?.title).toBe('DISCORD SYNC FAILED — CASE-0001');
+      expect(await notificationsFor(kit, moderator.userId, 'moderation.sync_failed')).toHaveLength(0);
     });
 
     it('records quarantine of departed members for re-application on rejoin', async () => {

@@ -329,25 +329,48 @@ describe('projects', { timeout: DB_TEST_TIMEOUT_MS }, () => {
       ).rejects.toBeInstanceOf(InvalidStateError);
     });
 
-    it('BREAK: concurrent status changes do not both apply', async () => {
+    it('BREAK: concurrent status changes never both apply from the same state', async () => {
       const project = await create(owner);
+      for (const status of ['building', 'testing'] as const) {
+        await changeProjectStatus(kit.as(owner), { projectId: project.id, status });
+      }
+      // Both are legal from TESTING, but SHIPPED → ARCHIVED → SHIPPED is not a chain.
       const results = await Promise.allSettled([
-        changeProjectStatus(kit.as(owner), { projectId: project.id, status: 'planning' }),
-        changeProjectStatus(kit.as(staff), { projectId: project.id, status: 'building' }),
+        changeProjectStatus(kit.as(owner), { projectId: project.id, status: 'shipped' }),
+        changeProjectStatus(kit.as(staff), { projectId: project.id, status: 'archived' }),
       ]);
       const fulfilled = results.filter((r) => r.status === 'fulfilled');
       expect(fulfilled.length).toBeGreaterThanOrEqual(1);
-      const events = await kit.db
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          expect(result.reason).toSatisfy(
+            (error) => error instanceof ConflictError || error instanceof InvalidStateError,
+          );
+        }
+      }
+      const changes = await kit.db
         .select()
         .from(domainEvents)
-        .where(eq(domainEvents.type, 'project.status_changed'));
-      expect(events).toHaveLength(fulfilled.length);
-      const final = await getProject(kit.as(owner), { projectId: project.id });
-      if (fulfilled.length === 1) {
-        expect((fulfilled[0] as PromiseFulfilledResult<{ status: string }>).value.status).toBe(
-          final.status,
-        );
+        .where(
+          and(
+            eq(domainEvents.type, 'project.status_changed'),
+            eq(domainEvents.aggregateId, project.id),
+          ),
+        )
+        .orderBy(domainEvents.id);
+      // Every applied change starts where the previous one ended: no stale writer slipped in.
+      const chain = changes.map((e) => e.payload as { from: string; to: string });
+      for (const [index, change] of chain.entries()) {
+        if (index > 0) expect(change.from).toBe(chain[index - 1]!.to);
       }
+      expect(chain).toHaveLength(2 + fulfilled.length);
+      const shipped = await kit.db
+        .select()
+        .from(domainEvents)
+        .where(eq(domainEvents.type, 'project.shipped'));
+      expect(shipped.length).toBeLessThanOrEqual(1);
+      const final = await getProject(kit.as(staff), { projectId: project.id });
+      expect(final.status).toBe(chain.at(-1)!.to);
     });
   });
 

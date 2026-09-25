@@ -1,19 +1,27 @@
-import { and, asc, count, eq, max } from 'drizzle-orm';
+import { and, count, eq, max } from 'drizzle-orm';
 import { z } from 'zod';
 import { projectLinks } from '@jave/database';
 import { type ServiceContext, withTransaction } from '../kernel/context';
 import { ConflictError, NotFoundError } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { publishEvent } from '../events/bus';
-import { loadManageableProject, lockProject, type ProjectRecord } from './access';
+import {
+  loadManageableProject,
+  loadVisibleProject,
+  lockProject,
+  type ProjectRecord,
+} from './access';
 import { assertExactPermutation, MAX_REORDER_IDS, nextOrdinal } from './ordering';
-import { projectEventBase } from './projects.service';
+import { type ProjectLinkRecord, readProjectLinks } from './project-content';
+import { projectEventBase } from './project-events';
 import { httpUrl, singleLine } from './schemas';
 
 /** Links shown on a project page (repo, demo, docs …). */
 export const MAX_PROJECT_LINKS = 12;
 
-export type ProjectLinkRecord = typeof projectLinks.$inferSelect;
+export type { ProjectLinkRecord } from './project-content';
+
+export const listProjectLinksSchema = z.object({ projectId: z.uuid() });
 
 export const addProjectLinkSchema = z.object({
   projectId: z.uuid(),
@@ -65,15 +73,14 @@ async function loadLink(
   return link;
 }
 
+/** A project's links in display order. Invisible projects are reported as not found. */
 export async function listProjectLinks(
   ctx: ServiceContext,
-  projectId: string,
+  input: z.input<typeof listProjectLinksSchema>,
 ): Promise<ProjectLinkRecord[]> {
-  return ctx.db
-    .select()
-    .from(projectLinks)
-    .where(eq(projectLinks.projectId, projectId))
-    .orderBy(asc(projectLinks.ordinal), asc(projectLinks.createdAt));
+  const data = parseInput(listProjectLinksSchema, input);
+  const { project } = await loadVisibleProject(ctx, data.projectId);
+  return readProjectLinks(ctx, project.id);
 }
 
 export async function addProjectLink(
@@ -146,7 +153,7 @@ export async function reorderProjectLinks(
   const { project } = await loadManageableProject(ctx, data.projectId);
   return withTransaction(ctx, async (t) => {
     await lockProject(t, project.id);
-    const existing = await listProjectLinks(t, project.id);
+    const existing = await readProjectLinks(t, project.id);
     assertExactPermutation(
       existing.map((link) => link.id),
       data.linkIds,
@@ -157,6 +164,6 @@ export async function reorderProjectLinks(
         .set({ ordinal })
         .where(and(eq(projectLinks.id, id), eq(projectLinks.projectId, project.id)));
     }
-    return listProjectLinks(t, project.id);
+    return readProjectLinks(t, project.id);
   });
 }

@@ -4,11 +4,19 @@ import type { ServiceContext } from '../kernel/context';
 import { notify } from '../notifications/notifications.service';
 import type { ProjectRecord, ProjectRole } from './access';
 
+type MemberStanding = (typeof members.$inferSelect)['standing'];
+
 export interface ActiveProjectMember {
   memberId: string;
   userId: string;
   role: ProjectRole;
+  standing: MemberStanding;
   joinedAt: Date;
+}
+
+/** Banned and quarantined members earn no membership-derived credit (e.g. project.shipped). */
+export function shipCreditEligible(standing: MemberStanding): boolean {
+  return standing === 'good' || standing === 'restricted';
 }
 
 export async function activeProjectMembers(
@@ -20,6 +28,7 @@ export async function activeProjectMembers(
       memberId: projectMembers.memberId,
       userId: members.userId,
       role: projectMembers.role,
+      standing: members.standing,
       joinedAt: projectMembers.joinedAt,
     })
     .from(projectMembers)

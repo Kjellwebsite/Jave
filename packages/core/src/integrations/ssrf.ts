@@ -4,7 +4,9 @@ import { MAX_URL_LENGTH } from '../projects/schemas';
  * SSRF defense for outbound webhook targets.
  *
  * Checked when a subscription is saved and again before every delivery:
- *  - https only (http only with the DEVELOPMENT ONLY allowInsecureForDev flag)
+ *  - https only (http only with the DEVELOPMENT ONLY allowInsecureForDev
+ *    setting, which takes effect only on a local development deployment —
+ *    see insecureTargetsAllowed)
  *  - no credentials in the URL
  *  - no localhost / single-label / internal-TLD hostnames
  *  - no private, loopback, link-local, CGNAT, multicast, reserved or
@@ -20,6 +22,8 @@ import { MAX_URL_LENGTH } from '../projects/schemas';
  */
 
 export type UrlCheck = { ok: true; url: URL } | { ok: false; reason: string };
+
+const HTTPS_REQUIRED = 'https required';
 
 const BLOCKED_HOSTNAMES = new Set(['localhost', 'localhost.localdomain', 'ip6-localhost']);
 const BLOCKED_SUFFIXES = ['.localhost', '.local', '.internal', '.lan', '.home.arpa', '.intranet'];
@@ -166,11 +170,77 @@ export function validateOutboundUrl(raw: string, options: { allowInsecure: boole
     return { ok: false, reason: 'not a valid URL' };
   }
   if (url.protocol !== 'https:' && !(options.allowInsecure && url.protocol === 'http:')) {
-    return { ok: false, reason: 'https required' };
+    return { ok: false, reason: HTTPS_REQUIRED };
   }
   if (url.username || url.password) return { ok: false, reason: 'credentials in URL' };
   const problem = hostnameProblem(url.hostname.toLowerCase());
   return problem ? { ok: false, reason: problem } : { ok: true, url };
+}
+
+const LOOPBACK_IPV4_FIRST_OCTET = 127;
+const IPV6_LOOPBACK_LAST_GROUP = 1;
+
+/**
+ * True for a plain-http URL on a loopback host (localhost, *.localhost,
+ * 127.0.0.0/8, ::1): what a deployment's public URL looks like when JAVE
+ * runs on a developer machine.
+ */
+export function isLocalDevelopmentUrl(publicUrl: string | undefined): boolean {
+  if (!publicUrl) return false;
+  let url: URL;
+  try {
+    url = new URL(publicUrl);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:') return false;
+  const host = url.hostname.replace(/^\[/, '').replace(/\]$/, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  const v4 = parseIPv4(host);
+  if (v4) return v4[0] === LOOPBACK_IPV4_FIRST_OCTET;
+  const v6 = parseIPv6(host);
+  return (
+    v6 !== null &&
+    v6.slice(0, IPV6_GROUPS - 1).every((group) => group === 0) &&
+    v6[IPV6_GROUPS - 1] === IPV6_LOOPBACK_LAST_GROUP
+  );
+}
+
+/**
+ * DEVELOPMENT ONLY: whether plain-http outbound targets are allowed. The
+ * runtime setting `integrations.allowInsecureForDev` takes effect only when
+ * the deployment itself is local development — its configured public URL
+ * (deployment config, JAVE_PUBLIC_URL; not changeable at runtime) is plain
+ * http on a loopback host. Anywhere else, including a deployment without a
+ * public URL, https stays mandatory whatever the setting says.
+ */
+export function insecureTargetsAllowed(
+  config: { publicUrl?: string },
+  settingEnabled: boolean,
+): boolean {
+  return settingEnabled && isLocalDevelopmentUrl(config.publicUrl);
+}
+
+/** Reason shown when the setting is on but the deployment is not local development. */
+export const INSECURE_SETTING_INEFFECTIVE =
+  'https required (allowInsecureForDev only applies to a local development deployment)';
+
+/**
+ * validateOutboundUrl with the deployment's http policy applied; explains
+ * a refused http target when the setting is on but has no effect here.
+ */
+export function checkOutboundTarget(
+  raw: string,
+  config: { publicUrl?: string },
+  settingEnabled: boolean,
+): UrlCheck {
+  const check = validateOutboundUrl(raw, {
+    allowInsecure: insecureTargetsAllowed(config, settingEnabled),
+  });
+  if (!check.ok && settingEnabled && check.reason === HTTPS_REQUIRED) {
+    return { ok: false, reason: INSECURE_SETTING_INEFFECTIVE };
+  }
+  return check;
 }
 
 /** True when a hostname is an IP literal (no DNS lookup needed). */

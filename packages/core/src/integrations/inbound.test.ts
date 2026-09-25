@@ -1,18 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import {
-  auditLogs,
-  contributions,
-  domainEvents,
-  integrations,
-  jobs,
-  webhookDeliveries,
-} from '@jave/database';
+import { auditLogs, integrations, jobs, webhookDeliveries } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import { ForbiddenError } from '../kernel/errors';
 import { anonymousActor, type UserActor } from '../permissions/actor';
-import { updateSettings } from '../settings/settings.service';
-import { createProject, linkGithubRepo } from '../projects';
 import {
   INVALID_SIGNATURE_AUDIT_WINDOW_SECONDS,
   INVALID_SIGNATURE_AUDITS_PER_WINDOW,
@@ -25,12 +16,12 @@ import {
   markRelayDelivered,
   markRelayFailed,
 } from './discord-jobs';
-import { linkGithubAccount, setExternalAccountVerification } from './external-accounts.service';
 import { createIntegrationJobHandlers, DEFAULT_PROCESSORS } from './handlers';
 import { receiveWebhook } from './inbound.service';
 import { createIntegration, retryWebhookDelivery, setIntegrationEnabled } from './registry.service';
 import { signGithub, signJave } from './signatures';
 import { testEncryptionKey } from './testing/fakes';
+import { githubSender, TEST_GITHUB_SECRET } from './testing/github';
 import {
   DB_HOOK_TIMEOUT_MS,
   DB_TEST_TIMEOUT_MS,
@@ -38,21 +29,18 @@ import {
   warmTestDatabase,
 } from '../projects/testing/warm-up';
 
-const GITHUB_SECRET = 'github-webhook-secret-for-tests';
-
 beforeAll(warmTestDatabase, WARM_UP_TIMEOUT_MS);
 
 describe('inbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
   let kit: TestKit;
   let admin: UserActor;
-  let dev: UserActor;
   let genericSecret: string;
+  let github: ReturnType<typeof githubSender>;
   const handlers = createIntegrationJobHandlers();
 
   beforeEach(async () => {
     kit = await createTestKit({ encryptionKey: testEncryptionKey() });
     admin = await kit.member({ roles: ['core'], username: 'admin' });
-    dev = await kit.member({ username: 'octodev' });
     await createIntegration(kit.as(admin), { provider: 'github', name: 'GitHub', slug: 'github' });
     const generic = await createIntegration(kit.as(admin), {
       provider: 'generic',
@@ -61,6 +49,7 @@ describe('inbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
       config: { relayChannelId: '123456789012345678' },
     });
     genericSecret = generic.signingSecret!;
+    github = githubSender(kit);
   }, DB_HOOK_TIMEOUT_MS);
   afterEach(async () => {
     await kit.close();
@@ -68,25 +57,6 @@ describe('inbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
 
   const anon = () => kit.as(anonymousActor);
   let deliveryCounter = 0;
-
-  function github(
-    event: string,
-    payload: unknown,
-    options: { delivery?: string; secret?: string; slug?: string } = {},
-  ) {
-    const rawBody = JSON.stringify(payload);
-    deliveryCounter++;
-    return receiveWebhook(anon(), {
-      slug: options.slug ?? 'github',
-      rawBody,
-      headers: {
-        'X-Hub-Signature-256': signGithub(options.secret ?? GITHUB_SECRET, rawBody),
-        'x-github-delivery': options.delivery ?? `guid-${deliveryCounter}`,
-        'x-github-event': event,
-      },
-      secrets: { github: GITHUB_SECRET },
-    });
-  }
 
   function generic(
     payload: unknown,
@@ -106,29 +76,6 @@ describe('inbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
       },
       secrets: {},
     });
-  }
-
-  async function linkedProject() {
-    const project = await createProject(kit.as(dev), { title: 'Engine', visibility: 'public' });
-    await linkGithubRepo(kit.as(dev), { projectId: project.id, repo: 'javelin/engine' });
-    await linkGithubAccount(kit.as(dev), { username: 'OctoDev' });
-    return project;
-  }
-
-  function mergedPr(number: number, overrides: Record<string, unknown> = {}) {
-    return {
-      action: 'closed',
-      number,
-      pull_request: {
-        merged: true,
-        merged_at: '2026-02-28T10:00:00Z',
-        title: `Faster parser\u0000 @everyone`,
-        html_url: `https://github.com/Javelin/Engine/pull/${number}`,
-        user: { login: 'octodev', id: 4242, type: 'User' },
-      },
-      repository: { full_name: 'Javelin/Engine', default_branch: 'main' },
-      ...overrides,
-    };
   }
 
   describe('receiving', () => {
@@ -280,16 +227,16 @@ describe('inbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
         slug: 'github',
         rawBody,
         headers: {
-          'x-hub-signature-256': signGithub(GITHUB_SECRET, rawBody),
+          'x-hub-signature-256': signGithub(TEST_GITHUB_SECRET, rawBody),
           'x-github-event': 'ping',
         },
-        secrets: { github: GITHUB_SECRET },
+        secrets: { github: TEST_GITHUB_SECRET },
       });
       expect(noDelivery.status).toBe(400);
       const noSecret = await receiveWebhook(anon(), {
         slug: 'github',
         rawBody,
-        headers: { 'x-hub-signature-256': signGithub(GITHUB_SECRET, rawBody) },
+        headers: { 'x-hub-signature-256': signGithub(TEST_GITHUB_SECRET, rawBody) },
         secrets: {},
       });
       expect(noSecret.status).toBe(503);
@@ -321,174 +268,6 @@ describe('inbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
       expect(response.status).toBe(202);
       const [row] = await kit.db.select().from(webhookDeliveries);
       expect(row!.payload).toEqual({ text: 'ab' });
-    });
-  });
-
-  describe('GitHub processing', () => {
-    it('merged PR on a linked repo → submitted contribution, idempotent across redelivery', async () => {
-      const project = await linkedProject();
-      await github('pull_request', mergedPr(12));
-      // Same PR delivered again under a different GUID (e.g. a second hook): same externalRef.
-      await github('pull_request', { ...mergedPr(12), sender: { login: 'someone' } });
-      await kit.drain(handlers);
-      const rows = await kit.db.select().from(contributions);
-      expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({
-        memberId: dev.memberId,
-        projectId: project.id,
-        kind: 'code',
-        source: 'github',
-        status: 'submitted',
-        externalRef: 'github:pr:javelin/engine#12',
-        url: 'https://github.com/Javelin/Engine/pull/12',
-      });
-      expect(rows[0]!.title).toBe('PR #12 — Faster parser @everyone');
-      expect(rows[0]!.occurredAt).toEqual(new Date('2026-02-28T10:00:00Z'));
-      const statuses = (await kit.db.select().from(webhookDeliveries)).map((d) => d.statusReason);
-      expect(statuses.sort()).toEqual(['contribution already recorded', 'contribution recorded']);
-    });
-
-    it('a staff-verified GitHub account yields verified contributions', async () => {
-      await linkedProject();
-      await setExternalAccountVerification(kit.as(admin), {
-        memberId: dev.memberId!,
-        verified: true,
-        externalId: '4242',
-      });
-      await github('pull_request', mergedPr(3));
-      await kit.drain(handlers);
-      const [row] = await kit.db.select().from(contributions);
-      expect(row).toMatchObject({ status: 'verified', verifiedByUserId: null });
-      const verified = await kit.db
-        .select()
-        .from(domainEvents)
-        .where(eq(domainEvents.type, 'contribution.verified'));
-      expect(verified[0]!.payload).toMatchObject({
-        automatic: true,
-        verifiedBy: 'github',
-        visibility: 'public',
-      });
-    });
-
-    it('BREAK: verification without a bound GitHub id never auto-verifies', async () => {
-      await linkedProject();
-      await setExternalAccountVerification(kit.as(admin), {
-        memberId: dev.memberId!,
-        verified: true,
-      });
-      await github('pull_request', mergedPr(8));
-      await kit.drain(handlers);
-      const [row] = await kit.db.select().from(contributions);
-      expect(row).toMatchObject({ status: 'submitted', memberId: dev.memberId });
-    });
-
-    it('BREAK: a push to the default branch is activity, never a contribution', async () => {
-      const project = await linkedProject();
-      const push = {
-        ref: 'refs/heads/main',
-        commits: Array.from({ length: 50 }, (_, i) => ({ id: String(i) })),
-        head_commit: { id: 'abc123', message: 'feat: ship it\n\nbody' },
-        pusher: { name: 'octodev' },
-        repository: { full_name: 'javelin/engine', default_branch: 'main' },
-      };
-      await github('push', push);
-      await github('push', { ...push, ref: 'refs/heads/feature' });
-      await kit.drain(handlers);
-      expect(await kit.db.select().from(contributions)).toHaveLength(0);
-      const [event] = await kit.db
-        .select()
-        .from(domainEvents)
-        .where(eq(domainEvents.type, 'project.github_push'));
-      expect(event).toMatchObject({ aggregateId: project.id, subjectMemberId: null });
-      expect(event!.payload).toMatchObject({ commitCount: 50, headline: 'feat: ship it' });
-      const reasons = (await kit.db.select().from(webhookDeliveries)).map((d) => d.statusReason);
-      expect(reasons).toContain('not the default branch');
-    });
-
-    it('records published releases as project activity', async () => {
-      await linkedProject();
-      await github('release', {
-        action: 'published',
-        release: {
-          tag_name: 'v1.0.0',
-          name: 'One',
-          html_url: 'https://github.com/javelin/engine/releases/v1.0.0',
-        },
-        repository: { full_name: 'javelin/engine' },
-      });
-      await kit.drain(handlers);
-      const [event] = await kit.db
-        .select()
-        .from(domainEvents)
-        .where(eq(domainEvents.type, 'project.release_published'));
-      expect(event!.payload).toMatchObject({ tag: 'v1.0.0', visibility: 'public' });
-    });
-
-    it.each([
-      [
-        'unmerged PR',
-        mergedPr(1, {
-          action: 'closed',
-          pull_request: { ...mergedPr(1).pull_request, merged: false },
-        }),
-        'pull request not merged',
-      ],
-      [
-        'unlinked repo',
-        mergedPr(2, { repository: { full_name: 'other/repo' } }),
-        'repository not linked to a project',
-      ],
-      [
-        'unknown author',
-        mergedPr(3, {
-          pull_request: { ...mergedPr(3).pull_request, user: { login: 'stranger', id: 1 } },
-        }),
-        'author has no linked JAVE account',
-      ],
-      [
-        'bot author',
-        mergedPr(4, {
-          pull_request: {
-            ...mergedPr(4).pull_request,
-            user: { login: 'octodev', id: 4242, type: 'Bot' },
-          },
-        }),
-        'bot author',
-      ],
-      ['garbage payload', { action: 'closed', number: 'x' }, 'unrecognized pull_request payload'],
-    ])('ignores %s', async (_label, payload, reason) => {
-      await linkedProject();
-      await github('pull_request', payload);
-      await kit.drain(handlers);
-      const [delivery] = await kit.db.select().from(webhookDeliveries);
-      expect(delivery).toMatchObject({ status: 'ignored', statusReason: reason });
-      expect(await kit.db.select().from(contributions)).toHaveLength(0);
-    });
-
-    it('respects the githubAutoContributions setting', async () => {
-      await linkedProject();
-      await updateSettings(kit.system, 'integrations', { githubAutoContributions: false });
-      await github('pull_request', mergedPr(5));
-      await kit.drain(handlers);
-      expect(await kit.db.select().from(contributions)).toHaveLength(0);
-    });
-
-    it('BREAK: a renamed-and-reclaimed login does not inherit a bound identity', async () => {
-      await linkedProject();
-      await setExternalAccountVerification(kit.as(admin), {
-        memberId: dev.memberId!,
-        verified: true,
-        externalId: '4242',
-      });
-      // Same login, different GitHub user id (the name was re-registered by someone else).
-      await github(
-        'pull_request',
-        mergedPr(6, {
-          pull_request: { ...mergedPr(6).pull_request, user: { login: 'octodev', id: 9999 } },
-        }),
-      );
-      await kit.drain(handlers);
-      expect(await kit.db.select().from(contributions)).toHaveLength(0);
     });
   });
 

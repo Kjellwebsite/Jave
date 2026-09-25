@@ -180,22 +180,23 @@ describe('project content, repository link and activity', { timeout: DB_TEST_TIM
 
   describe('GitHub repository link', () => {
     it('normalizes, enforces uniqueness and audits', async () => {
+      const staff = await kit.member({ roles: ['operations'], username: 'steward' });
       const a = await create(owner, 'Alpha');
       const b = await create(outsider, 'Beta');
-      const linked = await linkGithubRepo(kit.as(owner), {
+      const linked = await linkGithubRepo(kit.as(staff), {
         projectId: a.id,
         repo: 'https://github.com/Javelin/Engine.git',
       });
       expect(linked.githubRepo).toBe('javelin/engine');
       expect(linked.repoUrl).toBe('https://github.com/javelin/engine');
       await expect(
-        linkGithubRepo(kit.as(outsider), { projectId: b.id, repo: 'javelin/ENGINE' }),
+        linkGithubRepo(kit.as(staff), { projectId: b.id, repo: 'javelin/ENGINE' }),
       ).rejects.toBeInstanceOf(ConflictError);
       await expect(
         linkGithubRepo(kit.as(outsider), { projectId: b.id, repo: '../../etc/passwd' }),
       ).rejects.toBeInstanceOf(ValidationError);
       await linkGithubRepo(kit.as(owner), { projectId: a.id, repo: null });
-      await linkGithubRepo(kit.as(outsider), { projectId: b.id, repo: 'javelin/engine' });
+      await linkGithubRepo(kit.as(staff), { projectId: b.id, repo: 'javelin/engine' });
       const audit = await kit.db
         .select()
         .from(auditLogs)

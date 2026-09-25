@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { isBlockedAddress, parseIPv6, validateOutboundUrl } from './ssrf';
+import {
+  checkOutboundTarget,
+  INSECURE_SETTING_INEFFECTIVE,
+  insecureTargetsAllowed,
+  isBlockedAddress,
+  isLocalDevelopmentUrl,
+  parseIPv6,
+  validateOutboundUrl,
+} from './ssrf';
 
 const strict = { allowInsecure: false };
 const dev = { allowInsecure: true };
@@ -108,5 +116,45 @@ describe('SSRF validator', () => {
     expect(parseIPv6('1:2:3:4:5:6:7:8:9')).toBeNull();
     expect(parseIPv6('12345::')).toBeNull();
     expect(parseIPv6('example.com')).toBeNull();
+  });
+
+  it.each([
+    ['http://localhost:3000', true],
+    ['http://LOCALHOST:3000/', true],
+    ['http://app.localhost:3000', true],
+    ['http://127.0.0.1:3000', true],
+    ['http://127.8.9.1', true],
+    ['http://[::1]:3000', true],
+    ['https://localhost:3000', false],
+    ['http://jave.example.org', false],
+    ['https://jave.example.org', false],
+    ['http://10.0.0.5:3000', false],
+    ['http://localhost.example.org', false],
+    ['http://[::2]', false],
+    ['not a url', false],
+    [undefined, false],
+  ])('treats public URL %s as local development: %s', (publicUrl, expected) => {
+    expect(isLocalDevelopmentUrl(publicUrl)).toBe(expected);
+  });
+
+  it('BREAK: the development flag alone never unlocks http', () => {
+    const production = { publicUrl: 'https://jave.example.org' };
+    const local = { publicUrl: 'http://localhost:3000' };
+    expect(insecureTargetsAllowed(production, true)).toBe(false);
+    expect(insecureTargetsAllowed({}, true)).toBe(false);
+    expect(insecureTargetsAllowed(local, false)).toBe(false);
+    expect(insecureTargetsAllowed(local, true)).toBe(true);
+    const target = 'http://sink.example.com/hook';
+    expect(checkOutboundTarget(target, production, true)).toEqual({
+      ok: false,
+      reason: INSECURE_SETTING_INEFFECTIVE,
+    });
+    expect(checkOutboundTarget(target, production, false)).toEqual({
+      ok: false,
+      reason: 'https required',
+    });
+    expect(checkOutboundTarget(target, local, true)).toMatchObject({ ok: true });
+    // Private targets stay blocked even on a development deployment.
+    expect(checkOutboundTarget('http://127.0.0.1:9000/', local, true)).toMatchObject({ ok: false });
   });
 });

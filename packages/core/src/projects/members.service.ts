@@ -19,7 +19,7 @@ import {
   type ProjectRole,
   requireAdmin,
 } from './access';
-import { projectEventBase } from './projects.service';
+import { projectEventBase } from './project-events';
 import { projectUrl, userIdOfMember } from './recipients';
 import { singleLine } from './schemas';
 
@@ -167,39 +167,64 @@ export async function addProjectMember(
   });
 }
 
+interface Departure {
+  self: boolean;
+  reason?: string;
+  /** The remover's rights, checked against the target's current role (removals only). */
+  remover?: ProjectAccess;
+}
+
+/**
+ * End a membership. Runs inside the caller's transaction with the project
+ * row locked — transferProjectOwnership takes the same lock — and reads the
+ * target's role only then: a role read before the lock can be stale (a
+ * concurrent transfer may just have made the target the owner). The update
+ * is also guarded on that role.
+ */
 async function deactivateMembership(
   ctx: ServiceContext,
   project: ProjectRecord,
   memberId: string,
-  context: { reason?: string; self: boolean },
+  departure: Departure,
 ): Promise<void> {
-  const now = ctx.clock.now();
+  await lockProject(ctx, project.id);
+  const role = await activeRole(ctx, project.id, memberId);
+  if (!role) throw new NotFoundError('Project member');
+  if (role === 'owner') {
+    throw new InvalidStateError(
+      departure.self
+        ? 'Transfer ownership before leaving your project.'
+        : 'Transfer ownership before removing the owner.',
+    );
+  }
+  if (departure.remover && !departure.self) assertCanManageRole(departure.remover, role);
   const [left] = await ctx.db
     .update(projectMembers)
-    .set({ leftAt: now })
+    .set({ leftAt: ctx.clock.now() })
     .where(
       and(
         eq(projectMembers.projectId, project.id),
         eq(projectMembers.memberId, memberId),
         isNull(projectMembers.leftAt),
+        eq(projectMembers.role, role),
       ),
     )
     .returning({ role: projectMembers.role });
-  if (!left) throw new ConflictError('That member is no longer on this project.');
+  if (!left) throw new ConflictError('The membership changed in the meantime.');
   await recordAudit(ctx, {
-    action: context.self ? 'project.member_left' : 'project.member_removed',
+    action: departure.self ? 'project.member_left' : 'project.member_removed',
     targetType: 'project',
     targetId: project.id,
-    context: { memberId, role: left.role, reason: context.reason ?? null },
+    context: { memberId, role: left.role, reason: departure.reason ?? null },
   });
   const eventId = await publishEvent(ctx, {
     type: 'project.member_removed',
     aggregateType: 'project',
     aggregateId: project.id,
     subjectMemberId: memberId,
-    payload: { ...projectEventBase(project), memberId, role: left.role, self: context.self },
+    payload: { ...projectEventBase(project), memberId, role: left.role, self: departure.self },
   });
-  if (!context.self) {
+  if (!departure.self) {
     await notifyMember(
       ctx,
       project,
@@ -217,15 +242,13 @@ export async function removeProjectMember(
 ): Promise<void> {
   const data = parseInput(removeProjectMemberSchema, input);
   const access = await loadManageableProject(ctx, data.projectId);
-  const role = await activeRole(ctx, access.project.id, data.memberId);
-  if (!role) throw new NotFoundError('Project member');
-  if (role === 'owner') {
-    throw new InvalidStateError('Transfer ownership before removing the owner.');
-  }
   const self = ctx.actor.kind === 'user' && ctx.actor.memberId === data.memberId;
-  if (!self) assertCanManageRole(access, role);
   await withTransaction(ctx, (t) =>
-    deactivateMembership(t, access.project, data.memberId, { reason: data.reason, self }),
+    deactivateMembership(t, access.project, data.memberId, {
+      self,
+      reason: data.reason,
+      remover: access,
+    }),
   );
 }
 
@@ -237,11 +260,6 @@ export async function leaveProject(
   const actor = requireMember(ctx);
   const data = parseInput(leaveProjectSchema, input);
   const { project } = await loadVisibleProject(ctx, data.projectId);
-  const role = await activeRole(ctx, project.id, actor.memberId);
-  if (!role) throw new NotFoundError('Project member');
-  if (role === 'owner') {
-    throw new InvalidStateError('Transfer ownership before leaving your project.');
-  }
   await withTransaction(ctx, (t) =>
     deactivateMembership(t, project, actor.memberId, { self: true }),
   );

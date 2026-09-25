@@ -1,19 +1,27 @@
-import { and, asc, count, eq, max } from 'drizzle-orm';
+import { and, count, eq, max } from 'drizzle-orm';
 import { z } from 'zod';
 import { projectMilestones } from '@jave/database';
 import { type ServiceContext, withTransaction } from '../kernel/context';
 import { ConflictError, InvalidStateError, NotFoundError } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { publishEvent } from '../events/bus';
-import { loadManageableProject, lockProject, type ProjectRecord } from './access';
+import {
+  loadManageableProject,
+  loadVisibleProject,
+  lockProject,
+  type ProjectRecord,
+} from './access';
 import { assertExactPermutation, MAX_REORDER_IDS, nextOrdinal } from './ordering';
-import { projectEventBase } from './projects.service';
+import { type MilestoneRecord, readMilestones } from './project-content';
+import { projectEventBase } from './project-events';
 import { plainText, plausibleDate, singleLine } from './schemas';
 
 export const MAX_PROJECT_MILESTONES = 50;
 
-export type MilestoneRecord = typeof projectMilestones.$inferSelect;
+export type { MilestoneRecord } from './project-content';
 export type MilestoneStatus = MilestoneRecord['status'];
+
+export const listMilestonesSchema = z.object({ projectId: z.uuid() });
 
 export const addMilestoneSchema = z.object({
   projectId: z.uuid(),
@@ -81,15 +89,14 @@ async function publishMilestoneChange(
   });
 }
 
+/** A project's milestones in display order. Invisible projects are reported as not found. */
 export async function listMilestones(
   ctx: ServiceContext,
-  projectId: string,
+  input: z.input<typeof listMilestonesSchema>,
 ): Promise<MilestoneRecord[]> {
-  return ctx.db
-    .select()
-    .from(projectMilestones)
-    .where(eq(projectMilestones.projectId, projectId))
-    .orderBy(asc(projectMilestones.ordinal), asc(projectMilestones.createdAt));
+  const data = parseInput(listMilestonesSchema, input);
+  const { project } = await loadVisibleProject(ctx, data.projectId);
+  return readMilestones(ctx, project.id);
 }
 
 export async function addMilestone(
@@ -206,7 +213,7 @@ export async function reorderMilestones(
   const { project } = await loadManageableProject(ctx, data.projectId);
   return withTransaction(ctx, async (t) => {
     await lockProject(t, project.id);
-    const existing = await listMilestones(t, project.id);
+    const existing = await readMilestones(t, project.id);
     assertExactPermutation(
       existing.map((milestone) => milestone.id),
       data.milestoneIds,
@@ -217,6 +224,6 @@ export async function reorderMilestones(
         .set({ ordinal })
         .where(and(eq(projectMilestones.id, id), eq(projectMilestones.projectId, project.id)));
     }
-    return listMilestones(t, project.id);
+    return readMilestones(t, project.id);
   });
 }

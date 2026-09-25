@@ -114,14 +114,35 @@ describe('outbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
       ).rejects.toBeInstanceOf(ValidationError);
     });
 
-    it('allows http only with the development flag', async () => {
-      await updateSettings(kit.system, 'integrations', { allowInsecureForDev: true });
-      const { webhook } = await createOutboundWebhook(kit.as(admin), {
+    it('BREAK: http needs the development flag and a local development deployment', async () => {
+      const deployment = (publicUrl?: string) => ({
+        ...kit.as(admin),
+        config: { ...kit.system.config, publicUrl },
+      });
+      const local = deployment('http://localhost:3000');
+      const sink = {
         name: 'Dev sink',
         url: 'http://sink.example.test/hook',
         eventTypes: ['project.created'],
-      });
+      };
+      await expect(createOutboundWebhook(local, sink)).rejects.toBeInstanceOf(ValidationError);
+      await updateSettings(kit.system, 'integrations', { allowInsecureForDev: true });
+      for (const publicUrl of [undefined, 'https://jave.example.org', 'http://jave.example.org']) {
+        await expect(createOutboundWebhook(deployment(publicUrl), sink)).rejects.toThrow(
+          /local development deployment/,
+        );
+      }
+      const { webhook } = await createOutboundWebhook(local, sink);
       expect(webhook.displayUrl).toBe('http://sink.example.test/…');
+
+      // This kit's worker has no local public URL: the send-time check refuses too.
+      const { handlers, requests } = harness([200]);
+      await publicProject();
+      await kit.drain(handlers);
+      expect(requests).toHaveLength(0);
+      const [delivery] = await deliveries();
+      expect(delivery).toMatchObject({ status: 'dead' });
+      expect(delivery!.lastError).toContain('local development deployment');
     });
 
     it('BREAK: only external events can be subscribed', async () => {

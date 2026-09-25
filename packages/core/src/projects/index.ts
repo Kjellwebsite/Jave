@@ -18,6 +18,7 @@ export * from './members.service';
 export * from './links.service';
 export * from './milestones.service';
 export * from './queries.service';
+export * from './activity.service';
 export * from './contributions.service';
 
 /** Job handlers owned by this module (non-Discord). */

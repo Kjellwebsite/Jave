@@ -11,7 +11,7 @@ import { authorize } from '../permissions/authorize';
 import { getSettings } from '../settings/settings.service';
 import { MAX_URL_LENGTH, singleLine } from '../projects/schemas';
 import { generateSigningSecret, sealSecret } from './secrets';
-import { validateOutboundUrl } from './ssrf';
+import { checkOutboundTarget } from './ssrf';
 
 export type OutboundWebhookRecord = typeof outboundWebhooks.$inferSelect;
 export type OutboundDeliveryRecord = typeof outboundDeliveries.$inferSelect;
@@ -112,7 +112,7 @@ export const listOutboundDeliveriesSchema = pageSchema.extend({
 
 async function assertSafeTarget(ctx: ServiceContext, url: string): Promise<string> {
   const settings = await getSettings(ctx, 'integrations');
-  const check = validateOutboundUrl(url, { allowInsecure: settings.allowInsecureForDev });
+  const check = checkOutboundTarget(url, ctx.config, settings.allowInsecureForDev);
   if (!check.ok) throw new ValidationError(`Webhook URL rejected: ${check.reason}.`);
   return check.url.href;
 }

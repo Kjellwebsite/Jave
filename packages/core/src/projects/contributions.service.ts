@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNull, or, type SQL, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, ne, or, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { contributionKind, contributions, evidence, members, projects } from '@jave/database';
 import { type ServiceContext, withTransaction } from '../kernel/context';
@@ -441,8 +441,9 @@ export interface ContributionView {
  *  - reviewers (canVerifyContributions) see everything
  *  - authors see their own
  *  - project owners/maintainers see their project's contributions
- *  - everyone else sees VERIFIED contributions of visible profiles on
- *    visible projects (or with no project)
+ *  - everyone else sees VERIFIED contributions of visible profiles (never
+ *    a banned member's, as identity hides those profiles) on visible
+ *    projects (or with no project)
  */
 function visibilityFilter(ctx: ServiceContext, managed: readonly string[]): SQL | undefined {
   if (can(ctx, 'canVerifyContributions')) return undefined;
@@ -463,7 +464,12 @@ function visibilityFilter(ctx: ServiceContext, managed: readonly string[]): SQL 
     ),
   )!;
   const conditions: SQL[] = [
-    and(eq(contributions.status, 'verified'), profileVisible, projectVisible)!,
+    and(
+      eq(contributions.status, 'verified'),
+      profileVisible,
+      ne(members.standing, 'banned'),
+      projectVisible,
+    )!,
   ];
   if (viewerMemberId) conditions.push(eq(contributions.memberId, viewerMemberId));
   if (managed.length > 0) conditions.push(inArray(contributions.projectId, [...managed]));

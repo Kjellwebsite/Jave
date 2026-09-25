@@ -125,8 +125,10 @@ export const settingsSchemas = {
     githubAutoContributions: z.boolean().default(true),
     sidusAutoSync: z.boolean().default(false),
     /**
-     * DEVELOPMENT ONLY: allow plain http:// outbound webhook targets. Private,
-     * loopback and link-local addresses stay blocked regardless.
+     * DEVELOPMENT ONLY: allow plain http:// outbound webhook targets. Takes
+     * effect only on a local development deployment (JAVE_PUBLIC_URL is http
+     * on a loopback host); ignored everywhere else. Private, loopback and
+     * link-local addresses stay blocked regardless.
      */
     allowInsecureForDev: z.boolean().default(false),
   }),

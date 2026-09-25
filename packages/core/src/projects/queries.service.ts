@@ -1,11 +1,10 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { domainEvents, members, projectMembers, projects, users } from '@jave/database';
+import { members, projectMembers, projects } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
 import { NotFoundError } from '../kernel/errors';
 import { type Page, pageSchema } from '../kernel/pagination';
 import { parseInput } from '../kernel/validation';
-import type { DomainEventType } from '../events/catalog';
 import {
   type ProjectAccess,
   type ProjectRecord,
@@ -14,8 +13,12 @@ import {
   resolveAccess,
   visibleProjectsFilter,
 } from './access';
-import { listProjectLinks, type ProjectLinkRecord } from './links.service';
-import { listMilestones, type MilestoneRecord } from './milestones.service';
+import {
+  type MilestoneRecord,
+  type ProjectLinkRecord,
+  readMilestones,
+  readProjectLinks,
+} from './project-content';
 import { likePattern } from './schemas';
 import { SLUG_PATTERN } from './slug';
 import { PROJECT_STATUSES, type ProjectStatus } from './status';
@@ -26,12 +29,6 @@ const ROLE_ORDER: Readonly<Record<ProjectRole, number>> = {
   maintainer: 1,
   contributor: 2,
 };
-
-/**
- * project.shipped is emitted once per member (for achievements); the feed
- * already shows the single project.status_changed that caused it.
- */
-const FEED_EXCLUDED_TYPES: readonly DomainEventType[] = ['project.shipped'];
 
 export interface PersonRef {
   memberId: string;
@@ -107,6 +104,7 @@ async function loadMembers(ctx: ServiceContext, access: ProjectAccess) {
       handle: members.handle,
       displayName: members.displayName,
       profileVisibility: members.profileVisibility,
+      standing: members.standing,
       role: projectMembers.role,
       joinedAt: projectMembers.joinedAt,
     })
@@ -123,11 +121,23 @@ async function loadMembers(ctx: ServiceContext, access: ProjectAccess) {
   // Collaborators always see each other; everyone else respects profile privacy.
   const insider = access.staff || access.role !== null;
   const visible = rows.filter(
-    (row) => insider || profileVisibleTo(ctx, row.memberId, row.profileVisibility),
+    (row) =>
+      insider ||
+      profileVisibleTo(ctx, {
+        memberId: row.memberId,
+        visibility: row.profileVisibility,
+        standing: row.standing,
+      }),
   );
   visible.sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role]);
   return {
-    members: visible.map(({ profileVisibility: _hidden, ...member }) => member),
+    members: visible.map(({ memberId, handle, displayName, role, joinedAt }) => ({
+      memberId,
+      handle,
+      displayName,
+      role,
+      joinedAt,
+    })),
     hiddenMemberCount: rows.length - visible.length,
   };
 }
@@ -145,8 +155,8 @@ export async function getProject(
 
   const [team, links, milestones] = await Promise.all([
     loadMembers(ctx, access),
-    listProjectLinks(ctx, project.id),
-    listMilestones(ctx, project.id),
+    readProjectLinks(ctx, project.id),
+    readMilestones(ctx, project.id),
   ]);
   const ownerRow = team.members.find((member) => member.role === 'owner');
   return {
@@ -186,7 +196,12 @@ export async function getProject(
 export const listProjectsSchema = pageSchema.extend({
   status: z.enum(PROJECT_STATUSES as [ProjectStatus, ...ProjectStatus[]]).optional(),
   visibility: z.enum(['public', 'members', 'private']).optional(),
-  /** Projects this member actively belongs to. */
+  /**
+   * Projects this member actively belongs to / owns. Honoured only when the
+   * member's profile is visible to the viewer (or is the viewer); otherwise
+   * the page is empty, so the filter is no membership oracle for hidden
+   * profiles.
+   */
   memberId: z.uuid().optional(),
   ownerMemberId: z.uuid().optional(),
   domainKey: z.string().max(32).optional(),
@@ -196,12 +211,27 @@ export const listProjectsSchema = pageSchema.extend({
   sort: z.enum(['updated_desc', 'created_desc', 'title']).default('updated_desc'),
 });
 
+/** Whether the viewer may filter by this member (their profile is visible to the viewer). */
+async function memberFilterAllowed(ctx: ServiceContext, memberId: string): Promise<boolean> {
+  const [row] = await ctx.db
+    .select({ visibility: members.profileVisibility, standing: members.standing })
+    .from(members)
+    .where(and(eq(members.id, memberId), isNull(members.deletedAt)));
+  return row !== undefined && profileVisibleTo(ctx, { memberId, ...row });
+}
+
 /** Paginated project directory, filtered to what the viewer may see. */
 export async function listProjects(
   ctx: ServiceContext,
   input: z.input<typeof listProjectsSchema>,
 ): Promise<Page<ProjectSummary>> {
   const q = parseInput(listProjectsSchema, input);
+  const filteredMembers = [q.memberId, q.ownerMemberId].filter((id) => id !== undefined);
+  for (const memberId of new Set(filteredMembers)) {
+    if (!(await memberFilterAllowed(ctx, memberId))) {
+      return { items: [], total: 0, limit: q.limit, offset: q.offset };
+    }
+  }
   const filters: SQL[] = [isNull(projects.deletedAt)];
   const visible = visibleProjectsFilter(ctx);
   if (visible) filters.push(visible);
@@ -246,6 +276,7 @@ export async function listProjects(
         ownerHandle: members.handle,
         ownerDisplayName: members.displayName,
         ownerVisibility: members.profileVisibility,
+        ownerStanding: members.standing,
         memberCount: sql<number>`(select count(*)::int from project_members pm where pm.project_id = ${projects.id} and pm.left_at is null)`,
       })
       .from(projects)
@@ -261,7 +292,7 @@ export async function listProjects(
   ]);
 
   const items = rows.map(
-    ({ project, ownerHandle, ownerDisplayName, ownerVisibility, memberCount }) => ({
+    ({ project, ownerHandle, ownerDisplayName, ownerVisibility, ownerStanding, memberCount }) => ({
       id: project.id,
       slug: project.slug,
       title: project.title,
@@ -270,7 +301,11 @@ export async function listProjects(
       visibility: project.visibility,
       domainKey: project.domainKey,
       githubRepo: project.githubRepo,
-      owner: profileVisibleTo(ctx, project.ownerMemberId, ownerVisibility)
+      owner: profileVisibleTo(ctx, {
+        memberId: project.ownerMemberId,
+        visibility: ownerVisibility,
+        standing: ownerStanding,
+      })
         ? { memberId: project.ownerMemberId, handle: ownerHandle, displayName: ownerDisplayName }
         : null,
       memberCount,
@@ -280,83 +315,5 @@ export async function listProjects(
       updatedAt: project.updatedAt,
     }),
   );
-  return { items, total: total?.value ?? 0, limit: q.limit, offset: q.offset };
-}
-
-export interface ProjectActivityItem {
-  id: number;
-  type: string;
-  occurredAt: Date;
-  /** Null for system/integration events or when the actor's profile is hidden. */
-  actor: PersonRef | null;
-  payload: Record<string, unknown>;
-}
-
-export const projectActivitySchema = pageSchema.extend({ projectId: z.uuid() });
-
-/** Activity feed built from the project's domain events, newest first. */
-export async function getProjectActivity(
-  ctx: ServiceContext,
-  input: z.input<typeof projectActivitySchema>,
-): Promise<Page<ProjectActivityItem>> {
-  const q = parseInput(projectActivitySchema, input);
-  const project = await findByRef(ctx, { projectId: q.projectId });
-  if (!project) throw new NotFoundError('Project');
-  const access = await resolveAccess(ctx, project);
-  if (!access.canView) throw new NotFoundError('Project');
-
-  const where = and(
-    eq(domainEvents.aggregateType, 'project'),
-    eq(domainEvents.aggregateId, project.id),
-    sql`${domainEvents.type} not in (${sql.join(
-      FEED_EXCLUDED_TYPES.map((type) => sql`${type}`),
-      sql`, `,
-    )})`,
-  );
-  const [rows, [total]] = await Promise.all([
-    ctx.db
-      .select({
-        id: domainEvents.id,
-        type: domainEvents.type,
-        occurredAt: domainEvents.occurredAt,
-        payload: domainEvents.payload,
-        actorMemberId: members.id,
-        actorHandle: members.handle,
-        actorDisplayName: members.displayName,
-        actorVisibility: members.profileVisibility,
-      })
-      .from(domainEvents)
-      .leftJoin(users, eq(users.id, domainEvents.actorUserId))
-      .leftJoin(members, eq(members.userId, users.id))
-      .where(where)
-      .orderBy(desc(domainEvents.occurredAt), desc(domainEvents.id))
-      .limit(q.limit)
-      .offset(q.offset),
-    ctx.db
-      .select({ value: sql<number>`count(*)::int` })
-      .from(domainEvents)
-      .where(where),
-  ]);
-  const insider = access.staff || access.role !== null;
-  const items = rows.map((row) => {
-    const showActor =
-      row.actorMemberId !== null &&
-      row.actorVisibility !== null &&
-      (insider || profileVisibleTo(ctx, row.actorMemberId, row.actorVisibility));
-    return {
-      id: row.id,
-      type: row.type,
-      occurredAt: row.occurredAt,
-      actor:
-        showActor && row.actorMemberId && row.actorHandle && row.actorDisplayName
-          ? {
-              memberId: row.actorMemberId,
-              handle: row.actorHandle,
-              displayName: row.actorDisplayName,
-            }
-          : null,
-      payload: row.payload,
-    };
-  });
   return { items, total: total?.value ?? 0, limit: q.limit, offset: q.offset };
 }

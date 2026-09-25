@@ -1,6 +1,6 @@
-import { and, count, eq, isNull, ne } from 'drizzle-orm';
+import { and, count, eq, isNotNull, isNull, ne } from 'drizzle-orm';
 import { z } from 'zod';
-import { capabilityDomains, contributions, projectMembers, projects } from '@jave/database';
+import { capabilityDomains, externalAccounts, projectMembers, projects } from '@jave/database';
 import { type ServiceContext, withTransaction } from '../kernel/context';
 import { DAY } from '../kernel/clock';
 import {
@@ -14,27 +14,31 @@ import {
 import { parseInput } from '../kernel/validation';
 import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
-import { authorize } from '../permissions/authorize';
+import { authorize, can } from '../permissions/authorize';
 import { consumeRateLimit } from '../rate-limit/rate-limit';
 import {
   loadManageableProject,
   loadVisibleProject,
+  type ProjectAccess,
   type ProjectRecord,
   requireActiveMember,
   requireAdmin,
   requireManage,
 } from './access';
-import { activeProjectMembers, notifyProjectMembers } from './recipients';
+import { projectEventBase } from './project-events';
+import { notifyProjectMembers } from './recipients';
 import { httpUrl, plainText, singleLine } from './schemas';
 import { availableSlug, randomSlug, slugify } from './slug';
 import {
   assertTransition,
-  isFirstShip,
   PROJECT_STATUSES,
   type ProjectStatus,
   restoredStatus,
   STATUS_LABELS,
 } from './status';
+import { applyStatusChange } from './status-change';
+
+export { projectEventBase } from './project-events';
 
 /** Anti-spam ceiling on non-archived projects a member can own at once. */
 export const MAX_ACTIVE_OWNED_PROJECTS = 20;
@@ -121,11 +125,6 @@ async function assertDomainExists(ctx: ServiceContext, domainKey: string): Promi
     .from(capabilityDomains)
     .where(eq(capabilityDomains.key, domainKey));
   if (!row) throw new ValidationError('Unknown domain.');
-}
-
-/** Payload fields every project event carries (outbound webhooks skip non-public ones). */
-export function projectEventBase(project: Pick<ProjectRecord, 'id' | 'slug' | 'visibility'>) {
-  return { projectId: project.id, slug: project.slug, visibility: project.visibility };
 }
 
 async function consumeProjectCreation(ctx: ServiceContext, memberId: string): Promise<void> {
@@ -277,7 +276,7 @@ export async function updateProject(
 /**
  * Move a project through its lifecycle (see status.ts). Archiving is
  * owner/staff only. The first ship stamps shippedAt and emits one
- * project.shipped per active member so achievements count per person.
+ * project.shipped per credited member so achievements count per person.
  */
 export async function changeProjectStatus(
   ctx: ServiceContext,
@@ -287,89 +286,8 @@ export async function changeProjectStatus(
   const access = await loadVisibleProject(ctx, data.projectId);
   if (data.status === 'archived') await requireAdmin(ctx, access);
   else await requireManage(ctx, access);
-  const { project } = access;
-  assertTransition(project.status, data.status);
-
-  return withTransaction(ctx, async (t) => {
-    const now = t.clock.now();
-    const firstShip = isFirstShip(data.status, project.shippedAt);
-    const archiving = data.status === 'archived';
-    const [updated] = await t.db
-      .update(projects)
-      .set({
-        status: data.status,
-        updatedAt: now,
-        ...(firstShip ? { shippedAt: now } : {}),
-        ...(archiving ? { archivedAt: now, archivedFromStatus: project.status } : {}),
-      })
-      .where(and(eq(projects.id, project.id), eq(projects.status, project.status)))
-      .returning();
-    if (!updated) {
-      throw new ConflictError('The project changed in the meantime. Reload and try again.');
-    }
-    const eventId = await publishEvent(t, {
-      type: 'project.status_changed',
-      aggregateType: 'project',
-      aggregateId: project.id,
-      payload: { ...projectEventBase(updated), from: project.status, to: data.status },
-    });
-    if (firstShip) await emitShipped(t, updated, now);
-    if (archiving) {
-      await recordAudit(t, {
-        action: 'project.archived',
-        targetType: 'project',
-        targetId: project.id,
-        context: { from: project.status },
-      });
-    }
-    await notifyProjectMembers(t, updated, {
-      title: data.status === 'shipped' ? 'PROJECT SHIPPED' : 'PROJECT UPDATE',
-      body: `${updated.title} — now ${STATUS_LABELS[data.status]}.`,
-      dedupeKey: `project:${project.id}:status:${eventId}`,
-      data: { from: project.status, to: data.status },
-    });
-    return updated;
-  });
-}
-
-/** Verified contributions on a project, per member. */
-async function verifiedContributionCounts(
-  ctx: ServiceContext,
-  projectId: string,
-): Promise<Map<string, number>> {
-  const rows = await ctx.db
-    .select({ memberId: contributions.memberId, value: count() })
-    .from(contributions)
-    .where(and(eq(contributions.projectId, projectId), eq(contributions.status, 'verified')))
-    .groupBy(contributions.memberId);
-  return new Map(rows.map((row) => [row.memberId, row.value]));
-}
-
-/**
- * One project.shipped per active member. The payload carries the evidence
- * an achievement needs to tell real work from a throwaway ship.
- */
-async function emitShipped(ctx: ServiceContext, project: ProjectRecord, now: Date): Promise<void> {
-  const team = await activeProjectMembers(ctx, project.id);
-  const projectAgeDays = Math.floor((now.getTime() - project.createdAt.getTime()) / DAY);
-  const verified = await verifiedContributionCounts(ctx, project.id);
-  const verifiedContributions = [...verified.values()].reduce((sum, value) => sum + value, 0);
-  for (const member of team) {
-    await publishEvent(ctx, {
-      type: 'project.shipped',
-      aggregateType: 'project',
-      aggregateId: project.id,
-      subjectMemberId: member.memberId,
-      payload: {
-        ...projectEventBase(project),
-        role: member.role,
-        teamSize: team.length,
-        projectAgeDays,
-        verifiedContributions,
-        memberVerifiedContributions: verified.get(member.memberId) ?? 0,
-      },
-    });
-  }
+  assertTransition(access.project.status, data.status);
+  return applyStatusChange(ctx, access.project, data.status);
 }
 
 /**
@@ -414,18 +332,76 @@ export async function unarchiveProject(
   });
 }
 
+/** Login of the member's staff-verified, id-bound GitHub account (lowercase), if any. */
+async function verifiedGithubLogin(ctx: ServiceContext, memberId: string): Promise<string | null> {
+  const [row] = await ctx.db
+    .select({ username: externalAccounts.username })
+    .from(externalAccounts)
+    .where(
+      and(
+        eq(externalAccounts.memberId, memberId),
+        eq(externalAccounts.provider, 'github'),
+        isNotNull(externalAccounts.verifiedAt),
+        isNotNull(externalAccounts.externalId),
+      ),
+    );
+  return row?.username ?? null;
+}
+
+/** Why a repository link was allowed (recorded in the audit log). */
+type RepoLinkBasis = 'staff' | 'verified_owner';
+
+/**
+ * A link routes every delivery for the repository (merged pull requests →
+ * contributions, pushes and releases → activity) into this project, so the
+ * linker must control the repository: staff (canManageProjects or
+ * canManageIntegrations), or a project manager whose staff-verified GitHub
+ * account owns the repository's namespace (a personal repository).
+ * Organization repositories are linked by staff. Refusals are audited.
+ */
+async function requireRepoControl(
+  ctx: ServiceContext,
+  access: ProjectAccess,
+  repo: string,
+): Promise<RepoLinkBasis> {
+  if (access.staff || can(ctx, 'canManageIntegrations')) return 'staff';
+  const [namespace] = repo.split('/');
+  const memberId = ctx.actor.kind === 'user' ? ctx.actor.memberId : null;
+  const login = memberId ? await verifiedGithubLogin(ctx, memberId) : null;
+  if (login !== null && login === namespace) return 'verified_owner';
+  await recordAudit(
+    ctx,
+    {
+      action: 'project.repo_link_denied',
+      targetType: 'project',
+      targetId: access.project.id,
+      context: { repo, verifiedLogin: login },
+      result: 'denied',
+    },
+    { durable: true },
+  );
+  throw new ForbiddenError(
+    login === null
+      ? 'Link repositories through a staff-verified GitHub account, or ask staff to link it.'
+      : `Your verified GitHub account can link repositories under ${login}/ only. Staff link organization repositories.`,
+  );
+}
+
 /**
  * Link (or unlink with null) the GitHub repository whose webhooks feed this
- * project. One project per repository. Audited: the link routes merged pull
- * requests into contributions.
+ * project. One project per repository; linking requires control of the
+ * repository (see requireRepoControl), unlinking only project management.
+ * Audited: the link routes merged pull requests into contributions.
  */
 export async function linkGithubRepo(
   ctx: ServiceContext,
   input: z.input<typeof linkGithubRepoSchema>,
 ): Promise<ProjectRecord> {
   const data = parseInput(linkGithubRepoSchema, input);
-  const { project } = await loadManageableProject(ctx, data.projectId);
+  const access = await loadManageableProject(ctx, data.projectId);
+  const { project } = access;
   if (project.githubRepo === data.repo) return project;
+  const basis = data.repo ? await requireRepoControl(ctx, access, data.repo) : null;
   const conflict = () => new ConflictError('That repository is already linked to another project.');
   if (data.repo) {
     const [taken] = await ctx.db
@@ -449,7 +425,7 @@ export async function linkGithubRepo(
         action: 'project.repo_linked',
         targetType: 'project',
         targetId: project.id,
-        context: { from: project.githubRepo, to: data.repo },
+        context: { from: project.githubRepo, to: data.repo, basis },
       });
       await publishEvent(t, {
         type: 'project.repo_linked',

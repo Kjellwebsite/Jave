@@ -20,7 +20,7 @@ import {
 import type { OutboundDeliveryRecord, OutboundWebhookRecord } from './outbound.service';
 import { openSecret } from './secrets';
 import { signJave } from './signatures';
-import { isBlockedAddress, isIpLiteral, validateOutboundUrl } from './ssrf';
+import { checkOutboundTarget, isBlockedAddress, isIpLiteral } from './ssrf';
 
 /** The subset of `fetch` the delivery job uses (inject a fake in tests). */
 export interface OutboundRequestInit {
@@ -214,9 +214,11 @@ async function succeed(attempt: Attempt, status: number) {
 /** SSRF gate at send time: URL rules, then every resolved address. */
 async function checkTarget(attempt: Attempt): Promise<URL> {
   const settings = await getSettings(attempt.ctx, 'integrations');
-  const check = validateOutboundUrl(attempt.webhook.url, {
-    allowInsecure: settings.allowInsecureForDev,
-  });
+  const check = checkOutboundTarget(
+    attempt.webhook.url,
+    attempt.ctx.config,
+    settings.allowInsecureForDev,
+  );
   if (!check.ok)
     return fail(attempt, { message: `target rejected: ${check.reason}`, permanent: true });
   const host = check.url.hostname.replace(/^\[/, '').replace(/\]$/, '');

@@ -5,6 +5,12 @@ import type { ServiceContext } from '../kernel/context';
 import { publishEvent } from '../events/bus';
 import { getSettings } from '../settings/settings.service';
 import { recordExternalContribution } from '../projects/contributions.service';
+import type { ProjectRecord } from '../projects/access';
+import {
+  REPO_PRIVATE_FLAG,
+  redactRepoContent,
+  repoContentVisible,
+} from '../projects/project-events';
 import { findProjectByGithubRepo, projectEventBase } from '../projects/projects.service';
 import { isHttpUrl } from '../projects/schemas';
 import { findGithubAccount } from './external-accounts.service';
@@ -15,13 +21,15 @@ import type { DeliveryProcessor, ProcessingResult } from './processors';
  * GitHub delivery processing. Only facts that prove work become
  * contributions: a pull request merged into a linked repository. Pushes
  * and releases are project activity — never contributions (no farming by
- * commit count).
+ * commit count). A merged pull request auto-verifies only when a second
+ * person (not a bot) merged it; self-merges wait for review.
  */
 
 const MAX_TITLE = 200;
 const MAX_HEADLINE = 120;
 const MAX_TAG = 100;
 const MAX_LOGIN = 64;
+const MAX_COMMIT_ID = 64;
 const BOT_USER_TYPE = 'Bot';
 
 const githubUser = z.object({
@@ -33,7 +41,12 @@ const githubUser = z.object({
 const repository = z.object({
   full_name: z.string().min(3).max(200),
   default_branch: z.string().max(255).optional(),
+  /** Missing counts as private (fail closed). */
+  private: z.boolean().optional(),
 });
+
+type GithubRepository = z.infer<typeof repository>;
+type GithubUser = z.infer<typeof githubUser>;
 
 const pullRequestEvent = z.object({
   action: z.string().max(64),
@@ -44,6 +57,7 @@ const pullRequestEvent = z.object({
     title: z.string(),
     html_url: z.string().max(2048),
     user: githubUser,
+    merged_by: githubUser.nullish(),
   }),
   repository,
 });
@@ -75,6 +89,32 @@ const processed = (reason: string): ProcessingResult => ({ status: 'processed', 
 
 function safeUrl(value: string | undefined): string | null {
   return value && isHttpUrl(value) ? new URL(value).href : null;
+}
+
+/**
+ * Activity payload for a repository event. Content (commit headlines,
+ * pushers, tags, links) of a private repository is published only on a
+ * private project; elsewhere it is redacted and flagged, and the feed
+ * re-checks the flag at read time.
+ */
+function repoActivity<T extends Record<string, unknown>>(
+  project: ProjectRecord,
+  repo: GithubRepository,
+  details: T,
+): T & Record<typeof REPO_PRIVATE_FLAG, boolean> {
+  const repoPrivate = repo.private !== false;
+  const payload = { ...details, [REPO_PRIVATE_FLAG]: repoPrivate };
+  return repoContentVisible(repoPrivate, project.visibility) ? payload : redactRepoContent(payload);
+}
+
+/** Independent review: someone other than the author (and not a bot) merged it. */
+export function mergedByAnotherPerson(author: GithubUser, mergedBy: GithubUser | null | undefined) {
+  return (
+    mergedBy !== null &&
+    mergedBy !== undefined &&
+    mergedBy.id !== author.id &&
+    mergedBy.type !== BOT_USER_TYPE
+  );
 }
 
 /** GitHub's timestamp, unless missing, unparsable or in the future. */
@@ -118,8 +158,12 @@ async function processPullRequest(
     externalRef: `github:pr:${repoName}#${number}`,
     occurredAt: occurredAt(ctx, pr.merged_at),
     source: 'github',
-    // Auto-verify only when staff bound the GitHub user id: a login alone can be re-registered.
-    verified: account.verifiedAt !== null && account.externalId === String(pr.user.id),
+    // Auto-verify only when staff bound the GitHub user id (a login alone can be
+    // re-registered) and another person merged the pull request.
+    verified:
+      account.verifiedAt !== null &&
+      account.externalId === String(pr.user.id) &&
+      mergedByAnotherPerson(pr.user, pr.merged_by),
   });
   return processed(result.created ? 'contribution recorded' : 'contribution already recorded');
 }
@@ -142,13 +186,15 @@ async function processPush(ctx: ServiceContext, payload: unknown): Promise<Proce
     payload: {
       ...projectEventBase(project),
       repo: project.githubRepo,
-      branch: cleanLine(defaultBranch, MAX_TAG),
-      commitCount: push.commits?.length ?? 0,
-      headCommit: push.head_commit ? cleanLine(push.head_commit.id, 64) : null,
-      headline: push.head_commit ? headline(push.head_commit.message, MAX_HEADLINE) : null,
-      forced: push.forced ?? false,
-      pusher: push.pusher ? cleanLine(push.pusher.name, MAX_LOGIN) : null,
-      compareUrl: safeUrl(push.compare),
+      ...repoActivity(project, push.repository, {
+        branch: cleanLine(defaultBranch, MAX_TAG),
+        commitCount: push.commits?.length ?? 0,
+        headCommit: push.head_commit ? cleanLine(push.head_commit.id, MAX_COMMIT_ID) : null,
+        headline: push.head_commit ? headline(push.head_commit.message, MAX_HEADLINE) : null,
+        forced: push.forced ?? false,
+        pusher: push.pusher ? cleanLine(push.pusher.name, MAX_LOGIN) : null,
+        compareUrl: safeUrl(push.compare),
+      }),
     },
   });
   return processed('project activity recorded');
@@ -169,10 +215,12 @@ async function processRelease(ctx: ServiceContext, payload: unknown): Promise<Pr
     payload: {
       ...projectEventBase(project),
       repo: project.githubRepo,
-      tag: cleanLine(release.tag_name, MAX_TAG),
-      name: release.name ? cleanLine(release.name, MAX_HEADLINE) : null,
-      url: safeUrl(release.html_url),
-      prerelease: release.prerelease ?? false,
+      ...repoActivity(project, event.data.repository, {
+        tag: cleanLine(release.tag_name, MAX_TAG),
+        name: release.name ? cleanLine(release.name, MAX_HEADLINE) : null,
+        url: safeUrl(release.html_url),
+        prerelease: release.prerelease ?? false,
+      }),
     },
   });
   return processed('release recorded');

@@ -2,7 +2,13 @@ import { and, eq, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { externalAccounts, members } from '@jave/database';
 import { type ServiceContext, withTransaction } from '../kernel/context';
-import { ConflictError, ForbiddenError, isUniqueViolation, NotFoundError } from '../kernel/errors';
+import {
+  ConflictError,
+  ForbiddenError,
+  isUniqueViolation,
+  NotFoundError,
+  ValidationError,
+} from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
@@ -33,7 +39,11 @@ export const unlinkGithubAccountSchema = z.object({
 export const setExternalAccountVerificationSchema = z.object({
   memberId: z.uuid(),
   verified: z.boolean(),
-  /** GitHub's numeric user id; binds the account so a renamed login cannot be reclaimed. */
+  /**
+   * GitHub's numeric user id; binds the account so a renamed login cannot be
+   * reclaimed. Required to verify an account that has none bound yet:
+   * pull requests are matched to verified accounts by this id.
+   */
   externalId: z.string().regex(GITHUB_USER_ID, 'must be a numeric GitHub user id').optional(),
 });
 
@@ -156,8 +166,9 @@ export async function unlinkGithubAccount(
 
 /**
  * Staff mark a linked GitHub account verified (or revoke verification).
- * Verified accounts turn merged pull requests into verified contributions,
- * so nobody may verify their own account.
+ * Verified accounts turn pull requests that someone else merged into
+ * verified contributions, so nobody may verify their own account, and
+ * verifying binds GitHub's numeric user id.
  */
 export async function setExternalAccountVerification(
   ctx: ServiceContext,
@@ -180,6 +191,13 @@ export async function setExternalAccountVerification(
   }
   const account = await findAccount(ctx, data.memberId);
   if (!account) throw new NotFoundError('Linked GitHub account');
+  const externalId = data.externalId ?? account.externalId;
+  if (data.verified && externalId === null) {
+    throw new ValidationError(
+      'Add the numeric GitHub user id to verify this account: pull requests are matched by id.',
+      [{ path: 'externalId', message: 'required to verify' }],
+    );
+  }
   try {
     return await withTransaction(ctx, async (t) => {
       const now = t.clock.now();
@@ -188,7 +206,7 @@ export async function setExternalAccountVerification(
         .set({
           verifiedAt: data.verified ? now : null,
           verifiedByUserId: data.verified && t.actor.kind === 'user' ? t.actor.userId : null,
-          externalId: data.externalId ?? account.externalId,
+          externalId,
           updatedAt: now,
         })
         .where(eq(externalAccounts.id, account.id))
@@ -216,7 +234,7 @@ export async function setExternalAccountVerification(
           type: 'verification.completed',
           title: data.verified ? 'GITHUB VERIFIED' : 'GITHUB VERIFICATION REVOKED',
           body: data.verified
-            ? `${account.username} — linked account verified. Merged pull requests now count as verified contributions.`
+            ? `${account.username} — linked account verified. Pull requests merged by someone else now count as verified contributions.`
             : `${account.username} — verification revoked.`,
           dedupeKey: `external-account:${account.id}:${data.verified ? 'verified' : 'revoked'}:${now.getTime()}`,
         });

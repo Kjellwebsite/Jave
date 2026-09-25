@@ -9,6 +9,7 @@ export type ProjectRecord = typeof projects.$inferSelect;
 export type ProjectRole = (typeof projectMemberRole.enumValues)[number];
 export type ProjectVisibility = ProjectRecord['visibility'];
 type ProfileVisibility = (typeof members.$inferSelect)['profileVisibility'];
+type MemberStanding = (typeof members.$inferSelect)['standing'];
 
 export const MANAGER_ROLES: readonly ProjectRole[] = ['owner', 'maintainer'];
 
@@ -213,15 +214,20 @@ export async function managedProjectIds(ctx: ServiceContext): Promise<string[]> 
   return rows.map((row) => row.id);
 }
 
-/** Member-profile privacy (mirrors identity's profile rule) for names shown on project pages. */
+/**
+ * Member-profile privacy for names shown on project pages. Mirrors
+ * identity's profile rule: yourself and canViewPrivateProfiles always; a
+ * banned member's profile is hidden from everyone else; otherwise the
+ * member's chosen profile visibility decides.
+ */
 export function profileVisibleTo(
   ctx: ServiceContext,
-  memberId: string,
-  visibility: ProfileVisibility,
+  member: { memberId: string; visibility: ProfileVisibility; standing: MemberStanding },
 ): boolean {
-  if (ctx.actor.kind === 'user' && ctx.actor.memberId === memberId) return true;
+  if (ctx.actor.kind === 'user' && ctx.actor.memberId === member.memberId) return true;
   if (can(ctx, 'canViewPrivateProfiles')) return true;
-  switch (visibility) {
+  if (member.standing === 'banned') return false;
+  switch (member.visibility) {
     case 'public':
       return true;
     case 'members':

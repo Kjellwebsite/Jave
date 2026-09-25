@@ -145,6 +145,10 @@ export const DOMAIN_EVENTS = {
   },
   'referral.invalidated': {
     description: 'A referral was invalidated after staff review.',
+  'moderation.case_revoked': { description: 'A moderation case was revoked.', external: false },
+  'security.event_reviewed': { description: 'A security event was reviewed.', external: false },
+  'security.raid_mode_changed': {
+    description: 'Raid mode was switched on or off.',
     external: false,
   },
 } as const satisfies Record<string, DomainEventDefinition>;

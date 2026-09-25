@@ -142,6 +142,37 @@ export const NOTIFICATION_TYPES = {
     description: 'A spot opened for you at an event you waitlisted for.',
     severity: 'notice',
     channels: ['discord_dm'],
+  'adversarial.briefing': {
+    label: 'Confidential briefing',
+    description: 'Updates about an authorized exercise you operate in.',
+    severity: 'important',
+    channels: ['discord_dm'],
+  },
+  'adversarial.stop': {
+    label: 'Exercise stop',
+    description: 'An exercise you operate in was stopped. The STOP DM is sent separately.',
+    severity: 'critical',
+    channels: [],
+  },
+  'adversarial.revealed': {
+    label: 'Exercise revealed',
+    description: 'A trial you took part in included an authorized security-culture exercise.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+  },
+  'adversarial.staff': {
+    label: 'Adversarial operations',
+    description: 'Authorization requests, delivery problems and pending reveals.',
+    severity: 'notice',
+    channels: ['discord_dm'],
+    staff: true,
+  },
+  'adversarial.alert': {
+    label: 'Adversarial alert',
+    description: 'RED FLAG raised, or a STOP notice could not be delivered.',
+    severity: 'critical',
+    channels: ['discord_dm'],
+    staff: true,
   },
 } as const satisfies Record<string, NotificationTypeDefinition>;
 

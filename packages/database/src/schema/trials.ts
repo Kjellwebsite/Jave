@@ -126,6 +126,11 @@ export const trials = pgTable(
     announcementChannelId: snowflake('announcement_channel_id'),
     announcementMessageId: snowflake('announcement_message_id'),
     createdByUserId: uuid('created_by_user_id').references(() => users.id),
+    /** Staff who changed the brief or rubric: like the creator, they never compete in it. */
+    editorUserIds: uuid('editor_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

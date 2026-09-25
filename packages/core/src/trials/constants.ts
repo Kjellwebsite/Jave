@@ -160,6 +160,8 @@ export const dedupeKeys = {
     `trial:${trialId}:extended:${deadlineMs}:${memberId}`,
   notifyClosed: (trialId: string, memberId: string) => `trial:${trialId}:closed:${memberId}`,
   notifyEvaluators: (trialId: string) => `trial:${trialId}:evaluate`,
+  notifyAutoStartSkipped: (trialId: string, startMs: number) =>
+    `trial:${trialId}:auto-start-skipped:${startMs}`,
   notifyResult: (trialId: string, memberId: string) => `trial:${trialId}:result:${memberId}`,
   notifyCancelled: (trialId: string, memberId: string) => `trial:${trialId}:cancelled:${memberId}`,
 } as const;

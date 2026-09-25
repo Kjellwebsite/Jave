@@ -198,6 +198,25 @@ async function ensureTemplate(adminUrl: string): Promise<string> {
   }
 }
 
+const DROP_ATTEMPTS = 5;
+const DROP_RETRY_MS = 200;
+
+/**
+ * DROP … WITH (FORCE) cannot terminate a backend of another role, such as an
+ * autovacuum worker that just started on the database; it stops soon, so retry.
+ */
+async function dropTestDatabase(sql: postgres.Sql, name: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await sql.unsafe(`drop database if exists ${name} with (force)`);
+      return;
+    } catch (error) {
+      if (attempt >= DROP_ATTEMPTS) throw error;
+      await new Promise((resolve) => setTimeout(resolve, DROP_RETRY_MS * attempt));
+    }
+  }
+}
+
 async function createPostgresTestDatabase(): Promise<TestDatabase> {
   const adminUrl = process.env[TEST_POSTGRES_URL_VARIABLE]!;
   templateName ??= ensureTemplate(adminUrl);
@@ -218,13 +237,17 @@ async function createPostgresTestDatabase(): Promise<TestDatabase> {
     exec: async (sql) => {
       await client.unsafe(sql).simple();
     },
-    withQueryLog: (logQuery) =>
-      drizzlePostgres(client, { schema, logger: { logQuery } }) as unknown as Database,
+    withQueryLog: (logQuery) => {
+      // Every drizzle() call resets the client's serializers, so re-apply the fix.
+      const logged = drizzlePostgres(client, { schema, logger: { logQuery } });
+      serializeRawDates(client);
+      return logged as unknown as Database;
+    },
     close: async () => {
       if (closed) return;
       closed = true;
       await client.end({ timeout: 5 });
-      await admin(adminUrl).unsafe(`drop database if exists ${name} with (force)`);
+      await dropTestDatabase(admin(adminUrl), name);
     },
   };
 }

@@ -50,7 +50,7 @@ export function createDatabase(url: string, options: CreateDatabaseOptions = {})
 const DATE_TYPE_OIDS = [1082, 1114, 1184] as const;
 
 /**
- * Call after `drizzle(client)`. drizzle's postgres-js adapter replaces the
+ * Call after every `drizzle(client)` on that client (each call resets them). drizzle's postgres-js adapter replaces the
  * driver's date serializers with pass-throughs, because drizzle maps column
  * values itself. A Date bound outside a column (`sql\`… < ${date}\``) then
  * reaches the wire as an object and the query fails ("Received an instance

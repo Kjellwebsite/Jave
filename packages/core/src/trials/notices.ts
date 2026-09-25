@@ -79,6 +79,13 @@ export const notices = {
     };
   },
 
+  autoStartSkipped(trial: NoticeTrial, reason: string): Notice {
+    return {
+      title: 'SCHEDULED START SKIPPED',
+      body: `${head(trial)} did not start on schedule. ${reason} Start it by hand or reschedule.`,
+    };
+  },
+
   evaluationRequested(trial: NoticeTrial, submitted: number, teams: number): Notice {
     return {
       title: 'EVALUATION READY',

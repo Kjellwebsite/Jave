@@ -125,7 +125,8 @@ export async function enqueueProvision(
     ctx,
     DISCORD_TRIALS_PROVISION_JOB,
     { trialId, teamId },
-    { dedupeKey: dedupeKeys.provision(teamId) },
+    // Re-syncs from current state: a change during a run must not be dropped.
+    { dedupeKey: dedupeKeys.provision(teamId), rerunIfRunning: true },
   );
 }
 
@@ -147,7 +148,7 @@ export async function enqueueArchive(ctx: ServiceContext, trialId: string): Prom
     ctx,
     DISCORD_TRIALS_ARCHIVE_JOB,
     { trialId },
-    { dedupeKey: dedupeKeys.archive(trialId) },
+    { dedupeKey: dedupeKeys.archive(trialId), rerunIfRunning: true },
   );
 }
 

@@ -1,4 +1,5 @@
 import {
+  boolean,
   bigint,
   date,
   doublePrecision,
@@ -100,6 +101,8 @@ export const jobs = pgTable(
     result: jsonb('result').$type<Record<string, unknown>>(),
     /** At most one live (pending/running) job per dedupe key. */
     dedupeKey: varchar('dedupe_key', { length: 200 }),
+    /** A same-key enqueue arrived while this job ran: it runs once more when it ends. */
+    rerunRequested: boolean('rerun_requested').notNull().default(false),
     createdAt: createdAt(),
     completedAt: ts('completed_at'),
   },

@@ -220,6 +220,13 @@ export const NOTIFICATION_TYPES = {
     severity: 'notice',
     channels: ['discord_dm'],
   },
+  'trial.attention': {
+    label: 'Trial needs attention',
+    description: 'A scheduled trial start was skipped and needs a decision.',
+    severity: 'important',
+    channels: ['discord_dm'],
+    staff: true,
+  },
   'trial.evaluation_requested': {
     label: 'Trial evaluation',
     description: 'A trial closed submissions and is ready for evaluation.',

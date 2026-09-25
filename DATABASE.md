@@ -13,7 +13,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 - Invariants live in the database: foreign keys, unique and partial unique indexes.
 - Every sensitive change is also written to `audit_logs`; every meaningful change emits a `domain_events` row in the same transaction.
 
-## Tables (73)
+## Tables (74)
 
 ### Identity & ranking
 
@@ -252,36 +252,46 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `actor_user_id`  | uuid                                                                           |  ✓   |                     | `users.id`                            |
 | `note`           | text                                                                           |  ✓   |                     |                                       |
 | `created_at`     | timestamp with time zone                                                       |      | `now()`             |                                       |
+| `sequence`       | integer                                                                        |      | identity            |                                       |
 
 - `application_status_changes_app_idx` (application_id, created_at)
 
 #### `applications`
 
-| Column                      | Type                                                                           | Null | Default             | References               |
-| --------------------------- | ------------------------------------------------------------------------------ | :--: | ------------------- | ------------------------ |
-| `id` **PK**                 | uuid                                                                           |      | `gen_random_uuid()` |                          |
-| `number`                    | integer                                                                        |      | identity            |                          |
-| `user_id`                   | uuid                                                                           |      |                     | `users.id`               |
-| `status`                    | enum(draft · submitted · review · interview · accepted · rejected · withdrawn) |      | `"draft"`           |                          |
-| `domain_key`                | varchar(32)                                                                    |  ✓   |                     | `capability_domains.key` |
-| `experience`                | text                                                                           |  ✓   |                     |                          |
-| `projects`                  | text                                                                           |  ✓   |                     |                          |
-| `portfolio_url`             | text                                                                           |  ✓   |                     |                          |
-| `motivation`                | text                                                                           |  ✓   |                     |                          |
-| `references`                | text                                                                           |  ✓   |                     |                          |
-| `evidence_links`            | text[]                                                                         |      | `'{}'::text[]`      |                          |
-| `referral_code`             | varchar(32)                                                                    |  ✓   |                     |                          |
-| `assigned_reviewer_user_id` | uuid                                                                           |  ✓   |                     | `users.id`               |
-| `interview_at`              | timestamp with time zone                                                       |  ✓   |                     |                          |
-| `submitted_at`              | timestamp with time zone                                                       |  ✓   |                     |                          |
-| `decided_at`                | timestamp with time zone                                                       |  ✓   |                     |                          |
-| `decided_by_user_id`        | uuid                                                                           |  ✓   |                     | `users.id`               |
-| `decision_reason`           | text                                                                           |  ✓   |                     |                          |
-| `applicant_message`         | text                                                                           |  ✓   |                     |                          |
-| `created_at`                | timestamp with time zone                                                       |      | `now()`             |                          |
-| `updated_at`                | timestamp with time zone                                                       |      | `now()`             |                          |
+| Column                          | Type                                                                           | Null | Default             | References               |
+| ------------------------------- | ------------------------------------------------------------------------------ | :--: | ------------------- | ------------------------ |
+| `id` **PK**                     | uuid                                                                           |      | `gen_random_uuid()` |                          |
+| `number`                        | integer                                                                        |      | identity            |                          |
+| `user_id`                       | uuid                                                                           |      |                     | `users.id`               |
+| `status`                        | enum(draft · submitted · review · interview · accepted · rejected · withdrawn) |      | `"draft"`           |                          |
+| `domain_key`                    | varchar(32)                                                                    |  ✓   |                     | `capability_domains.key` |
+| `experience`                    | text                                                                           |  ✓   |                     |                          |
+| `projects`                      | text                                                                           |  ✓   |                     |                          |
+| `portfolio_url`                 | text                                                                           |  ✓   |                     |                          |
+| `motivation`                    | text                                                                           |  ✓   |                     |                          |
+| `references`                    | text                                                                           |  ✓   |                     |                          |
+| `evidence_links`                | text[]                                                                         |      | `'{}'::text[]`      |                          |
+| `referral_code`                 | varchar(32)                                                                    |  ✓   |                     |                          |
+| `assigned_reviewer_user_id`     | uuid                                                                           |  ✓   |                     | `users.id`               |
+| `interview_at`                  | timestamp with time zone                                                       |  ✓   |                     |                          |
+| `submitted_at`                  | timestamp with time zone                                                       |  ✓   |                     |                          |
+| `decided_at`                    | timestamp with time zone                                                       |  ✓   |                     |                          |
+| `decided_by_user_id`            | uuid                                                                           |  ✓   |                     | `users.id`               |
+| `decision_reason`               | text                                                                           |  ✓   |                     |                          |
+| `applicant_message`             | text                                                                           |  ✓   |                     |                          |
+| `review_assigned_at`            | timestamp with time zone                                                       |  ✓   |                     |                          |
+| `review_reminder_sent_at`       | timestamp with time zone                                                       |  ✓   |                     |                          |
+| `review_channel_id`             | varchar(20)                                                                    |  ✓   |                     |                          |
+| `review_message_id`             | varchar(20)                                                                    |  ✓   |                     |                          |
+| `review_card_revision`          | integer                                                                        |      | `0`                 |                          |
+| `review_card_rendered_revision` | integer                                                                        |      | `0`                 |                          |
+| `review_card_lease_id`          | varchar(64)                                                                    |  ✓   |                     |                          |
+| `review_card_lease_expires_at`  | timestamp with time zone                                                       |  ✓   |                     |                          |
+| `created_at`                    | timestamp with time zone                                                       |      | `now()`             |                          |
+| `updated_at`                    | timestamp with time zone                                                       |      | `now()`             |                          |
 
 - UNIQUE `applications_number_uq` (number)
+- `applications_user_idx` (user_id, created_at)
 - UNIQUE `applications_open_per_user_uq` (user_id) — partial
 - `applications_status_idx` (status, submitted_at)
 
@@ -295,6 +305,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `evidence_id`     | uuid |      |         | `evidence.id`                          |
 
 - PRIMARY KEY (verification_id, evidence_id)
+- `verification_evidence_evidence_idx` (evidence_id)
 
 #### `verifications`
 
@@ -307,26 +318,34 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `claim`                     | text                                                                  |      |                     |                         |
 | `target_type`               | varchar(32)                                                           |  ✓   |                     |                         |
 | `target_id`                 | uuid                                                                  |  ✓   |                     |                         |
+| `target_key`                | varchar(160)                                                          |      |                     |                         |
+| `target_label`              | varchar(200)                                                          |      |                     |                         |
 | `facet_key`                 | varchar(48)                                                           |  ✓   |                     | `capability_facets.key` |
 | `requested_rank`            | varchar(4)                                                            |  ✓   |                     | `rank_tiers.code`       |
 | `granted_rank`              | varchar(4)                                                            |  ✓   |                     | `rank_tiers.code`       |
 | `status`                    | enum(pending · in_review · approved · rejected · revoked · expired)   |      | `"pending"`         |                         |
-| `requested_by_user_id`      | uuid                                                                  |      |                     | `users.id`              |
+| `requested_by_user_id`      | uuid                                                                  |  ✓   |                     | `users.id`              |
 | `assigned_verifier_user_id` | uuid                                                                  |  ✓   |                     | `users.id`              |
 | `verifier_user_id`          | uuid                                                                  |  ✓   |                     | `users.id`              |
 | `decision_note`             | text                                                                  |  ✓   |                     |                         |
+| `outcome`                   | jsonb                                                                 |  ✓   |                     |                         |
 | `requested_at`              | timestamp with time zone                                              |      | `now()`             |                         |
+| `review_started_at`         | timestamp with time zone                                              |  ✓   |                     |                         |
 | `decided_at`                | timestamp with time zone                                              |  ✓   |                     |                         |
 | `expires_at`                | timestamp with time zone                                              |  ✓   |                     |                         |
 | `revoked_at`                | timestamp with time zone                                              |  ✓   |                     |                         |
 | `revoked_by_user_id`        | uuid                                                                  |  ✓   |                     | `users.id`              |
 | `revoke_reason`             | text                                                                  |  ✓   |                     |                         |
+| `queue_channel_id`          | varchar(20)                                                           |  ✓   |                     |                         |
+| `queue_message_id`          | varchar(20)                                                           |  ✓   |                     |                         |
 | `created_at`                | timestamp with time zone                                              |      | `now()`             |                         |
 | `updated_at`                | timestamp with time zone                                              |      | `now()`             |                         |
 
 - UNIQUE `verifications_number_uq` (number)
+- UNIQUE `verifications_open_target_uq` (target_key) — partial
 - `verifications_subject_idx` (subject_member_id)
 - `verifications_status_idx` (status, requested_at)
+- `verifications_expiry_idx` (status, expires_at)
 - `verifications_target_idx` (target_type, target_id)
 
 ### Trials
@@ -365,6 +384,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 - UNIQUE `trial_participants_member_uq` (trial_id, member_id)
 - `trial_participants_team_idx` (team_id)
+- `trial_participants_member_idx` (member_id)
 
 #### `trial_results`
 
@@ -386,6 +406,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `updated_at`       | timestamp with time zone                     |      | `now()`             |                                       |
 
 - UNIQUE `trial_results_member_uq` (trial_id, member_id)
+- `trial_results_member_idx` (member_id)
 
 #### `trial_scores`
 
@@ -423,6 +444,8 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `ordinal`            | smallint                 |      |                     |                                 |
 | `discord_channel_id` | varchar(20)              |  ✓   |                     |                                 |
 | `discord_role_id`    | varchar(20)              |  ✓   |                     |                                 |
+| `briefed_at`         | timestamp with time zone |  ✓   |                     |                                 |
+| `archived_at`        | timestamp with time zone |  ✓   |                     |                                 |
 | `created_at`         | timestamp with time zone |      | `now()`             |                                 |
 
 - UNIQUE `trial_teams_name_uq` (trial_id, name)
@@ -459,6 +482,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `template_id`             | uuid                                                                                                                                                                        |  ✓   |                     | `trial_templates.id` |
 | `title`                   | varchar(120)                                                                                                                                                                |      |                     |                      |
 | `category`                | enum(build · research · strategy · investigation · crisis · creation · communication · leadership · marketing · technical · security · adaptability · teamwork · execution) |      |                     |                      |
+| `summary`                 | varchar(280)                                                                                                                                                                |      | `""`                |                      |
 | `brief`                   | text                                                                                                                                                                        |      |                     |                      |
 | `rubric`                  | jsonb                                                                                                                                                                       |      |                     |                      |
 | `facet_keys`              | text[]                                                                                                                                                                      |      | `'{}'::text[]`      |                      |
@@ -469,15 +493,20 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `scheduled_start_at`      | timestamp with time zone                                                                                                                                                    |  ✓   |                     |                      |
 | `duration_minutes`        | integer                                                                                                                                                                     |      |                     |                      |
 | `deadline_at`             | timestamp with time zone                                                                                                                                                    |  ✓   |                     |                      |
+| `grace_minutes`           | smallint                                                                                                                                                                    |      | `0`                 |                      |
+| `assignment_strategy`     | varchar(16)                                                                                                                                                                 |  ✓   |                     |                      |
+| `assignment_seed`         | varchar(64)                                                                                                                                                                 |  ✓   |                     |                      |
 | `started_at`              | timestamp with time zone                                                                                                                                                    |  ✓   |                     |                      |
 | `submissions_closed_at`   | timestamp with time zone                                                                                                                                                    |  ✓   |                     |                      |
 | `completed_at`            | timestamp with time zone                                                                                                                                                    |  ✓   |                     |                      |
 | `cancelled_at`            | timestamp with time zone                                                                                                                                                    |  ✓   |                     |                      |
+| `cancel_reason`           | text                                                                                                                                                                        |  ✓   |                     |                      |
 | `adversarial_enabled`     | boolean                                                                                                                                                                     |      | `false`             |                      |
 | `discord_category_id`     | varchar(20)                                                                                                                                                                 |  ✓   |                     |                      |
 | `announcement_channel_id` | varchar(20)                                                                                                                                                                 |  ✓   |                     |                      |
 | `announcement_message_id` | varchar(20)                                                                                                                                                                 |  ✓   |                     |                      |
 | `created_by_user_id`      | uuid                                                                                                                                                                        |  ✓   |                     | `users.id`           |
+| `editor_user_ids`         | uuid[]                                                                                                                                                                      |      | `'{}'::uuid[]`      |                      |
 | `created_at`              | timestamp with time zone                                                                                                                                                    |      | `now()`             |                      |
 | `updated_at`              | timestamp with time zone                                                                                                                                                    |      | `now()`             |                      |
 
@@ -494,6 +523,8 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `role_id`                | uuid                     |      |                     | `adversarial_roles.id` (on delete cascade) |
 | `evaluator_user_id`      | uuid                     |      |                     | `users.id`                                 |
 | `security_culture_score` | smallint                 |      |                     |                                            |
+| `suggested_score`        | smallint                 |  ✓   |                     |                                            |
+| `override_justification` | text                     |  ✓   |                     |                                            |
 | `summary`                | text                     |      |                     |                                            |
 | `debrief`                | text                     |  ✓   |                     |                                            |
 | `created_at`             | timestamp with time zone |      | `now()`             |                                            |
@@ -519,29 +550,46 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 #### `adversarial_roles`
 
-| Column                  | Type                                                              | Null | Default             | References                            |
-| ----------------------- | ----------------------------------------------------------------- | :--: | ------------------- | ------------------------------------- |
-| `id` **PK**             | uuid                                                              |      | `gen_random_uuid()` |                                       |
-| `trial_id`              | uuid                                                              |      |                     | `trials.id` (on delete cascade)       |
-| `team_id`               | uuid                                                              |  ✓   |                     | `trial_teams.id` (on delete set null) |
-| `operative_member_id`   | uuid                                                              |      |                     | `members.id`                          |
-| `scenario_id`           | uuid                                                              |      |                     | `adversarial_scenarios.id`            |
-| `objective`             | text                                                              |      |                     |                                       |
-| `status`                | enum(planned · briefed · active · concluded · revealed · aborted) |      | `"planned"`         |                                       |
-| `authorized_by_user_id` | uuid                                                              |  ✓   |                     | `users.id`                            |
-| `authorized_at`         | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `sandbox_attested`      | boolean                                                           |      | `false`             |                                       |
-| `briefed_at`            | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `activated_at`          | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `concluded_at`          | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `revealed_at`           | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `aborted_at`            | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `abort_reason`          | text                                                              |  ✓   |                     |                                       |
-| `created_by_user_id`    | uuid                                                              |  ✓   |                     | `users.id`                            |
-| `created_at`            | timestamp with time zone                                          |      | `now()`             |                                       |
-| `updated_at`            | timestamp with time zone                                          |      | `now()`             |                                       |
+| Column                       | Type                                                              | Null | Default             | References                            |
+| ---------------------------- | ----------------------------------------------------------------- | :--: | ------------------- | ------------------------------------- |
+| `id` **PK**                  | uuid                                                              |      | `gen_random_uuid()` |                                       |
+| `trial_id`                   | uuid                                                              |      |                     | `trials.id` (on delete cascade)       |
+| `team_id`                    | uuid                                                              |  ✓   |                     | `trial_teams.id` (on delete set null) |
+| `operative_member_id`        | uuid                                                              |      |                     | `members.id`                          |
+| `scenario_id`                | uuid                                                              |      |                     | `adversarial_scenarios.id`            |
+| `objective`                  | text                                                              |      |                     |                                       |
+| `guardrails`                 | text                                                              |      |                     |                                       |
+| `sandbox_assets`             | text                                                              |      |                     |                                       |
+| `status`                     | enum(planned · briefed · active · concluded · revealed · aborted) |      | `"planned"`         |                                       |
+| `authorized_by_user_id`      | uuid                                                              |  ✓   |                     | `users.id`                            |
+| `authorized_at`              | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `sandbox_attested`           | boolean                                                           |      | `false`             |                                       |
+| `briefed_at`                 | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `briefing_revision`          | smallint                                                          |      | `1`                 |                                       |
+| `briefing_delivery`          | enum(pending · sent · undeliverable)                              |  ✓   |                     |                                       |
+| `briefing_delivered_at`      | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `activated_at`               | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `concluded_at`               | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `revealed_at`                | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `aborted_at`                 | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `abort_reason`               | text                                                              |  ✓   |                     |                                       |
+| `aborted_by_user_id`         | uuid                                                              |  ✓   |                     | `users.id`                            |
+| `red_flag_raised_at`         | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `red_flag_raised_by_user_id` | uuid                                                              |  ✓   |                     | `users.id`                            |
+| `stop_notice_delivery`       | enum(pending · sent · undeliverable)                              |  ✓   |                     |                                       |
+| `stop_notice_delivered_at`   | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `debrief_delivery`           | enum(pending · sent · undeliverable)                              |  ✓   |                     |                                       |
+| `debrief_channel_id`         | varchar(20)                                                       |  ✓   |                     |                                       |
+| `debrief_message_id`         | varchar(20)                                                       |  ✓   |                     |                                       |
+| `debrief_posted_at`          | timestamp with time zone                                          |  ✓   |                     |                                       |
+| `created_by_user_id`         | uuid                                                              |  ✓   |                     | `users.id`                            |
+| `created_at`                 | timestamp with time zone                                          |      | `now()`             |                                       |
+| `updated_at`                 | timestamp with time zone                                          |      | `now()`             |                                       |
 
 - `adversarial_roles_trial_idx` (trial_id)
+- `adversarial_roles_operative_idx` (operative_member_id)
+- UNIQUE `adversarial_roles_operative_uq` (trial_id, operative_member_id) — partial
+- UNIQUE `adversarial_roles_team_uq` (team_id) — partial
 
 #### `adversarial_scenarios`
 
@@ -564,45 +612,53 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 #### `adversarial_triggers`
 
-| Column        | Type                     | Null | Default             | References                                 |
-| ------------- | ------------------------ | :--: | ------------------- | ------------------------------------------ |
-| `id` **PK**   | uuid                     |      | `gen_random_uuid()` |                                            |
-| `role_id`     | uuid                     |      |                     | `adversarial_roles.id` (on delete cascade) |
-| `label`       | varchar(120)             |      |                     |                                            |
-| `description` | text                     |      |                     |                                            |
-| `planned_for` | timestamp with time zone |  ✓   |                     |                                            |
-| `fired_at`    | timestamp with time zone |  ✓   |                     |                                            |
-| `created_at`  | timestamp with time zone |      | `now()`             |                                            |
+| Column               | Type                     | Null | Default             | References                                 |
+| -------------------- | ------------------------ | :--: | ------------------- | ------------------------------------------ |
+| `id` **PK**          | uuid                     |      | `gen_random_uuid()` |                                            |
+| `role_id`            | uuid                     |      |                     | `adversarial_roles.id` (on delete cascade) |
+| `label`              | varchar(120)             |      |                     |                                            |
+| `description`        | text                     |      |                     |                                            |
+| `planned_for`        | timestamp with time zone |  ✓   |                     |                                            |
+| `fired_at`           | timestamp with time zone |  ✓   |                     |                                            |
+| `fired_by_user_id`   | uuid                     |  ✓   |                     | `users.id`                                 |
+| `created_by_user_id` | uuid                     |  ✓   |                     | `users.id`                                 |
+| `created_at`         | timestamp with time zone |      | `now()`             |                                            |
+
+- `adversarial_triggers_role_idx` (role_id)
 
 ### Tickets
 
 #### `ticket_events`
 
-| Column          | Type                                                                                                                                                                                       | Null | Default             | References                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--: | ------------------- | -------------------------------- |
-| `id` **PK**     | uuid                                                                                                                                                                                       |      | `gen_random_uuid()` |                                  |
-| `ticket_id`     | uuid                                                                                                                                                                                       |      |                     | `tickets.id` (on delete cascade) |
-| `type`          | enum(created · claimed · unclaimed · transferred · priority_changed · status_changed · closed · reopened · archived · note_added · summary_generated · transcript_accessed · sla_breached) |      |                     |                                  |
-| `actor_user_id` | uuid                                                                                                                                                                                       |  ✓   |                     | `users.id`                       |
-| `data`          | jsonb                                                                                                                                                                                      |      | `{}`                |                                  |
-| `created_at`    | timestamp with time zone                                                                                                                                                                   |      | `now()`             |                                  |
+| Column          | Type                                                                                                                                                                                                              | Null | Default             | References                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--: | ------------------- | -------------------------------- |
+| `id` **PK**     | uuid                                                                                                                                                                                                              |      | `gen_random_uuid()` |                                  |
+| `ticket_id`     | uuid                                                                                                                                                                                                              |      |                     | `tickets.id` (on delete cascade) |
+| `seq`           | integer                                                                                                                                                                                                           |      | identity            |                                  |
+| `type`          | enum(created · claimed · unclaimed · transferred · priority_changed · status_changed · closed · reopened · archived · note_added · summary_generated · transcript_accessed · sla_breached · sla_breach_retracted) |      |                     |                                  |
+| `actor_user_id` | uuid                                                                                                                                                                                                              |  ✓   |                     | `users.id`                       |
+| `data`          | jsonb                                                                                                                                                                                                             |      | `{}`                |                                  |
+| `created_at`    | timestamp with time zone                                                                                                                                                                                          |      | `now()`             |                                  |
 
 - `ticket_events_ticket_idx` (ticket_id, created_at)
 
 #### `ticket_messages`
 
-| Column               | Type                     | Null | Default             | References                       |
-| -------------------- | ------------------------ | :--: | ------------------- | -------------------------------- |
-| `id` **PK**          | uuid                     |      | `gen_random_uuid()` |                                  |
-| `ticket_id`          | uuid                     |      |                     | `tickets.id` (on delete cascade) |
-| `author_user_id`     | uuid                     |  ✓   |                     | `users.id`                       |
-| `discord_message_id` | varchar(20)              |  ✓   |                     |                                  |
-| `body`               | text                     |      |                     |                                  |
-| `attachments`        | jsonb                    |      | `[]`                |                                  |
-| `is_internal`        | boolean                  |      | `false`             |                                  |
-| `created_at`         | timestamp with time zone |      | `now()`             |                                  |
-| `edited_at`          | timestamp with time zone |  ✓   |                     |                                  |
-| `deleted_at`         | timestamp with time zone |  ✓   |                     |                                  |
+| Column               | Type                                    | Null | Default             | References                       |
+| -------------------- | --------------------------------------- | :--: | ------------------- | -------------------------------- |
+| `id` **PK**          | uuid                                    |      | `gen_random_uuid()` |                                  |
+| `seq`                | integer                                 |      | identity            |                                  |
+| `ticket_id`          | uuid                                    |      |                     | `tickets.id` (on delete cascade) |
+| `author_user_id`     | uuid                                    |  ✓   |                     | `users.id`                       |
+| `author_role`        | enum(requester · handler · participant) |      | `"participant"`     |                                  |
+| `discord_message_id` | varchar(20)                             |  ✓   |                     |                                  |
+| `body`               | text                                    |      |                     |                                  |
+| `original_body`      | text                                    |  ✓   |                     |                                  |
+| `attachments`        | jsonb                                   |      | `[]`                |                                  |
+| `is_internal`        | boolean                                 |      | `false`             |                                  |
+| `created_at`         | timestamp with time zone                |      | `now()`             |                                  |
+| `edited_at`          | timestamp with time zone                |  ✓   |                     |                                  |
+| `deleted_at`         | timestamp with time zone                |  ✓   |                     |                                  |
 
 - `ticket_messages_ticket_idx` (ticket_id, created_at)
 - UNIQUE `ticket_messages_discord_uq` (discord_message_id)
@@ -621,6 +677,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `assignee_user_id`          | uuid                                                                                        |  ✓   |                     | `users.id` |
 | `discord_channel_id`        | varchar(20)                                                                                 |  ✓   |                     |            |
 | `discord_thread_id`         | varchar(20)                                                                                 |  ✓   |                     |            |
+| `discord_card_message_id`   | varchar(20)                                                                                 |  ✓   |                     |            |
 | `sla_first_response_due_at` | timestamp with time zone                                                                    |  ✓   |                     |            |
 | `first_response_at`         | timestamp with time zone                                                                    |  ✓   |                     |            |
 | `sla_breached_at`           | timestamp with time zone                                                                    |  ✓   |                     |            |
@@ -640,52 +697,70 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 - `tickets_status_idx` (status, created_at)
 - `tickets_assignee_idx` (assignee_user_id)
 - `tickets_opener_idx` (opener_user_id)
+- `tickets_sla_pending_idx` (sla_first_response_due_at) — partial
 
 ### Moderation & security
 
 #### `mod_cases`
 
-| Column               | Type                                                                                | Null | Default             | References           |
-| -------------------- | ----------------------------------------------------------------------------------- | :--: | ------------------- | -------------------- |
-| `id` **PK**          | uuid                                                                                |      | `gen_random_uuid()` |                      |
-| `number`             | integer                                                                             |      | identity            |                      |
-| `action`             | enum(warn · timeout · untimeout · kick · ban · unban · quarantine · release · note) |      |                     |                      |
-| `target_user_id`     | uuid                                                                                |      |                     | `users.id`           |
-| `moderator_user_id`  | uuid                                                                                |  ✓   |                     | `users.id`           |
-| `reason`             | text                                                                                |      |                     |                      |
-| `duration_seconds`   | integer                                                                             |  ✓   |                     |                      |
-| `expires_at`         | timestamp with time zone                                                            |  ✓   |                     |                      |
-| `source`             | enum(manual · automod · ai_suggested · security_event)                              |      | `"manual"`          |                      |
-| `security_event_id`  | uuid                                                                                |  ✓   |                     | `security_events.id` |
-| `discord_sync`       | enum(pending · applied · failed · not_required)                                     |      | `"pending"`         |                      |
-| `discord_error`      | text                                                                                |  ✓   |                     |                      |
-| `revoked_at`         | timestamp with time zone                                                            |  ✓   |                     |                      |
-| `revoked_by_user_id` | uuid                                                                                |  ✓   |                     | `users.id`           |
-| `revoke_reason`      | text                                                                                |  ✓   |                     |                      |
-| `created_at`         | timestamp with time zone                                                            |      | `now()`             |                      |
-| `updated_at`         | timestamp with time zone                                                            |      | `now()`             |                      |
+| Column                | Type                                                                                | Null | Default             | References           |
+| --------------------- | ----------------------------------------------------------------------------------- | :--: | ------------------- | -------------------- |
+| `id` **PK**           | uuid                                                                                |      | `gen_random_uuid()` |                      |
+| `number`              | integer                                                                             |      | identity            |                      |
+| `action`              | enum(warn · timeout · untimeout · kick · ban · unban · quarantine · release · note) |      |                     |                      |
+| `target_user_id`      | uuid                                                                                |      |                     | `users.id`           |
+| `moderator_user_id`   | uuid                                                                                |  ✓   |                     | `users.id`           |
+| `reason`              | text                                                                                |      |                     |                      |
+| `duration_seconds`    | integer                                                                             |  ✓   |                     |                      |
+| `expires_at`          | timestamp with time zone                                                            |  ✓   |                     |                      |
+| `delete_message_days` | smallint                                                                            |  ✓   |                     |                      |
+| `source`              | enum(manual · automod · ai_suggested · security_event · system)                     |      | `"manual"`          |                      |
+| `security_event_id`   | uuid                                                                                |  ✓   |                     | `security_events.id` |
+| `reverts_case_id`     | uuid                                                                                |  ✓   |                     | `mod_cases.id`       |
+| `discord_sync`        | enum(pending · applied · failed · not_required)                                     |      | `"pending"`         |                      |
+| `discord_error`       | text                                                                                |  ✓   |                     |                      |
+| `discord_synced_at`   | timestamp with time zone                                                            |  ✓   |                     |                      |
+| `ended_at`            | timestamp with time zone                                                            |  ✓   |                     |                      |
+| `ended_reason`        | enum(expired · lifted · superseded · revoked)                                       |  ✓   |                     |                      |
+| `revoked_at`          | timestamp with time zone                                                            |  ✓   |                     |                      |
+| `revoked_by_user_id`  | uuid                                                                                |  ✓   |                     | `users.id`           |
+| `revoke_reason`       | text                                                                                |  ✓   |                     |                      |
+| `created_at`          | timestamp with time zone                                                            |      | `now()`             |                      |
+| `updated_at`          | timestamp with time zone                                                            |      | `now()`             |                      |
 
 - UNIQUE `mod_cases_number_uq` (number)
 - `mod_cases_target_idx` (target_user_id, created_at)
 - `mod_cases_time_idx` (created_at)
+- `mod_cases_security_event_idx` (security_event_id)
+- UNIQUE `mod_cases_live_uq` (target_user_id, action) — partial
+- `mod_cases_expiry_idx` (expires_at) — partial
 
 #### `security_events`
 
 | Column                | Type                                                                                                                                 | Null | Default             | References |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | :--: | ------------------- | ---------- |
 | `id` **PK**           | uuid                                                                                                                                 |      | `gen_random_uuid()` |            |
+| `number`              | integer                                                                                                                              |      | identity            |            |
 | `user_id`             | uuid                                                                                                                                 |  ✓   |                     | `users.id` |
 | `risk_score`          | smallint                                                                                                                             |      |                     |            |
 | `trigger`             | enum(spam_rate · duplicate_content · mention_spam · blocked_link · foreign_invite · join_burst · suspicious_account · manual_report) |      |                     |            |
+| `source`              | enum(automod · join_screening · manual · integration · system)                                                                       |      | `"system"`          |            |
 | `evidence`            | jsonb                                                                                                                                |      |                     |            |
 | `action_taken`        | enum(none · flagged · message_deleted · timeout · quarantine · kick · ban · lockdown)                                                |      | `"none"`            |            |
 | `status`              | enum(open · acknowledged · dismissed · actioned)                                                                                     |      | `"open"`            |            |
 | `channel_id`          | varchar(20)                                                                                                                          |  ✓   |                     |            |
+| `reported_by_user_id` | uuid                                                                                                                                 |  ✓   |                     | `users.id` |
+| `dedupe_key`          | varchar(128)                                                                                                                         |  ✓   |                     |            |
+| `alert_channel_id`    | varchar(20)                                                                                                                          |  ✓   |                     |            |
+| `alert_message_id`    | varchar(20)                                                                                                                          |  ✓   |                     |            |
 | `reviewed_by_user_id` | uuid                                                                                                                                 |  ✓   |                     | `users.id` |
 | `reviewed_at`         | timestamp with time zone                                                                                                             |  ✓   |                     |            |
 | `review_note`         | text                                                                                                                                 |  ✓   |                     |            |
 | `created_at`          | timestamp with time zone                                                                                                             |      | `now()`             |            |
+| `updated_at`          | timestamp with time zone                                                                                                             |      | `now()`             |            |
 
+- UNIQUE `security_events_number_uq` (number)
+- UNIQUE `security_events_dedupe_uq` (dedupe_key)
 - `security_events_time_idx` (created_at)
 - `security_events_user_idx` (user_id)
 - `security_events_status_idx` (status)
@@ -719,6 +794,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `uses`            | integer                  |      | `0`     |                |
 | `max_uses`        | integer                  |  ✓   |         |                |
 | `temporary`       | boolean                  |      | `false` |                |
+| `is_vanity`       | boolean                  |      | `false` |                |
 | `campaign_id`     | uuid                     |  ✓   |         | `campaigns.id` |
 | `created_at`      | timestamp with time zone |      | `now()` |                |
 | `expires_at`      | timestamp with time zone |  ✓   |         |                |
@@ -726,43 +802,56 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `last_synced_at`  | timestamp with time zone |  ✓   |         |                |
 
 - `invite_codes_inviter_idx` (inviter_user_id)
+- `invite_codes_campaign_idx` (campaign_id)
 
 #### `referral_codes`
 
-| Column          | Type                     | Null | Default | References     |
-| --------------- | ------------------------ | :--: | ------- | -------------- |
-| `code` **PK**   | varchar(32)              |      |         |                |
-| `owner_user_id` | uuid                     |      |         | `users.id`     |
-| `campaign_id`   | uuid                     |  ✓   |         | `campaigns.id` |
-| `active`        | boolean                  |      | `true`  |                |
-| `created_at`    | timestamp with time zone |      | `now()` |                |
+| Column               | Type                     | Null | Default | References     |
+| -------------------- | ------------------------ | :--: | ------- | -------------- |
+| `code` **PK**        | varchar(32)              |      |         |                |
+| `owner_user_id`      | uuid                     |      |         | `users.id`     |
+| `campaign_id`        | uuid                     |  ✓   |         | `campaigns.id` |
+| `active`             | boolean                  |      | `true`  |                |
+| `created_by_user_id` | uuid                     |  ✓   |         | `users.id`     |
+| `deactivated_at`     | timestamp with time zone |  ✓   |         |                |
+| `created_at`         | timestamp with time zone |      | `now()` |                |
 
 - `referral_codes_owner_idx` (owner_user_id)
 
 #### `referrals`
 
-| Column            | Type                                             | Null | Default             | References            |
-| ----------------- | ------------------------------------------------ | :--: | ------------------- | --------------------- |
-| `id` **PK**       | uuid                                             |      | `gen_random_uuid()` |                       |
-| `invitee_user_id` | uuid                                             |      |                     | `users.id`            |
-| `inviter_user_id` | uuid                                             |  ✓   |                     | `users.id`            |
-| `invite_code`     | varchar(32)                                      |  ✓   |                     |                       |
-| `referral_code`   | varchar(32)                                      |  ✓   |                     | `referral_codes.code` |
-| `campaign_id`     | uuid                                             |  ✓   |                     | `campaigns.id`        |
-| `method`          | enum(invite · referral_code · vanity · unknown)  |      |                     |                       |
-| `status`          | enum(joined · retained · valid · left · invalid) |      | `"joined"`          |                       |
-| `joined_at`       | timestamp with time zone                         |      | `now()`             |                       |
-| `left_at`         | timestamp with time zone                         |  ✓   |                     |                       |
-| `retained_at`     | timestamp with time zone                         |  ✓   |                     |                       |
-| `validated_at`    | timestamp with time zone                         |  ✓   |                     |                       |
-| `anomaly_flags`   | text[]                                           |      | `'{}'::text[]`      |                       |
-| `anomaly_score`   | smallint                                         |      | `0`                 |                       |
-| `created_at`      | timestamp with time zone                         |      | `now()`             |                       |
-| `updated_at`      | timestamp with time zone                         |      | `now()`             |                       |
+| Column                | Type                                             | Null | Default             | References            |
+| --------------------- | ------------------------------------------------ | :--: | ------------------- | --------------------- |
+| `id` **PK**           | uuid                                             |      | `gen_random_uuid()` |                       |
+| `invitee_user_id`     | uuid                                             |      |                     | `users.id`            |
+| `inviter_user_id`     | uuid                                             |  ✓   |                     | `users.id`            |
+| `invite_code`         | varchar(32)                                      |  ✓   |                     |                       |
+| `referral_code`       | varchar(32)                                      |  ✓   |                     | `referral_codes.code` |
+| `campaign_id`         | uuid                                             |  ✓   |                     | `campaigns.id`        |
+| `method`              | enum(invite · referral_code · vanity · unknown)  |      |                     |                       |
+| `status`              | enum(joined · retained · valid · left · invalid) |      | `"joined"`          |                       |
+| `status_reason`       | varchar(64)                                      |  ✓   |                     |                       |
+| `joined_at`           | timestamp with time zone                         |      | `now()`             |                       |
+| `left_at`             | timestamp with time zone                         |  ✓   |                     |                       |
+| `retained_at`         | timestamp with time zone                         |  ✓   |                     |                       |
+| `validated_at`        | timestamp with time zone                         |  ✓   |                     |                       |
+| `anomaly_flags`       | text[]                                           |      | `'{}'::text[]`      |                       |
+| `anomaly_score`       | smallint                                         |      | `0`                 |                       |
+| `reviewed_by_user_id` | uuid                                             |  ✓   |                     | `users.id`            |
+| `reviewed_at`         | timestamp with time zone                         |  ✓   |                     |                       |
+| `review_note`         | text                                             |  ✓   |                     |                       |
+| `created_at`          | timestamp with time zone                         |      | `now()`             |                       |
+| `updated_at`          | timestamp with time zone                         |      | `now()`             |                       |
 
 - `referrals_inviter_idx` (inviter_user_id, status)
 - `referrals_invitee_idx` (invitee_user_id)
 - `referrals_joined_idx` (joined_at)
+- `referrals_status_idx` (status, joined_at)
+- `referrals_campaign_idx` (campaign_id, status)
+- UNIQUE `referrals_invitee_joined_uq` (invitee_user_id, joined_at)
+- UNIQUE `referrals_live_invitee_uq` (invitee_user_id) — partial
+- UNIQUE `referrals_valid_invitee_uq` (invitee_user_id) — partial
+- UNIQUE `referrals_code_claim_uq` (invitee_user_id) — partial
 
 ### Achievements
 
@@ -773,6 +862,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `key` **PK**            | varchar(64)                                              |      |              |                         |
 | `title`                 | varchar(64)                                              |      |              |                         |
 | `description`           | text                                                     |      |              |                         |
+| `summary`               | varchar(120)                                             |      | `""`         |                         |
 | `category`              | varchar(32)                                              |      |              |                         |
 | `rarity`                | enum(standard · notable · rare · exceptional · singular) |      | `"standard"` |                         |
 | `visibility`            | enum(public · hidden)                                    |      | `"public"`   |                         |
@@ -786,23 +876,28 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 #### `member_achievements`
 
-| Column                | Type                        | Null | Default             | References                    |
-| --------------------- | --------------------------- | :--: | ------------------- | ----------------------------- |
-| `id` **PK**           | uuid                        |      | `gen_random_uuid()` |                               |
-| `member_id`           | uuid                        |      |                     | `members.id`                  |
-| `achievement_key`     | varchar(64)                 |      |                     | `achievement_definitions.key` |
-| `awarded_at`          | timestamp with time zone    |      | `now()`             |                               |
-| `awarded_by_user_id`  | uuid                        |  ✓   |                     | `users.id`                    |
-| `source_event_id`     | bigint                      |  ✓   |                     |                               |
-| `verification`        | enum(unverified · verified) |      | `"unverified"`      |                               |
-| `verified_by_user_id` | uuid                        |  ✓   |                     | `users.id`                    |
-| `verified_at`         | timestamp with time zone    |  ✓   |                     |                               |
-| `note`                | text                        |  ✓   |                     |                               |
-| `revoked_at`          | timestamp with time zone    |  ✓   |                     |                               |
-| `revoke_reason`       | text                        |  ✓   |                     |                               |
+| Column                    | Type                        | Null | Default             | References                    |
+| ------------------------- | --------------------------- | :--: | ------------------- | ----------------------------- |
+| `id` **PK**               | uuid                        |      | `gen_random_uuid()` |                               |
+| `member_id`               | uuid                        |      |                     | `members.id`                  |
+| `achievement_key`         | varchar(64)                 |      |                     | `achievement_definitions.key` |
+| `awarded_at`              | timestamp with time zone    |      | `now()`             |                               |
+| `awarded_by_user_id`      | uuid                        |  ✓   |                     | `users.id`                    |
+| `source_event_id`         | bigint                      |  ✓   |                     |                               |
+| `verification`            | enum(unverified · verified) |      | `"unverified"`      |                               |
+| `verified_by_user_id`     | uuid                        |  ✓   |                     | `users.id`                    |
+| `verified_at`             | timestamp with time zone    |  ✓   |                     |                               |
+| `note`                    | text                        |  ✓   |                     |                               |
+| `revoked_at`              | timestamp with time zone    |  ✓   |                     |                               |
+| `revoke_reason`           | text                        |  ✓   |                     |                               |
+| `revoked_by_user_id`      | uuid                        |  ✓   |                     | `users.id`                    |
+| `announcement_channel_id` | varchar(20)                 |  ✓   |                     |                               |
+| `announcement_message_id` | varchar(20)                 |  ✓   |                     |                               |
+| `announced_at`            | timestamp with time zone    |  ✓   |                     |                               |
 
 - UNIQUE `member_achievements_active_uq` (member_id, achievement_key) — partial
 - `member_achievements_key_idx` (achievement_key)
+- `member_achievements_member_idx` (member_id, awarded_at)
 
 ### Projects & contributions
 
@@ -822,6 +917,9 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `status`              | enum(submitted · verified · rejected)                                              |      | `"submitted"`       |               |
 | `verified_by_user_id` | uuid                                                                               |  ✓   |                     | `users.id`    |
 | `verified_at`         | timestamp with time zone                                                           |  ✓   |                     |               |
+| `reviewed_by_user_id` | uuid                                                                               |  ✓   |                     | `users.id`    |
+| `reviewed_at`         | timestamp with time zone                                                           |  ✓   |                     |               |
+| `review_note`         | varchar(1000)                                                                      |  ✓   |                     |               |
 | `occurred_at`         | timestamp with time zone                                                           |      | `now()`             |               |
 | `created_at`          | timestamp with time zone                                                           |      | `now()`             |               |
 | `updated_at`          | timestamp with time zone                                                           |      | `now()`             |               |
@@ -832,13 +930,16 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 #### `project_links`
 
-| Column       | Type        | Null | Default             | References                        |
-| ------------ | ----------- | :--: | ------------------- | --------------------------------- |
-| `id` **PK**  | uuid        |      | `gen_random_uuid()` |                                   |
-| `project_id` | uuid        |      |                     | `projects.id` (on delete cascade) |
-| `label`      | varchar(48) |      |                     |                                   |
-| `url`        | text        |      |                     |                                   |
-| `ordinal`    | smallint    |      | `0`                 |                                   |
+| Column       | Type                     | Null | Default             | References                        |
+| ------------ | ------------------------ | :--: | ------------------- | --------------------------------- |
+| `id` **PK**  | uuid                     |      | `gen_random_uuid()` |                                   |
+| `project_id` | uuid                     |      |                     | `projects.id` (on delete cascade) |
+| `label`      | varchar(48)              |      |                     |                                   |
+| `url`        | text                     |      |                     |                                   |
+| `ordinal`    | smallint                 |      | `0`                 |                                   |
+| `created_at` | timestamp with time zone |      | `now()`             |                                   |
+
+- `project_links_project_idx` (project_id)
 
 #### `project_members`
 
@@ -853,6 +954,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 - UNIQUE `project_members_uq` (project_id, member_id)
 - `project_members_member_idx` (member_id)
+- UNIQUE `project_members_one_owner_uq` (project_id) — partial
 
 #### `project_milestones`
 
@@ -873,26 +975,27 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 #### `projects`
 
-| Column            | Type                                                            | Null | Default             | References               |
-| ----------------- | --------------------------------------------------------------- | :--: | ------------------- | ------------------------ |
-| `id` **PK**       | uuid                                                            |      | `gen_random_uuid()` |                          |
-| `slug`            | varchar(64)                                                     |      |                     |                          |
-| `title`           | varchar(120)                                                    |      |                     |                          |
-| `summary`         | varchar(280)                                                    |  ✓   |                     |                          |
-| `description`     | text                                                            |  ✓   |                     |                          |
-| `owner_member_id` | uuid                                                            |      |                     | `members.id`             |
-| `status`          | enum(idea · planning · building · testing · shipped · archived) |      | `"idea"`            |                          |
-| `domain_key`      | varchar(32)                                                     |  ✓   |                     | `capability_domains.key` |
-| `goals`           | text                                                            |  ✓   |                     |                          |
-| `visibility`      | enum(public · members · private)                                |      | `"members"`         |                          |
-| `github_repo`     | varchar(140)                                                    |  ✓   |                     |                          |
-| `repo_url`        | text                                                            |  ✓   |                     |                          |
-| `website_url`     | text                                                            |  ✓   |                     |                          |
-| `shipped_at`      | timestamp with time zone                                        |  ✓   |                     |                          |
-| `archived_at`     | timestamp with time zone                                        |  ✓   |                     |                          |
-| `created_at`      | timestamp with time zone                                        |      | `now()`             |                          |
-| `updated_at`      | timestamp with time zone                                        |      | `now()`             |                          |
-| `deleted_at`      | timestamp with time zone                                        |  ✓   |                     |                          |
+| Column                 | Type                                                            | Null | Default             | References               |
+| ---------------------- | --------------------------------------------------------------- | :--: | ------------------- | ------------------------ |
+| `id` **PK**            | uuid                                                            |      | `gen_random_uuid()` |                          |
+| `slug`                 | varchar(64)                                                     |      |                     |                          |
+| `title`                | varchar(120)                                                    |      |                     |                          |
+| `summary`              | varchar(280)                                                    |  ✓   |                     |                          |
+| `description`          | text                                                            |  ✓   |                     |                          |
+| `owner_member_id`      | uuid                                                            |      |                     | `members.id`             |
+| `status`               | enum(idea · planning · building · testing · shipped · archived) |      | `"idea"`            |                          |
+| `domain_key`           | varchar(32)                                                     |  ✓   |                     | `capability_domains.key` |
+| `goals`                | text                                                            |  ✓   |                     |                          |
+| `visibility`           | enum(public · members · private)                                |      | `"members"`         |                          |
+| `github_repo`          | varchar(140)                                                    |  ✓   |                     |                          |
+| `repo_url`             | text                                                            |  ✓   |                     |                          |
+| `website_url`          | text                                                            |  ✓   |                     |                          |
+| `shipped_at`           | timestamp with time zone                                        |  ✓   |                     |                          |
+| `archived_at`          | timestamp with time zone                                        |  ✓   |                     |                          |
+| `archived_from_status` | enum(idea · planning · building · testing · shipped · archived) |  ✓   |                     |                          |
+| `created_at`           | timestamp with time zone                                        |      | `now()`             |                          |
+| `updated_at`           | timestamp with time zone                                        |      | `now()`             |                          |
+| `deleted_at`           | timestamp with time zone                                        |  ✓   |                     |                          |
 
 - UNIQUE `projects_slug_uq` (slug)
 - UNIQUE `projects_github_repo_uq` (github_repo)
@@ -903,52 +1006,64 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 #### `mission_assignments`
 
-| Column                | Type                                                                              | Null | Default             | References                        |
-| --------------------- | --------------------------------------------------------------------------------- | :--: | ------------------- | --------------------------------- |
-| `id` **PK**           | uuid                                                                              |      | `gen_random_uuid()` |                                   |
-| `mission_id`          | uuid                                                                              |      |                     | `missions.id` (on delete cascade) |
-| `member_id`           | uuid                                                                              |      |                     | `members.id`                      |
-| `team_key`            | varchar(32)                                                                       |  ✓   |                     |                                   |
-| `status`              | enum(assigned · accepted · submitted · verified · rejected · expired · abandoned) |      | `"assigned"`        |                                   |
-| `assigned_by_user_id` | uuid                                                                              |  ✓   |                     | `users.id`                        |
-| `assigned_at`         | timestamp with time zone                                                          |      | `now()`             |                                   |
-| `accepted_at`         | timestamp with time zone                                                          |  ✓   |                     |                                   |
-| `due_at`              | timestamp with time zone                                                          |  ✓   |                     |                                   |
-| `submitted_at`        | timestamp with time zone                                                          |  ✓   |                     |                                   |
-| `submission`          | text                                                                              |  ✓   |                     |                                   |
-| `evidence_id`         | uuid                                                                              |  ✓   |                     | `evidence.id`                     |
-| `verified_by_user_id` | uuid                                                                              |  ✓   |                     | `users.id`                        |
-| `verified_at`         | timestamp with time zone                                                          |  ✓   |                     |                                   |
-| `feedback`            | text                                                                              |  ✓   |                     |                                   |
-| `created_at`          | timestamp with time zone                                                          |      | `now()`             |                                   |
-| `updated_at`          | timestamp with time zone                                                          |      | `now()`             |                                   |
+| Column                      | Type                                                                              | Null | Default             | References                        |
+| --------------------------- | --------------------------------------------------------------------------------- | :--: | ------------------- | --------------------------------- |
+| `id` **PK**                 | uuid                                                                              |      | `gen_random_uuid()` |                                   |
+| `mission_id`                | uuid                                                                              |      |                     | `missions.id` (on delete cascade) |
+| `member_id`                 | uuid                                                                              |      |                     | `members.id`                      |
+| `team_key`                  | varchar(32)                                                                       |  ✓   |                     |                                   |
+| `status`                    | enum(assigned · accepted · submitted · verified · rejected · expired · abandoned) |      | `"assigned"`        |                                   |
+| `assigned_by_user_id`       | uuid                                                                              |  ✓   |                     | `users.id`                        |
+| `assigned_at`               | timestamp with time zone                                                          |      | `now()`             |                                   |
+| `accepted_at`               | timestamp with time zone                                                          |  ✓   |                     |                                   |
+| `due_at`                    | timestamp with time zone                                                          |  ✓   |                     |                                   |
+| `submitted_at`              | timestamp with time zone                                                          |  ✓   |                     |                                   |
+| `submission`                | text                                                                              |  ✓   |                     |                                   |
+| `submission_evidence_title` | varchar(200)                                                                      |  ✓   |                     |                                   |
+| `submission_evidence_url`   | text                                                                              |  ✓   |                     |                                   |
+| `submitted_by_member_id`    | uuid                                                                              |  ✓   |                     | `members.id`                      |
+| `attempts`                  | integer                                                                           |      | `0`                 |                                   |
+| `evidence_id`               | uuid                                                                              |  ✓   |                     | `evidence.id`                     |
+| `verified_by_user_id`       | uuid                                                                              |  ✓   |                     | `users.id`                        |
+| `verified_at`               | timestamp with time zone                                                          |  ✓   |                     |                                   |
+| `reviewed_by_user_id`       | uuid                                                                              |  ✓   |                     | `users.id`                        |
+| `reviewed_at`               | timestamp with time zone                                                          |  ✓   |                     |                                   |
+| `feedback`                  | text                                                                              |  ✓   |                     |                                   |
+| `reminder_due_at`           | timestamp with time zone                                                          |  ✓   |                     |                                   |
+| `created_at`                | timestamp with time zone                                                          |      | `now()`             |                                   |
+| `updated_at`                | timestamp with time zone                                                          |      | `now()`             |                                   |
 
 - UNIQUE `mission_assignments_member_uq` (mission_id, member_id)
 - `mission_assignments_member_idx` (member_id, status)
 - `mission_assignments_due_idx` (status, due_at)
+- `mission_assignments_team_idx` (mission_id, team_key)
 
 #### `missions`
 
-| Column                   | Type                                                                                 | Null | Default             | References                    |
-| ------------------------ | ------------------------------------------------------------------------------------ | :--: | ------------------- | ----------------------------- |
-| `id` **PK**              | uuid                                                                                 |      | `gen_random_uuid()` |                               |
-| `number`                 | integer                                                                              |      | identity            |                               |
-| `title`                  | varchar(120)                                                                         |      |                     |                               |
-| `brief`                  | text                                                                                 |      |                     |                               |
-| `type`                   | enum(individual · team · research · build · social · physical · strategy · creative) |      |                     |                               |
-| `status`                 | enum(draft · open · closed · archived)                                               |      | `"draft"`           |                               |
-| `facet_key`              | varchar(48)                                                                          |  ✓   |                     | `capability_facets.key`       |
-| `evidence_required`      | boolean                                                                              |      | `true`              |                               |
-| `reward_achievement_key` | varchar(64)                                                                          |  ✓   |                     | `achievement_definitions.key` |
-| `reward_note`            | varchar(200)                                                                         |  ✓   |                     |                               |
-| `max_assignees`          | integer                                                                              |  ✓   |                     |                               |
-| `self_assignable`        | boolean                                                                              |      | `true`              |                               |
-| `deadline_at`            | timestamp with time zone                                                             |  ✓   |                     |                               |
-| `duration_hours`         | integer                                                                              |  ✓   |                     |                               |
-| `created_by_user_id`     | uuid                                                                                 |  ✓   |                     | `users.id`                    |
-| `created_at`             | timestamp with time zone                                                             |      | `now()`             |                               |
-| `updated_at`             | timestamp with time zone                                                             |      | `now()`             |                               |
-| `archived_at`            | timestamp with time zone                                                             |  ✓   |                     |                               |
+| Column                    | Type                                                                                 | Null | Default             | References                    |
+| ------------------------- | ------------------------------------------------------------------------------------ | :--: | ------------------- | ----------------------------- |
+| `id` **PK**               | uuid                                                                                 |      | `gen_random_uuid()` |                               |
+| `number`                  | integer                                                                              |      | identity            |                               |
+| `title`                   | varchar(120)                                                                         |      |                     |                               |
+| `brief`                   | text                                                                                 |      |                     |                               |
+| `type`                    | enum(individual · team · research · build · social · physical · strategy · creative) |      |                     |                               |
+| `status`                  | enum(draft · open · closed · archived)                                               |      | `"draft"`           |                               |
+| `facet_key`               | varchar(48)                                                                          |  ✓   |                     | `capability_facets.key`       |
+| `evidence_required`       | boolean                                                                              |      | `true`              |                               |
+| `reward_achievement_key`  | varchar(64)                                                                          |  ✓   |                     | `achievement_definitions.key` |
+| `reward_note`             | varchar(200)                                                                         |  ✓   |                     |                               |
+| `max_assignees`           | integer                                                                              |  ✓   |                     |                               |
+| `self_assignable`         | boolean                                                                              |      | `true`              |                               |
+| `deadline_at`             | timestamp with time zone                                                             |  ✓   |                     |                               |
+| `duration_hours`          | integer                                                                              |  ✓   |                     |                               |
+| `created_by_user_id`      | uuid                                                                                 |  ✓   |                     | `users.id`                    |
+| `created_at`              | timestamp with time zone                                                             |      | `now()`             |                               |
+| `updated_at`              | timestamp with time zone                                                             |      | `now()`             |                               |
+| `published_at`            | timestamp with time zone                                                             |  ✓   |                     |                               |
+| `closed_at`               | timestamp with time zone                                                             |  ✓   |                     |                               |
+| `archived_at`             | timestamp with time zone                                                             |  ✓   |                     |                               |
+| `announcement_channel_id` | varchar(20)                                                                          |  ✓   |                     |                               |
+| `announcement_message_id` | varchar(20)                                                                          |  ✓   |                     |                               |
 
 - UNIQUE `missions_number_uq` (number)
 - `missions_status_idx` (status)
@@ -968,15 +1083,18 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 - UNIQUE `event_rsvps_uq` (event_id, member_id)
 - `event_rsvps_member_idx` (member_id)
+- `event_rsvps_status_idx` (event_id, status, responded_at)
 
 #### `event_team_members`
 
 | Column      | Type | Null | Default | References                           |
 | ----------- | ---- | :--: | ------- | ------------------------------------ |
 | `team_id`   | uuid |      |         | `event_teams.id` (on delete cascade) |
+| `event_id`  | uuid |      |         | `events.id` (on delete cascade)      |
 | `member_id` | uuid |      |         | `members.id`                         |
 
 - PRIMARY KEY (team_id, member_id)
+- UNIQUE `event_team_members_event_member_uq` (event_id, member_id)
 
 #### `event_teams`
 
@@ -1000,38 +1118,47 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `kind`                       | enum(meetup · workshop · talk · tournament · session · social · other) |      |                     |              |
 | `status`                     | enum(scheduled · live · completed · cancelled)                         |      | `"scheduled"`       |              |
 | `starts_at`                  | timestamp with time zone                                               |      |                     |              |
-| `ends_at`                    | timestamp with time zone                                               |  ✓   |                     |              |
+| `ends_at`                    | timestamp with time zone                                               |      |                     |              |
 | `location`                   | varchar(200)                                                           |  ✓   |                     |              |
 | `discord_scheduled_event_id` | varchar(20)                                                            |  ✓   |                     |              |
+| `announcement_channel_id`    | varchar(20)                                                            |  ✓   |                     |              |
+| `announcement_message_id`    | varchar(20)                                                            |  ✓   |                     |              |
 | `capacity`                   | integer                                                                |  ✓   |                     |              |
 | `rsvp_closes_at`             | timestamp with time zone                                               |  ✓   |                     |              |
 | `check_in_code_hash`         | varchar(64)                                                            |  ✓   |                     |              |
+| `check_in_code_issued_at`    | timestamp with time zone                                               |  ✓   |                     |              |
 | `host_member_id`             | uuid                                                                   |  ✓   |                     | `members.id` |
 | `created_by_user_id`         | uuid                                                                   |  ✓   |                     | `users.id`   |
+| `revision`                   | integer                                                                |      | `0`                 |              |
+| `live_at`                    | timestamp with time zone                                               |  ✓   |                     |              |
+| `completed_at`               | timestamp with time zone                                               |  ✓   |                     |              |
 | `cancelled_at`               | timestamp with time zone                                               |  ✓   |                     |              |
+| `cancel_reason`              | varchar(500)                                                           |  ✓   |                     |              |
 | `created_at`                 | timestamp with time zone                                               |      | `now()`             |              |
 | `updated_at`                 | timestamp with time zone                                               |      | `now()`             |              |
 
 - `events_starts_idx` (status, starts_at)
+- `events_ends_idx` (ends_at)
 
 #### `tournament_matches`
 
-| Column           | Type                                    | Null | Default             | References                      |
-| ---------------- | --------------------------------------- | :--: | ------------------- | ------------------------------- |
-| `id` **PK**      | uuid                                    |      | `gen_random_uuid()` |                                 |
-| `event_id`       | uuid                                    |      |                     | `events.id` (on delete cascade) |
-| `round`          | smallint                                |      |                     |                                 |
-| `position`       | smallint                                |      |                     |                                 |
-| `team_a_id`      | uuid                                    |  ✓   |                     | `event_teams.id`                |
-| `team_b_id`      | uuid                                    |  ✓   |                     | `event_teams.id`                |
-| `winner_team_id` | uuid                                    |  ✓   |                     | `event_teams.id`                |
-| `score_a`        | integer                                 |  ✓   |                     |                                 |
-| `score_b`        | integer                                 |  ✓   |                     |                                 |
-| `status`         | enum(pending · ready · completed · bye) |      | `"pending"`         |                                 |
-| `next_match_id`  | uuid                                    |  ✓   |                     | `tournament_matches.id`         |
-| `next_slot`      | enum(a · b)                             |  ✓   |                     |                                 |
-| `completed_at`   | timestamp with time zone                |  ✓   |                     |                                 |
-| `created_at`     | timestamp with time zone                |      | `now()`             |                                 |
+| Column                | Type                                    | Null | Default             | References                      |
+| --------------------- | --------------------------------------- | :--: | ------------------- | ------------------------------- |
+| `id` **PK**           | uuid                                    |      | `gen_random_uuid()` |                                 |
+| `event_id`            | uuid                                    |      |                     | `events.id` (on delete cascade) |
+| `round`               | smallint                                |      |                     |                                 |
+| `position`            | smallint                                |      |                     |                                 |
+| `team_a_id`           | uuid                                    |  ✓   |                     | `event_teams.id`                |
+| `team_b_id`           | uuid                                    |  ✓   |                     | `event_teams.id`                |
+| `winner_team_id`      | uuid                                    |  ✓   |                     | `event_teams.id`                |
+| `score_a`             | integer                                 |  ✓   |                     |                                 |
+| `score_b`             | integer                                 |  ✓   |                     |                                 |
+| `status`              | enum(pending · ready · completed · bye) |      | `"pending"`         |                                 |
+| `next_match_id`       | uuid                                    |  ✓   |                     | `tournament_matches.id`         |
+| `next_slot`           | enum(a · b)                             |  ✓   |                     |                                 |
+| `reported_by_user_id` | uuid                                    |  ✓   |                     | `users.id`                      |
+| `completed_at`        | timestamp with time zone                |  ✓   |                     |                                 |
+| `created_at`          | timestamp with time zone                |      | `now()`             |                                 |
 
 - UNIQUE `tournament_matches_pos_uq` (event_id, round, position)
 
@@ -1095,6 +1222,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `requested_by_user_id` | uuid                                                               |      |                     | `users.id`       |
 | `ai_request_id`        | uuid                                                               |  ✓   |                     | `ai_requests.id` |
 | `payload`              | jsonb                                                              |      |                     |                  |
+| `payload_hash`         | varchar(64)                                                        |      |                     |                  |
 | `preview`              | text                                                               |      |                     |                  |
 | `status`               | enum(pending · confirmed · executed · rejected · expired · failed) |      | `"pending"`         |                  |
 | `decided_by_user_id`   | uuid                                                               |  ✓   |                     | `users.id`       |
@@ -1106,23 +1234,26 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `created_at`           | timestamp with time zone                                           |      | `now()`             |                  |
 
 - `ai_action_proposals_status_idx` (status, created_at)
+- `ai_action_proposals_requester_idx` (requested_by_user_id, status)
+- `ai_action_proposals_expiry_idx` (status, expires_at)
 
 #### `ai_requests`
 
-| Column          | Type                                                 | Null | Default             | References |
-| --------------- | ---------------------------------------------------- | :--: | ------------------- | ---------- |
-| `id` **PK**     | uuid                                                 |      | `gen_random_uuid()` |            |
-| `user_id`       | uuid                                                 |  ✓   |                     | `users.id` |
-| `feature`       | varchar(32)                                          |      |                     |            |
-| `provider`      | varchar(32)                                          |      |                     |            |
-| `model`         | varchar(64)                                          |      |                     |            |
-| `status`        | enum(ok · error · refused · rate_limited · disabled) |      |                     |            |
-| `input_tokens`  | integer                                              |      | `0`                 |            |
-| `output_tokens` | integer                                              |      | `0`                 |            |
-| `latency_ms`    | integer                                              |      | `0`                 |            |
-| `error_code`    | varchar(64)                                          |  ✓   |                     |            |
-| `prompt_hash`   | varchar(64)                                          |  ✓   |                     |            |
-| `created_at`    | timestamp with time zone                             |      | `now()`             |            |
+| Column          | Type                                                           | Null | Default             | References |
+| --------------- | -------------------------------------------------------------- | :--: | ------------------- | ---------- |
+| `id` **PK**     | uuid                                                           |      | `gen_random_uuid()` |            |
+| `user_id`       | uuid                                                           |  ✓   |                     | `users.id` |
+| `feature`       | varchar(32)                                                    |      |                     |            |
+| `surface`       | varchar(16)                                                    |  ✓   |                     |            |
+| `provider`      | varchar(32)                                                    |      |                     |            |
+| `model`         | varchar(64)                                                    |      |                     |            |
+| `status`        | enum(ok · error · refused · rate_limited · disabled · pending) |      |                     |            |
+| `input_tokens`  | integer                                                        |      | `0`                 |            |
+| `output_tokens` | integer                                                        |      | `0`                 |            |
+| `latency_ms`    | integer                                                        |      | `0`                 |            |
+| `error_code`    | varchar(64)                                                    |  ✓   |                     |            |
+| `prompt_hash`   | varchar(64)                                                    |  ✓   |                     |            |
+| `created_at`    | timestamp with time zone                                       |      | `now()`             |            |
 
 - `ai_requests_user_idx` (user_id, created_at)
 - `ai_requests_time_idx` (created_at)
@@ -1135,6 +1266,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | ---------------------- | ---------------------------------------------------------------------------------------- | :--: | ------------------- | ---------- |
 | `id` **PK**            | uuid                                                                                     |      | `gen_random_uuid()` |            |
 | `title`                | varchar(300)                                                                             |      |                     |            |
+| `title_guessed`        | boolean                                                                                  |      | `false`             |            |
 | `authors`              | text[]                                                                                   |      | `'{}'::text[]`      |            |
 | `source`               | varchar(120)                                                                             |  ✓   |                     |            |
 | `url`                  | text                                                                                     |  ✓   |                     |            |
@@ -1152,9 +1284,14 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `reviewed_at`          | timestamp with time zone                                                                 |  ✓   |                     |            |
 | `discord_message_id`   | varchar(20)                                                                              |  ✓   |                     |            |
 | `discord_message_url`  | text                                                                                     |  ✓   |                     |            |
+| `enrichment_status`    | enum(pending · enriched · not_found · failed · skipped)                                  |      | `"pending"`         |            |
+| `enriched_at`          | timestamp with time zone                                                                 |  ✓   |                     |            |
+| `enrichment_error`     | text                                                                                     |  ✓   |                     |            |
 | `sidus_sync_status`    | enum(not_synced · pending · synced · failed)                                             |      | `"not_synced"`      |            |
 | `sidus_external_id`    | varchar(128)                                                                             |  ✓   |                     |            |
 | `sidus_synced_at`      | timestamp with time zone                                                                 |  ✓   |                     |            |
+| `sidus_sync_error`     | text                                                                                     |  ✓   |                     |            |
+| `version`              | integer                                                                                  |      | `1`                 |            |
 | `created_at`           | timestamp with time zone                                                                 |      | `now()`             |            |
 | `updated_at`           | timestamp with time zone                                                                 |      | `now()`             |            |
 | `deleted_at`           | timestamp with time zone                                                                 |  ✓   |                     |            |
@@ -1162,9 +1299,29 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 - UNIQUE `research_items_doi_uq` (doi)
 - UNIQUE `research_items_canonical_url_uq` (canonical_url)
 - UNIQUE `research_items_discord_message_uq` (discord_message_id)
+- UNIQUE `research_items_arxiv_uq` (arxiv_id)
 - `research_items_status_idx` (status, created_at)
+- `research_items_submitter_idx` (submitted_by_user_id, created_at)
 
 ### Integrations & webhooks
+
+#### `external_accounts`
+
+| Column                | Type                     | Null | Default             | References   |
+| --------------------- | ------------------------ | :--: | ------------------- | ------------ |
+| `id` **PK**           | uuid                     |      | `gen_random_uuid()` |              |
+| `member_id`           | uuid                     |      |                     | `members.id` |
+| `provider`            | enum(github)             |      |                     |              |
+| `external_id`         | varchar(64)              |  ✓   |                     |              |
+| `username`            | varchar(64)              |      |                     |              |
+| `verified_at`         | timestamp with time zone |  ✓   |                     |              |
+| `verified_by_user_id` | uuid                     |  ✓   |                     | `users.id`   |
+| `created_at`          | timestamp with time zone |      | `now()`             |              |
+| `updated_at`          | timestamp with time zone |      | `now()`             |              |
+
+- UNIQUE `external_accounts_member_provider_uq` (member_id, provider)
+- UNIQUE `external_accounts_username_uq` (provider, username)
+- UNIQUE `external_accounts_external_id_uq` (provider, external_id) — partial
 
 #### `integrations`
 
@@ -1177,6 +1334,7 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `enabled`            | boolean                                                |      | `true`              |            |
 | `config`             | jsonb                                                  |      | `{}`                |            |
 | `secret_ciphertext`  | text                                                   |  ✓   |                     |            |
+| `secret_rotated_at`  | timestamp with time zone                               |  ✓   |                     |            |
 | `last_event_at`      | timestamp with time zone                               |  ✓   |                     |            |
 | `last_error_at`      | timestamp with time zone                               |  ✓   |                     |            |
 | `last_error`         | text                                                   |  ✓   |                     |            |
@@ -1212,30 +1370,42 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `url`                  | text                     |      |                     |            |
 | `event_types`          | text[]                   |      | `'{}'::text[]`      |            |
 | `secret_ciphertext`    | text                     |      |                     |            |
+| `secret_rotated_at`    | timestamp with time zone |  ✓   |                     |            |
 | `enabled`              | boolean                  |      | `true`              |            |
 | `consecutive_failures` | integer                  |      | `0`                 |            |
 | `last_delivery_at`     | timestamp with time zone |  ✓   |                     |            |
+| `last_failure_at`      | timestamp with time zone |  ✓   |                     |            |
+| `last_error`           | varchar(500)             |  ✓   |                     |            |
+| `disabled_at`          | timestamp with time zone |  ✓   |                     |            |
+| `disabled_reason`      | varchar(200)             |  ✓   |                     |            |
 | `created_by_user_id`   | uuid                     |  ✓   |                     | `users.id` |
 | `created_at`           | timestamp with time zone |      | `now()`             |            |
 | `updated_at`           | timestamp with time zone |      | `now()`             |            |
 
 #### `webhook_deliveries`
 
-| Column           | Type                                                              | Null | Default             | References        |
-| ---------------- | ----------------------------------------------------------------- | :--: | ------------------- | ----------------- |
-| `id` **PK**      | uuid                                                              |      | `gen_random_uuid()` |                   |
-| `integration_id` | uuid                                                              |  ✓   |                     | `integrations.id` |
-| `provider`       | enum(github · generic · sidus · supabase · monitoring)            |      |                     |                   |
-| `delivery_id`    | varchar(128)                                                      |      |                     |                   |
-| `event_type`     | varchar(64)                                                       |      |                     |                   |
-| `status`         | enum(received · processing · processed · ignored · failed · dead) |      | `"received"`        |                   |
-| `payload`        | jsonb                                                             |      |                     |                   |
-| `attempts`       | smallint                                                          |      | `0`                 |                   |
-| `last_error`     | text                                                              |  ✓   |                     |                   |
-| `received_at`    | timestamp with time zone                                          |      | `now()`             |                   |
-| `processed_at`   | timestamp with time zone                                          |  ✓   |                     |                   |
+| Column             | Type                                                              | Null | Default             | References        |
+| ------------------ | ----------------------------------------------------------------- | :--: | ------------------- | ----------------- |
+| `id` **PK**        | uuid                                                              |      | `gen_random_uuid()` |                   |
+| `integration_id`   | uuid                                                              |      |                     | `integrations.id` |
+| `provider`         | enum(github · generic · sidus · supabase · monitoring)            |      |                     |                   |
+| `delivery_id`      | varchar(128)                                                      |      |                     |                   |
+| `event_type`       | varchar(64)                                                       |      |                     |                   |
+| `signature_digest` | varchar(64)                                                       |      |                     |                   |
+| `status`           | enum(received · processing · processed · ignored · failed · dead) |      | `"received"`        |                   |
+| `status_reason`    | varchar(200)                                                      |  ✓   |                     |                   |
+| `payload`          | jsonb                                                             |      |                     |                   |
+| `attempts`         | smallint                                                          |      | `0`                 |                   |
+| `last_error`       | text                                                              |  ✓   |                     |                   |
+| `relay_message_id` | varchar(20)                                                       |  ✓   |                     |                   |
+| `relayed_at`       | timestamp with time zone                                          |  ✓   |                     |                   |
+| `received_at`      | timestamp with time zone                                          |      | `now()`             |                   |
+| `processed_at`     | timestamp with time zone                                          |  ✓   |                     |                   |
 
-- UNIQUE `webhook_deliveries_idempotency_uq` (provider, delivery_id)
+- UNIQUE `webhook_deliveries_idempotency_uq` (integration_id, delivery_id)
+- UNIQUE `webhook_deliveries_signature_uq` (integration_id, signature_digest)
+- UNIQUE `webhook_deliveries_github_delivery_uq` (provider, delivery_id) — partial
+- UNIQUE `webhook_deliveries_github_signature_uq` (provider, signature_digest) — partial
 - `webhook_deliveries_status_idx` (status, received_at)
 
 ### Games
@@ -1262,12 +1432,14 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `id` **PK**  | uuid                     |      | `gen_random_uuid()` |                                        |
 | `session_id` | uuid                     |      |                     | `game_sessions.id` (on delete cascade) |
 | `user_id`    | uuid                     |      |                     | `users.id`                             |
+| `seat`       | integer                  |      |                     |                                        |
 | `team`       | varchar(32)              |  ✓   |                     |                                        |
 | `score`      | integer                  |      | `0`                 |                                        |
 | `placement`  | smallint                 |  ✓   |                     |                                        |
 | `joined_at`  | timestamp with time zone |      | `now()`             |                                        |
 
 - UNIQUE `game_players_uq` (session_id, user_id)
+- UNIQUE `game_players_seat_uq` (session_id, seat)
 - `game_players_user_idx` (user_id)
 
 #### `game_sessions`
@@ -1286,6 +1458,9 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `config`               | jsonb                                        |      | `{}`                |            |
 | `state`                | jsonb                                        |      | `{}`                |            |
 | `version`              | integer                                      |      | `0`                 |            |
+| `player_count`         | smallint                                     |  ✓   |                     |            |
+| `last_activity_at`     | timestamp with time zone                     |      | `now()`             |            |
+| `end_reason`           | varchar(200)                                 |  ✓   |                     |            |
 | `started_at`           | timestamp with time zone                     |  ✓   |                     |            |
 | `ended_at`             | timestamp with time zone                     |  ✓   |                     |            |
 | `created_at`           | timestamp with time zone                     |      | `now()`             |            |
@@ -1293,6 +1468,9 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 - `game_sessions_status_idx` (game_key, status)
 - `game_sessions_activity_idx` (activity_instance_id)
+- `game_sessions_sweep_idx` (status, last_activity_at)
+- UNIQUE `game_sessions_live_channel_uq` (discord_channel_id) — partial
+- UNIQUE `game_sessions_live_activity_uq` (activity_instance_id) — partial
 
 ### Platform
 
@@ -1347,22 +1525,23 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 #### `jobs`
 
-| Column         | Type                                                            | Null | Default     | References |
-| -------------- | --------------------------------------------------------------- | :--: | ----------- | ---------- |
-| `id` **PK**    | bigint                                                          |      | identity    |            |
-| `type`         | varchar(64)                                                     |      |             |            |
-| `payload`      | jsonb                                                           |      | `{}`        |            |
-| `status`       | enum(pending · running · completed · failed · dead · cancelled) |      | `"pending"` |            |
-| `run_at`       | timestamp with time zone                                        |      | `now()`     |            |
-| `attempts`     | smallint                                                        |      | `0`         |            |
-| `max_attempts` | smallint                                                        |      | `5`         |            |
-| `locked_at`    | timestamp with time zone                                        |  ✓   |             |            |
-| `locked_by`    | varchar(64)                                                     |  ✓   |             |            |
-| `last_error`   | text                                                            |  ✓   |             |            |
-| `result`       | jsonb                                                           |  ✓   |             |            |
-| `dedupe_key`   | varchar(200)                                                    |  ✓   |             |            |
-| `created_at`   | timestamp with time zone                                        |      | `now()`     |            |
-| `completed_at` | timestamp with time zone                                        |  ✓   |             |            |
+| Column            | Type                                                            | Null | Default     | References |
+| ----------------- | --------------------------------------------------------------- | :--: | ----------- | ---------- |
+| `id` **PK**       | bigint                                                          |      | identity    |            |
+| `type`            | varchar(64)                                                     |      |             |            |
+| `payload`         | jsonb                                                           |      | `{}`        |            |
+| `status`          | enum(pending · running · completed · failed · dead · cancelled) |      | `"pending"` |            |
+| `run_at`          | timestamp with time zone                                        |      | `now()`     |            |
+| `attempts`        | smallint                                                        |      | `0`         |            |
+| `max_attempts`    | smallint                                                        |      | `5`         |            |
+| `locked_at`       | timestamp with time zone                                        |  ✓   |             |            |
+| `locked_by`       | varchar(64)                                                     |  ✓   |             |            |
+| `last_error`      | text                                                            |  ✓   |             |            |
+| `result`          | jsonb                                                           |  ✓   |             |            |
+| `dedupe_key`      | varchar(200)                                                    |  ✓   |             |            |
+| `rerun_requested` | boolean                                                         |      | `false`     |            |
+| `created_at`      | timestamp with time zone                                        |      | `now()`     |            |
+| `completed_at`    | timestamp with time zone                                        |  ✓   |             |            |
 
 - `jobs_ready_idx` (status, run_at)
 - UNIQUE `jobs_dedupe_live_uq` (dedupe_key) — partial

@@ -180,6 +180,11 @@ export interface AssignmentResult {
   waitlisted: number;
   /** Selected members who were no longer eligible and were removed from the trial. */
   removed: number;
+  /**
+   * The trial's scheduled start: `scheduled` when it will start itself,
+   * `passed` when that time is gone (start it by hand or reschedule), or null.
+   */
+  scheduledStart: 'scheduled' | 'passed' | null;
 }
 
 /**
@@ -245,7 +250,9 @@ export async function assignTeams(
       { teamSize, strategy: data.strategy, seed },
     );
 
-    const previous = await loadTeams(t, trial.id);
+    // Locked: a markTeamProvisioned committing a channel id now either lands
+    // first (and the channel is torn down here) or finds the team gone.
+    const previous = await loadTeams(t, trial.id, 'update');
     for (const team of previous) await retireTeam(t, team);
     if (previous.length > 0) await t.db.delete(trialTeams).where(eq(trialTeams.trialId, trial.id));
 
@@ -295,6 +302,11 @@ export async function assignTeams(
       })
       .where(eq(trials.id, trial.id));
 
+    const scheduledStart = !trial.scheduledStartAt
+      ? null
+      : trial.scheduledStartAt.getTime() > t.clock.now().getTime()
+        ? ('scheduled' as const)
+        : ('passed' as const);
     await recordAudit(t, {
       action: 'trial.teams_assigned',
       targetType: 'trial',
@@ -304,6 +316,7 @@ export async function assignTeams(
         seed,
         teamSize,
         reshuffle: previous.length > 0,
+        scheduledStart,
         removedIneligible: removed.map((p) => p.memberId),
         teams: teams.map((team) => ({
           name: team.name,
@@ -359,6 +372,7 @@ export async function assignTeams(
       teams,
       waitlisted: waitlisted.length,
       removed: removed.length,
+      scheduledStart,
     };
   });
 }

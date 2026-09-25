@@ -447,6 +447,7 @@ CREATE TABLE "trials" (
 	"announcement_channel_id" varchar(20),
 	"announcement_message_id" varchar(20),
 	"created_by_user_id" uuid,
+	"editor_user_ids" uuid[] DEFAULT '{}'::uuid[] NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "trials_team_size_ck" CHECK ("trials"."team_size" >= 1),
@@ -1162,6 +1163,7 @@ CREATE TABLE "jobs" (
 	"last_error" text,
 	"result" jsonb,
 	"dedupe_key" varchar(200),
+	"rerun_requested" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"completed_at" timestamp with time zone
 );

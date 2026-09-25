@@ -6,6 +6,7 @@ import { MINUTE } from '../kernel/clock';
 import { type ServiceContext, withTransaction } from '../kernel/context';
 import { enqueueJob } from '../jobs/queue';
 import { isJaveError } from '../kernel/errors';
+import { notifyCapabilityHolders } from '../notifications/notifications.service';
 import { type JobHandler, type JobHandlerMap, PermanentJobError } from '../jobs/worker';
 import { dedupeKeys, TRIAL_JOBS } from './constants';
 import { requireSystem } from './guards';
@@ -105,6 +106,12 @@ const handleAutoStart: JobHandler = async (ctx, payload) => {
       },
       { durable: true },
     );
+    await notifyCapabilityHolders(ctx, 'canManageTrials', {
+      type: 'trial.attention',
+      ...notices.autoStartSkipped(trial, error.userMessage),
+      dedupeKey: dedupeKeys.notifyAutoStartSkipped(trial.id, expectedStartAt.getTime()),
+      data: { trialId: trial.id },
+    });
     ctx.logger.warn({ trialId: trial.id, reason: error.userMessage }, 'scheduled start skipped');
     return { skipped: error.userMessage };
   }

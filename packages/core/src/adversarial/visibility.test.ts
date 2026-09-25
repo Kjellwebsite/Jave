@@ -81,34 +81,39 @@ describe('adversarial visibility', () => {
     ];
     for (const actor of outsiders) {
       const ctx = kit.as(actor);
-      const attempts: Promise<unknown>[] = [
-        getRole(ctx, { roleId: role.id }),
-        listRoles(ctx, { trialId: fx.trialId }),
-        listScenarios(ctx),
-        getScenario(ctx, { scenarioId: scenario!.id }),
-        seedStarterScenarios(ctx),
-        planDefault({ ...fx, planner: actor }),
-        concludeRole(ctx, { roleId: role.id }),
-        abortRole(ctx, { roleId: role.id, reason: 'Trying to peek.' }),
-        recordObservation(ctx, {
-          roleId: role.id,
-          outcome: 'failure',
-          description: 'Fake observation.',
-        }),
-        addTrigger(ctx, {
-          roleId: role.id,
-          label: 'Hijack',
-          description: 'Add a trigger of my own.',
-        }),
-        evaluateRole(ctx, {
-          roleId: role.id,
-          score: 0,
-          justification: 'Tamper attempt.',
-          summary: 'Tamper attempt.',
-        }),
-        revealRole(ctx, { roleId: role.id }),
+      // Thunks: each call starts only when awaited, so no rejection goes unhandled.
+      const attempts: (() => Promise<unknown>)[] = [
+        () => getRole(ctx, { roleId: role.id }),
+        () => listRoles(ctx, { trialId: fx.trialId }),
+        () => listScenarios(ctx),
+        () => getScenario(ctx, { scenarioId: scenario!.id }),
+        () => seedStarterScenarios(ctx),
+        () => planDefault({ ...fx, planner: actor }),
+        () => concludeRole(ctx, { roleId: role.id }),
+        () => abortRole(ctx, { roleId: role.id, reason: 'Trying to peek.' }),
+        () =>
+          recordObservation(ctx, {
+            roleId: role.id,
+            outcome: 'failure',
+            description: 'Fake observation.',
+          }),
+        () =>
+          addTrigger(ctx, {
+            roleId: role.id,
+            label: 'Hijack',
+            description: 'Add a trigger of my own.',
+          }),
+        () =>
+          evaluateRole(ctx, {
+            roleId: role.id,
+            score: 0,
+            justification: 'Tamper attempt.',
+            summary: 'Tamper attempt.',
+          }),
+        () => revealRole(ctx, { roleId: role.id }),
       ];
-      for (const attempt of attempts) await expect(attempt).rejects.toBeInstanceOf(ForbiddenError);
+      for (const attempt of attempts)
+        await expect(attempt()).rejects.toBeInstanceOf(ForbiddenError);
     }
     const denials = await kit.db
       .select()

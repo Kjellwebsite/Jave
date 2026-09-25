@@ -42,12 +42,17 @@ export async function findTeam(ctx: Reader, teamId: string): Promise<TeamRecord 
   return row ?? null;
 }
 
-export async function loadTeams(ctx: Reader, trialId: string): Promise<TeamRecord[]> {
-  return ctx.db
+export async function loadTeams(
+  ctx: Reader,
+  trialId: string,
+  lock?: 'update',
+): Promise<TeamRecord[]> {
+  const query = ctx.db
     .select()
     .from(trialTeams)
     .where(eq(trialTeams.trialId, trialId))
     .orderBy(asc(trialTeams.ordinal));
+  return lock ? query.for(lock) : query;
 }
 
 export async function findParticipation(

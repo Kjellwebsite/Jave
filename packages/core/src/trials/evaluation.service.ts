@@ -53,7 +53,8 @@ function assertScoresMatchRubric(
     throw new ValidationError(`Unknown criterion: ${unknown.join(', ')}.`, [
       { path: 'scores', message: `unknown ${unknown.join(', ')}` },
     ]);
-  const missing = rubricKeys.filter((key) => scores[key] === undefined);
+  // Own keys only: a criterion named like an Object.prototype member is still missing.
+  const missing = rubricKeys.filter((key) => !Object.hasOwn(scores, key));
   if (missing.length > 0)
     throw new ValidationError(`Score every criterion. Missing: ${missing.join(', ')}.`, [
       { path: 'scores', message: `missing ${missing.join(', ')}` },

@@ -64,6 +64,10 @@ export async function applyToTrial(
       // staff who stepped out (and could then read it) cannot step back in.
       if (trial.createdByUserId === actor.userId)
         throw new ForbiddenError('You created this trial, so you cannot compete in it.');
+      if (trial.editorUserIds.includes(actor.userId))
+        throw new ForbiddenError(
+          'You edited this trial’s brief or rubric, so you cannot compete in it.',
+        );
       const staffApplicant = isTrialStaff(t);
       if (existing && staffApplicant)
         throw new ForbiddenError('Staff cannot re-apply to a trial after withdrawing.');

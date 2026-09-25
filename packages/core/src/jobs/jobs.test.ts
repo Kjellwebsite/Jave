@@ -45,6 +45,77 @@ describe('job queue', () => {
     expect(await enqueueJob(kit.system, 'test.x', {}, { dedupeKey: 'k' })).not.toBeNull();
   });
 
+  describe('rerunIfRunning', () => {
+    const SYNC = { dedupeKey: 'sync:1', rerunIfRunning: true } as const;
+
+    /** A handler whose first run sees the state change again mid-run. */
+    function syncHandler(runs: number[], options: { failFirst?: boolean } = {}) {
+      return {
+        'test.sync': async () => {
+          runs.push(runs.length + 1);
+          if (runs.length === 1) {
+            expect(await enqueueJob(kit.system, 'test.sync', {}, SYNC)).toBeNull();
+            if (options.failFirst) throw new Error('discord unavailable');
+          }
+        },
+      };
+    }
+
+    it('BREAK: a change during a run is not dropped: the job runs once more', async () => {
+      const runs: number[] = [];
+      await enqueueJob(kit.system, 'test.sync', {}, SYNC);
+      const outcomes = await kit.drain(syncHandler(runs));
+      expect(runs).toEqual([1, 2]);
+      expect(outcomes.map((o) => o.status)).toEqual(['completed', 'completed']);
+      expect(await kit.drain(syncHandler(runs))).toHaveLength(0);
+    });
+
+    it('without the option a same-key enqueue during a run is dropped', async () => {
+      const runs: number[] = [];
+      await enqueueJob(kit.system, 'test.sync', {}, { dedupeKey: 'sync:1' });
+      await kit.drain({
+        'test.sync': async () => {
+          runs.push(runs.length + 1);
+          await enqueueJob(kit.system, 'test.sync', {}, { dedupeKey: 'sync:1' });
+        },
+      });
+      expect(runs).toEqual([1]);
+    });
+
+    it('a pending job absorbs the request without an extra run', async () => {
+      await enqueueJob(kit.system, 'test.sync', {}, SYNC);
+      expect(await enqueueJob(kit.system, 'test.sync', {}, SYNC)).toBeNull();
+      const outcomes = await kit.drain({ 'test.sync': async () => undefined });
+      expect(outcomes).toHaveLength(1);
+    });
+
+    it('a retry covers the requested run; a dead job still owes it', async () => {
+      const retried: number[] = [];
+      await enqueueJob(kit.system, 'test.sync', {}, SYNC);
+      await kit.drain(syncHandler(retried, { failFirst: true }));
+      kit.clock.advance(backoffMs(1) + 1000);
+      await kit.drain(syncHandler(retried));
+      expect(retried).toEqual([1, 2]);
+
+      const dead: number[] = [];
+      await enqueueJob(kit.system, 'test.sync', {}, { ...SYNC, maxAttempts: 1 });
+      const outcomes = await kit.drain(syncHandler(dead, { failFirst: true }));
+      expect(outcomes.map((o) => o.status)).toEqual(['dead', 'completed']);
+      expect(dead).toEqual([1, 2]);
+    });
+
+    it('recovering a stale job clears the request: the rerun starts from scratch', async () => {
+      const id = await enqueueJob(kit.system, 'test.sync', {}, SYNC);
+      await claimJobs(kit.db, { workerId: 'crashed', limit: 1, now: kit.clock.now() });
+      await enqueueJob(kit.system, 'test.sync', {}, SYNC);
+      kit.clock.advance(10 * MINUTE);
+      expect(await recoverStaleJobs(kit.db, kit.clock.now())).toBe(1);
+      const [row] = await kit.db.select().from(jobs).where(eq(jobs.id, id!));
+      expect(row).toMatchObject({ status: 'pending', rerunRequested: false });
+      expect(await kit.drain({ 'test.sync': async () => undefined })).toHaveLength(1);
+    });
+  });
+
   it('does not run jobs before run_at', async () => {
     await enqueueJob(kit.system, 'test.later', {}, { delayMs: 10 * MINUTE });
     expect(await kit.drain({ 'test.later': async () => undefined })).toHaveLength(0);

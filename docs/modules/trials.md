@@ -89,13 +89,26 @@ as `trial.self_evaluation_blocked`. Stakeholding staff are also denied the
 evaluator view of other teams' Discord channels (per-member deny overwrites).
 
 **Staff applicants.** Staff can read a sealed brief through the staff view, so:
-the trial's creator cannot apply; staff holding `canManageTrials` or
+the trial's creator cannot apply, nor can staff who changed its brief or rubric
+(`trials.editor_user_ids`); staff holding `canManageTrials` or
 `canEvaluateTrials` may apply once (audited `trial.staff_applied`) and cannot
 re-apply after withdrawing.
 
 **Sealed brief.** The brief and rubric are shown to competitors only once the
 trial is active. Non-competitors never see them through the member view.
-Recruitment shows the public `summary`.
+Recruitment shows the public `summary`. Past draft, it cannot be shortened
+below the minimum, so the card never goes blank.
+
+**Scheduled start.** `openRecruitment` refuses a `scheduledStartAt` that
+already passed. `assignTeams` returns `scheduledStart` (`scheduled`, `passed`
+or null) so the surface can prompt a manual start. A skipped auto-start is
+audited and alerts `canManageTrials` holders (`trial.attention`).
+
+**Discord re-syncs.** Provisioning and archive jobs are enqueued with
+`rerunIfRunning`: a withdrawal or late channel that lands while the job runs
+makes it run once more instead of being dropped. A reshuffle locks the old
+team rows before retiring them, so a channel id committed meanwhile is torn
+down, or the bot's callback finds the team gone and deletes the channel.
 
 **Adversarial secrecy.** `adversarialEnabled` and template `allowsAdversarial`
 appear only in views for holders of `canManageAdversarial`. Member views are

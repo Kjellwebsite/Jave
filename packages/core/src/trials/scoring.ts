@@ -38,7 +38,7 @@ export function weightedScore(
   let weighted = 0;
   let totalWeight = 0;
   for (const criterion of rubric) {
-    const score = scores[criterion.key];
+    const score = Object.hasOwn(scores, criterion.key) ? scores[criterion.key] : undefined;
     if (score === undefined) throw new RangeError(`missing score for ${criterion.key}`);
     if (!Number.isFinite(score) || score < SCORE_MIN || score > SCORE_MAX)
       throw new RangeError(`score out of range for ${criterion.key}`);

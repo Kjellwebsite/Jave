@@ -1,5 +1,5 @@
 {
-  "id": "17aa0605-b27e-458b-a124-ccc6632cfe20",
+  "id": "4a1bad0a-87ae-4c2c-901e-1e2b5718d97e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -3831,6 +3831,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "editor_user_ids": {
+          "name": "editor_user_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
         },
         "created_at": {
           "name": "created_at",
@@ -11556,6 +11563,13 @@
           "type": "varchar(200)",
           "primaryKey": false,
           "notNull": false
+        },
+        "rerun_requested": {
+          "name": "rerun_requested",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "created_at": {
           "name": "created_at",

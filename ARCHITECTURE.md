@@ -141,6 +141,10 @@ Postgres-backed (`jobs` table, `FOR UPDATE SKIP LOCKED`) — no Redis.
 
 - `enqueueJob(ctx, type, payload, { runAt, delayMs, dedupeKey, maxAttempts })`
 - at most one live job per `dedupeKey`
+- `rerunIfRunning` (with `dedupeKey`) for jobs that re-sync from current state:
+  a same-key enqueue while the job runs makes it run once more when it ends,
+  instead of being dropped; a pending job is row-locked until the caller
+  commits, so it cannot run before the change is visible
 - exponential backoff (10 s → 1 h cap), dead-letter after `maxAttempts`
 - `PermanentJobError` and non-retryable `JaveError`s dead-letter immediately
 - stale leases (worker crash) are recovered after 5 minutes

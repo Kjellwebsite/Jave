@@ -40,6 +40,9 @@ import { assertFacetKeys, loadTemplate } from './templates.service';
 import { type TrialSummaryView, toSummaryView } from './views.shared';
 
 /** Fields whose change alters the public recruitment card. */
+/** Fields only staff can read: whoever writes them never competes in the trial. */
+const SEALED_CONTENT_FIELDS: readonly string[] = ['brief', 'rubric'];
+
 const CARD_FIELDS: readonly string[] = [
   'title',
   'summary',
@@ -228,14 +231,29 @@ export async function updateTrial(
           [{ path: 'maxParticipants', message: 'below the current selection' }],
         );
     }
+    // Once recruitment is open, the summary is all the public card shows.
+    if (
+      trial.status !== 'draft' &&
+      patch.summary !== undefined &&
+      patch.summary.length < LIMITS.summaryMin
+    )
+      throw new ValidationError('A trial past draft needs its public summary.', [
+        { path: 'summary', message: `at least ${LIMITS.summaryMin} characters` },
+      ]);
     const changed = (Object.keys(patch) as (keyof typeof patch)[]).filter(
       (key) =>
         patch[key] !== undefined && JSON.stringify(patch[key]) !== JSON.stringify(trial[key]),
     );
     if (changed.length === 0) return toSummaryView(trial, t.clock.now());
+    const editor = actorUserId(t.actor);
+    const wroteContent = changed.some((field) => SEALED_CONTENT_FIELDS.includes(field));
+    const editorUserIds =
+      wroteContent && editor && !trial.editorUserIds.includes(editor)
+        ? [...trial.editorUserIds, editor]
+        : undefined;
     const [updated] = await t.db
       .update(trials)
-      .set(patch)
+      .set({ ...patch, ...(editorUserIds ? { editorUserIds } : {}) })
       .where(eq(trials.id, trialId))
       .returning();
     await recordAudit(t, {
@@ -301,6 +319,8 @@ export async function openRecruitment(
       ]);
     const recruitmentClosesAt = data.recruitmentClosesAt ?? trial.recruitmentClosesAt;
     assertFuture(t, recruitmentClosesAt, 'recruitmentClosesAt');
+    // A start that already passed would never fire: reschedule it or clear it first.
+    assertFuture(t, trial.scheduledStartAt, 'scheduledStartAt');
     assertScheduleOrder(recruitmentClosesAt, trial.scheduledStartAt);
     const [updated] = await t.db
       .update(trials)

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="JAVELIN role icon — Verified">
+<title>JAVELIN role icon — Verified</title>
+<defs>
+<linearGradient id="verified-light" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E8EAED"/></linearGradient>
+<linearGradient id="verified-shade" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#B8BDC3"/><stop offset="1" stop-color="#9CA2A9"/></linearGradient>
+</defs>
+<g opacity="0.65"><path d="M4 34 L12 26 L24 38 L24 54 Z M24 38 L52 10 L60 18 L24 54 Z" fill="none" stroke="#08090A" stroke-width="4.5" stroke-linejoin="round"/></g>
+<path d="M24 38 L52 10 L60 18 L24 54 Z" fill="url(#verified-shade)" stroke="url(#verified-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M4 34 L12 26 L24 38 L24 54 Z" fill="url(#verified-light)"/>
+</svg>

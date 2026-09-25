@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="JAVELIN role icon — Founder">
+<title>JAVELIN role icon — Founder</title>
+<defs>
+<linearGradient id="founder-light" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.4" stop-color="#DCE6EC"/><stop offset="0.7" stop-color="#ECE6D9"/><stop offset="1" stop-color="#E8EAED"/></linearGradient>
+<linearGradient id="founder-shade" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#737981"/><stop offset="1" stop-color="#3A3E44"/></linearGradient>
+</defs>
+<g opacity="0.65"><path d="M32 2 L32 62 L24 27 Z M21 32 L21 46 L3 60 Z M32 2 L40 27 L32 62 Z M43 32 L61 60 L43 46 Z" fill="none" stroke="#08090A" stroke-width="4.5" stroke-linejoin="round"/></g>
+<g opacity="0.75"><path d="M32 2 L32 62 L24 27 Z M21 32 L21 46 L3 60 Z M32 2 L40 27 L32 62 Z M43 32 L61 60 L43 46 Z" fill="none" stroke="#B8BDC3" stroke-width="3" stroke-linejoin="round"/></g>
+<path d="M32 2 L40 27 L32 62 Z" fill="url(#founder-shade)" stroke="url(#founder-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M43 32 L61 60 L43 46 Z" fill="url(#founder-shade)" stroke="url(#founder-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M32 2 L32 62 L24 27 Z" fill="url(#founder-light)"/>
+<path d="M21 32 L21 46 L3 60 Z" fill="url(#founder-light)"/>
+</svg>

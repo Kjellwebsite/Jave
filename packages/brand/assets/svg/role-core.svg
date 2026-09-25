@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="JAVELIN role icon — Core">
+<title>JAVELIN role icon — Core</title>
+<defs>
+<linearGradient id="core-light" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E8EAED"/></linearGradient>
+<linearGradient id="core-shade" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9CA2A9"/><stop offset="1" stop-color="#737981"/></linearGradient>
+</defs>
+<g opacity="0.65"><path d="M32 2 L32 62 L20 27 Z M32 2 L44 27 L32 62 Z" fill="none" stroke="#08090A" stroke-width="4.5" stroke-linejoin="round"/></g>
+<path d="M32 2 L44 27 L32 62 Z" fill="url(#core-shade)" stroke="url(#core-shade)" stroke-width="1" stroke-linejoin="round"/>
+<path d="M32 2 L32 62 L20 27 Z" fill="url(#core-light)"/>
+</svg>

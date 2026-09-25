@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="JAVELIN">
+<title>JAVELIN</title>
+<defs>
+<linearGradient id="favicon-tile" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#2A2D32"/><stop offset="1" stop-color="#111214"/></linearGradient>
+<linearGradient id="favicon-rim" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16"/><stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>
+<linearGradient id="favicon-emblem-light" x1="10" y1="2" x2="90" y2="98" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E8EAED"/></linearGradient>
+<linearGradient id="favicon-emblem-shade" x1="10" y1="2" x2="90" y2="98" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#B8BDC3"/><stop offset="1" stop-color="#737981"/></linearGradient>
+</defs>
+<rect width="32" height="32" rx="7" fill="url(#favicon-tile)"/>
+<rect x="0.5" y="0.5" width="31" height="31" rx="6.5" fill="none" stroke="url(#favicon-rim)" stroke-width="1"/>
+<g transform="translate(3.01 2.61) scale(0.259794)"><path d="M50 2 L50.78 42 L50 98 L49.22 42 Z" fill="url(#favicon-emblem-shade)"/><path d="M50 2 L56.5 42 L50 98 Z" fill="url(#favicon-emblem-shade)"/><path d="M57.8 50 L90 92 L57.8 64 Z" fill="url(#favicon-emblem-shade)"/><path d="M50 2 L50 98 L43.5 42 Z" fill="url(#favicon-emblem-light)"/><path d="M42.2 50 L42.2 64 L10 92 Z" fill="url(#favicon-emblem-light)"/></g>
+</svg>

@@ -30,6 +30,14 @@ export const DOMAIN_EVENTS = {
   'application.accepted': { description: 'An application was accepted.', external: true },
   'application.rejected': { description: 'An application was rejected.', external: false },
   'application.withdrawn': { description: 'An applicant withdrew.', external: false },
+  'application.reviewed': {
+    description: 'A reviewer recorded or updated a recommendation.',
+    external: false,
+  },
+  'application.interview_scheduled': {
+    description: 'An application interview was scheduled or moved.',
+    external: false,
+  },
 
   'verification.requested': { description: 'A verification was requested.', external: false },
   'verification.approved': { description: 'A verification was approved.', external: true },

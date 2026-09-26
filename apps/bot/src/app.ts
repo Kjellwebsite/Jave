@@ -10,7 +10,7 @@ import {
   Worker,
 } from '@jave/core';
 import type { Database } from '@jave/database';
-import type { Clock, CoreConfig, Logger, TtlCache } from '@jave/core';
+import type { ai, Clock, CoreConfig, Logger, TtlCache } from '@jave/core';
 import type { DiscordGateway } from './discord/gateway';
 import type { BotFeature } from './features/types';
 import type {
@@ -35,6 +35,8 @@ export interface BotAppOptions {
   features: BotFeature[];
   worker: { concurrency: number; pollMs: number };
   extraHealthChecks?: HealthCheck[];
+  /** AI provider for features that use JAVE AI (optional). */
+  ai?: ai.AiDeps;
 }
 
 export interface BotApp {
@@ -83,6 +85,7 @@ export function createBotApp(options: BotAppOptions): BotApp {
     config: options.config,
     discord: options.discord,
     gateway: options.gateway,
+    ai: options.ai,
     runJobsNow: async (ids) => {
       if (worker) await worker.runNow(ids);
     },

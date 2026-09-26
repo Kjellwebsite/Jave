@@ -31,7 +31,23 @@ export {
   createDefinitionSchema,
   revokeAchievementSchema,
   updateDefinitionSchema,
+  ACHIEVEMENT_CATEGORY_PATTERN,
+  ACHIEVEMENT_KEY_PATTERN,
+  DESCRIPTION_MAX,
+  DESCRIPTION_MIN,
+  MAX_ORDINAL,
+  REASON_MAX,
+  REASON_MIN,
+  SUMMARY_MAX,
+  SUMMARY_MIN,
+  TITLE_MAX,
+  TITLE_MIN,
 } from './schemas';
+export {
+  listPendingAchievementAwards,
+  pendingAwardsQuerySchema,
+  type PendingAwardItem,
+} from './pending.service';
 export {
   createAchievementDefinition,
   deleteAchievementDefinition,

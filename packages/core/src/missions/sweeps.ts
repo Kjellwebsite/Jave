@@ -6,7 +6,7 @@ import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
 import type { JobHandler, RecurringJob } from '../jobs/worker';
 import { notify } from '../notifications/notifications.service';
-import { scheduleMissionCardRefresh } from './discord-jobs';
+import { scheduleMissionCardRefresh, scheduleSlotsRefresh } from './discord-jobs';
 import {
   formatMissionNumber,
   hoursLeft,
@@ -48,7 +48,10 @@ const EXPIRY_COPY: Record<ExpiryReason, string> = {
 export async function expireAssignment(
   tx: ServiceContext,
   assignment: Pick<AssignmentRecord, 'id'>,
-  mission: Pick<MissionRecord, 'id' | 'number' | 'title'>,
+  mission: Pick<
+    MissionRecord,
+    'id' | 'number' | 'title' | 'announcementMessageId' | 'maxAssignees'
+  >,
   reason: ExpiryReason,
 ): Promise<boolean> {
   const stillOverdue =
@@ -74,6 +77,8 @@ export async function expireAssignment(
     subjectMemberId: expired.memberId,
     payload: { assignmentId: expired.id, reason },
   });
+  // An archive refreshes the card itself; a deadline expiry frees a slot.
+  if (reason === 'deadline') await scheduleSlotsRefresh(tx, mission);
   const recipients = await recipientUserIds(tx, [expired.memberId]);
   const userId = recipients.get(expired.memberId);
   if (userId) {

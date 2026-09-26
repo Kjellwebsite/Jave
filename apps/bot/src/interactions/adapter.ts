@@ -12,6 +12,7 @@ import {
   type StringSelectMenuInteraction,
   type User,
   type UserContextMenuCommandInteraction,
+  type UserSelectMenuInteraction,
 } from 'discord.js';
 import type {
   CommandOptions,
@@ -115,6 +116,8 @@ function kindOf(interaction: Interaction): InteractionKind | null {
   if (interaction.isAutocomplete()) return 'autocomplete';
   if (interaction.isButton()) return 'button';
   if (interaction.isStringSelectMenu()) return 'select';
+  // User select menus route like string selects; their values are Discord user ids.
+  if (interaction.isUserSelectMenu()) return 'select';
   if (interaction.isModalSubmit()) return 'modal';
   return null;
 }
@@ -126,8 +129,8 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
 
   const repliable = interaction.isRepliable() ? (interaction as RepliableInteraction) : null;
   const component =
-    interaction.isButton() || interaction.isStringSelectMenu()
-      ? (interaction as ButtonInteraction | StringSelectMenuInteraction)
+    interaction.isButton() || interaction.isStringSelectMenu() || interaction.isUserSelectMenu()
+      ? (interaction as ButtonInteraction | StringSelectMenuInteraction | UserSelectMenuInteraction)
       : null;
   const modal = interaction.isModalSubmit() ? (interaction as ModalSubmitInteraction) : null;
   const memberRoles = interaction.inCachedGuild()
@@ -157,7 +160,8 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
       interaction.isChatInputCommand() || interaction.isAutocomplete()
         ? commandOptions(interaction)
         : EMPTY_OPTIONS,
-    values: interaction.isStringSelectMenu() ? interaction.values : [],
+    values:
+      interaction.isStringSelectMenu() || interaction.isUserSelectMenu() ? interaction.values : [],
     modal: {
       text: (id) => modal?.fields.getTextInputValue(id) ?? '',
       select: (id) => {

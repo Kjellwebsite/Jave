@@ -14,6 +14,7 @@ import { publishEvent } from '../events/bus';
 import { notify } from '../notifications/notifications.service';
 import { actorMemberId, actorUserId } from '../permissions/actor';
 import { authorize } from '../permissions/authorize';
+import { scheduleSlotsRefresh } from './discord-jobs';
 import {
   type AssignmentStatus,
   formatMissionNumber,
@@ -233,6 +234,7 @@ export async function assignMission(
       });
     }
     if (result.assigned.length > 0) {
+      await scheduleSlotsRefresh(tx, locked);
       await recordAudit(tx, {
         action: 'mission.assigned',
         targetType: 'mission',
@@ -324,6 +326,7 @@ export async function selfAssignMission(
         selfAssigned: true,
       },
     });
+    await scheduleSlotsRefresh(tx, locked);
     return assignment;
   });
 }
@@ -390,6 +393,7 @@ export async function abandonMission(
       subjectMemberId: actor.memberId,
       payload: { assignmentId, teamKey: row.teamKey },
     });
+    await scheduleSlotsRefresh(tx, mission);
     return row;
   });
 }

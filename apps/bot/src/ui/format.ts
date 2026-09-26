@@ -47,6 +47,18 @@ export function spaced(text: string): string {
   return text.toUpperCase();
 }
 
+/**
+ * Untrusted text for surfaces Discord never renders as markdown and never
+ * resolves mentions in (select option labels and descriptions, button
+ * labels, autocomplete choices, modal titles and prefilled values): one
+ * line, collapsed whitespace, clipped. Escaping there would show literal
+ * backslashes, so use userText() everywhere else.
+ */
+export function plainText(text: string | null | undefined, max: number): string {
+  if (!text) return '';
+  return clip(text.replace(/\s+/g, ' ').trim(), max);
+}
+
 /** Monospace aligned rows for technical readouts (inside a code block). */
 export function alignRows(rows: [string, string][], gap = 2): string {
   const width = Math.max(...rows.map(([label]) => label.length)) + gap;

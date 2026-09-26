@@ -108,7 +108,11 @@ export async function scheduleMissionAnnouncement(
   return id !== null;
 }
 
-/** Queue a card refresh when the mission has a posted card. */
+/**
+ * Queue a card refresh when the mission has a posted card. The refresh
+ * re-renders from current state, so a change made while a refresh is
+ * already running asks it to run once more instead of being dropped.
+ */
 export async function scheduleMissionCardRefresh(
   ctx: ServiceContext,
   mission: Pick<MissionRecord, 'id' | 'announcementMessageId'>,
@@ -117,8 +121,21 @@ export async function scheduleMissionCardRefresh(
   const payload: MissionRefreshCardPayload = { missionId: mission.id };
   const id = await enqueueJob(ctx, DISCORD_MISSION_REFRESH_CARD_JOB, payload, {
     dedupeKey: `mission-card:${mission.id}`,
+    rerunIfRunning: true,
   });
   return id !== null;
+}
+
+/**
+ * Queue a card refresh after the roster changed. Only capped missions show
+ * the slots left (and hide ACCEPT when full), so uncapped ones skip it.
+ */
+export async function scheduleSlotsRefresh(
+  ctx: ServiceContext,
+  mission: Pick<MissionRecord, 'id' | 'announcementMessageId' | 'maxAssignees'>,
+): Promise<boolean> {
+  if (mission.maxAssignees === null) return false;
+  return scheduleMissionCardRefresh(ctx, mission);
 }
 
 export interface MissionCard {

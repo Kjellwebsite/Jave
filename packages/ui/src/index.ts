@@ -36,3 +36,8 @@ export * from './components/pagination';
 export * from './components/feedback';
 export * from './components/layout';
 export * from './components/emblem';
+
+// Data visualization
+export * from './lib/chart';
+export * from './components/data-bars';
+export * from './components/charts';

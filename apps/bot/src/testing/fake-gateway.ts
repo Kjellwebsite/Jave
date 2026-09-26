@@ -1,13 +1,32 @@
+import { PermissionFlagsBits } from 'discord.js';
 import {
+  type BotMemberSnapshot,
+  type ChannelAccessSnapshot,
+  type ChannelKind,
   DiscordActionError,
   type DiscordGateway,
+  type DiscordPermission,
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
   type PermissionOverwriteSpec,
+  type RoleSnapshot,
   type ScheduledEventSpec,
   type SentMessage,
 } from '../discord/gateway';
+import { REQUIRED_PERMISSIONS } from '../discord/permissions';
+
+/** The fake bot's own user id (matches the harness client id). */
+export const FAKE_BOT_USER_ID = '100000000000000888';
+
+export interface FakeGuildChannel {
+  name: string;
+  kind: ChannelKind;
+  /** The bot cannot see the channel at all. */
+  hidden?: boolean;
+  /** Permission overwrites denying the bot these flags in this channel. */
+  denied?: DiscordPermission[];
+}
 
 export interface GatewayCall {
   method: string;
@@ -234,5 +253,67 @@ export class FakeDiscordGateway implements DiscordGateway {
     this.record('cancelScheduledEvent', eventId, reason);
     const existing = this.scheduledEvents.get(eventId);
     if (existing) existing.cancelled = true;
+  }
+
+  // Introspection state. Defaults describe a correctly installed bot:
+  // exactly the required permissions, no Administrator, role near the top.
+  readonly botPermissions = new Set<DiscordPermission>(
+    Object.keys(REQUIRED_PERMISSIONS) as DiscordPermission[],
+  );
+  botAdministrator = false;
+  botHighestRolePosition = 50;
+  readonly roles = new Map<string, RoleSnapshot>();
+  /** Guild channels visible to introspection (created text channels count as text). */
+  readonly guildChannels = new Map<string, FakeGuildChannel>();
+
+  addRole(id: string, name: string, position: number, managed = false): RoleSnapshot {
+    const role = { id, name, position, managed, everyone: false };
+    this.roles.set(id, role);
+    return role;
+  }
+
+  addGuildChannel(id: string, channel: FakeGuildChannel): void {
+    this.guildChannels.set(id, channel);
+  }
+
+  private effectivePermissions(denied: readonly DiscordPermission[] = []): DiscordPermission[] {
+    if (this.botAdministrator) return Object.keys(PermissionFlagsBits) as DiscordPermission[];
+    return [...this.botPermissions].filter((p) => !denied.includes(p));
+  }
+
+  async botMember(): Promise<BotMemberSnapshot> {
+    this.record('botMember');
+    return {
+      userId: FAKE_BOT_USER_ID,
+      permissions: this.effectivePermissions(),
+      administrator: this.botAdministrator,
+      highestRolePosition: this.botHighestRolePosition,
+    };
+  }
+
+  async botPermissionsIn(channelId: string): Promise<ChannelAccessSnapshot | null> {
+    this.record('botPermissionsIn', channelId);
+    const created = this.channels.get(channelId);
+    const channel: FakeGuildChannel | undefined =
+      this.guildChannels.get(channelId) ??
+      (created ? { name: created.name, kind: created.thread ? 'thread' : 'text' } : undefined);
+    if (!channel) return null;
+    if (channel.hidden && !this.botAdministrator) {
+      return { channelId, name: null, kind: 'other', visible: false, permissions: [] };
+    }
+    const permissions = this.effectivePermissions(channel.denied);
+    return {
+      channelId,
+      name: channel.name,
+      kind: channel.kind,
+      visible: permissions.includes('ViewChannel'),
+      permissions,
+    };
+  }
+
+  async listRoles(): Promise<RoleSnapshot[]> {
+    this.record('listRoles');
+    const everyone = { id: this.guildId, name: '@everyone', position: 0, managed: false };
+    return [{ ...everyone, everyone: true }, ...[...this.roles.values()].map((r) => ({ ...r }))];
   }
 }

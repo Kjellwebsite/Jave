@@ -5,6 +5,7 @@ import { ValidationError } from '../kernel/errors';
 import { recordAudit } from '../audit/audit.service';
 import { authorize } from '../permissions/authorize';
 import { publishEvent } from '../events/bus';
+import { scheduleRoleResyncForAll } from '../identity/role-resync';
 import {
   type AllSettings,
   SETTINGS_SECTIONS,
@@ -44,6 +45,20 @@ export async function getAllSettings(ctx: ServiceContext): Promise<AllSettings> 
     SETTINGS_SECTIONS.map(async (section) => [section, await getSettings(ctx, section)] as const),
   );
   return Object.fromEntries(entries) as AllSettings;
+}
+
+/**
+ * A new JAVE → Discord role mapping (or sync switched back on) must reach
+ * members whose JAVE roles did not change, so every present member is re-synced.
+ */
+function needsRoleResync(
+  section: SettingsSection,
+  changes: Record<string, unknown>,
+  next: unknown,
+) {
+  if (section !== 'roles') return false;
+  const roles = next as Settings<'roles'>;
+  return 'discordRoleIds' in changes || ('syncToDiscord' in changes && roles.syncToDiscord);
 }
 
 function diff(before: Record<string, unknown>, after: Record<string, unknown>) {
@@ -114,5 +129,6 @@ export async function updateSettings<S extends SettingsSection>(
     aggregateId: section,
     payload: { section, fields: Object.keys(changes) },
   });
+  if (needsRoleResync(section, changes, next)) await scheduleRoleResyncForAll(ctx);
   return next;
 }

@@ -502,7 +502,7 @@ export async function executeCase(ctx: ServiceContext, spec: CaseSpec): Promise<
         tx,
         DISCORD_ROLE_SYNC_JOB,
         { memberId: spec.target.memberId },
-        { dedupeKey: `roles-sync:${spec.target.memberId}` },
+        { dedupeKey: `roles-sync:${spec.target.memberId}`, rerunIfRunning: true },
       );
     }
 

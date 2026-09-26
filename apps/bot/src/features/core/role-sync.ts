@@ -4,6 +4,7 @@ import {
   activeRoles,
   getSettings,
   type JobHandler,
+  type MemberStanding,
   type OrgRole,
   PermanentJobError,
 } from '@jave/core';
@@ -35,6 +36,13 @@ export function planRoleSync(
   };
 }
 
+/**
+ * Standings under which a member holds none of the JAVE-managed Discord
+ * roles. Quarantine and ban strip them; release and unban set the standing
+ * back and enqueue a sync, which restores them from the member's JAVE roles.
+ */
+export const STRIPPED_STANDINGS: readonly MemberStanding[] = ['quarantined', 'banned'];
+
 export function roleSyncHandler(services: BotServices): JobHandler {
   return async (ctx, payload) => {
     const memberId = typeof payload.memberId === 'string' ? payload.memberId : null;
@@ -45,7 +53,7 @@ export function roleSyncHandler(services: BotServices): JobHandler {
       .select({
         discordId: users.discordId,
         standing: members.standing,
-        guildStatus: members.guildStatus,
+        deletedAt: members.deletedAt,
       })
       .from(members)
       .innerJoin(users, eq(users.id, members.userId))
@@ -53,7 +61,8 @@ export function roleSyncHandler(services: BotServices): JobHandler {
     if (!row) throw new PermanentJobError(`member ${memberId} not found`);
     const discordMember = await services.gateway.fetchMember(row.discordId);
     if (!discordMember) return { skipped: 'not in guild' };
-    const desired = row.standing === 'banned' ? [] : await activeRoles(ctx, memberId);
+    const stripped = STRIPPED_STANDINGS.includes(row.standing) || row.deletedAt !== null;
+    const desired = stripped ? [] : await activeRoles(ctx, memberId);
     const plan = planRoleSync(desired, settings.discordRoleIds, discordMember.roleIds);
     try {
       if (plan.add.length)

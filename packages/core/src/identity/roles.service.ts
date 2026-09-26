@@ -54,7 +54,7 @@ async function scheduleSync(ctx: ServiceContext, memberId: string) {
     ctx,
     DISCORD_ROLE_SYNC_JOB,
     { memberId },
-    { dedupeKey: `roles-sync:${memberId}` },
+    { dedupeKey: `roles-sync:${memberId}`, rerunIfRunning: true },
   );
 }
 

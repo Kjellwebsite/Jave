@@ -4,6 +4,7 @@ import type { CommandDefinition } from '../../interactions/types';
 import { panel } from '../../ui/components';
 import { alignRows } from '../../ui/format';
 import { COLORS } from '../../ui/theme';
+import { runSetup } from './setup';
 
 const MARK: Record<HealthState, string> = { ok: '✓', degraded: '▲', down: '✕', disabled: '—' };
 const LABELS: Record<string, string> = {
@@ -22,10 +23,20 @@ export const statusCommand: CommandDefinition = {
     .addSubcommand((s) =>
       s.setName('status').setDescription('System status: Discord, database, AI, webhooks, queue.'),
     )
+    .addSubcommand((s) =>
+      s
+        .setName('setup')
+        .setDescription('Readiness check: permissions, role hierarchy, mappings, channels.'),
+    )
     .toJSON(),
-  help: { category: 'system', summary: 'System diagnostics.', usage: '/jave status' },
+  help: {
+    category: 'system',
+    summary: 'System diagnostics and setup.',
+    usage: '/jave status | setup',
+  },
   defer: 'ephemeral',
   async execute(h) {
+    if (h.interaction.options.subcommand() === 'setup') return runSetup(h);
     const report = await h.services.health();
     const detailed = can(h.ctx, 'canViewSystemStatus');
     const rows: [string, string][] = report.checks.map((check) => {

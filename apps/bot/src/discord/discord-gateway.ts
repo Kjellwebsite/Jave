@@ -3,6 +3,8 @@ import {
   ChannelType,
   type Client,
   DiscordAPIError,
+  DiscordjsError,
+  DiscordjsErrorCodes,
   GuildScheduledEventEntityType,
   GuildScheduledEventPrivacyLevel,
   GuildScheduledEventStatus,
@@ -14,15 +16,19 @@ import {
   type ThreadChannel,
 } from 'discord.js';
 import {
+  type BotMemberSnapshot,
+  type ChannelAccessSnapshot,
   DiscordActionError,
   type DiscordGateway,
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
   type PermissionOverwriteSpec,
+  type RoleSnapshot,
   type ScheduledEventSpec,
   type SentMessage,
 } from './gateway';
+import { channelKind, permissionNames } from './introspection';
 
 /** Discord error codes that retrying will never fix. */
 const PERMANENT_CODES = new Set<number>([
@@ -397,5 +403,55 @@ export class DiscordJsGateway implements DiscordGateway {
         reason,
       });
     });
+  }
+
+  async botMember(): Promise<BotMemberSnapshot> {
+    const guild = await this.guild();
+    const me = await attempt('fetch bot member', () => guild.members.fetchMe());
+    return {
+      userId: me.id,
+      permissions: permissionNames(me.permissions),
+      administrator: me.permissions.has(PermissionFlagsBits.Administrator),
+      highestRolePosition: me.roles.highest.position,
+    };
+  }
+
+  async botPermissionsIn(channelId: string): Promise<ChannelAccessSnapshot | null> {
+    const guild = await this.guild();
+    let channel;
+    try {
+      channel = await guild.channels.fetch(channelId);
+    } catch (error) {
+      if (error instanceof DiscordjsError && error.code === DiscordjsErrorCodes.GuildChannelUnowned)
+        return null;
+      if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownChannel)
+        return null;
+      if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.MissingAccess)
+        return { channelId, name: null, kind: 'other', visible: false, permissions: [] };
+      return normalize(error, 'fetch channel');
+    }
+    if (!channel) return null;
+    const me = await attempt('fetch bot member', () => guild.members.fetchMe());
+    const permissions = channel.permissionsFor(me);
+    const visible = permissions.has(PermissionFlagsBits.ViewChannel);
+    return {
+      channelId: channel.id,
+      name: visible ? channel.name : null,
+      kind: channelKind(channel.type),
+      visible,
+      permissions: permissionNames(permissions),
+    };
+  }
+
+  async listRoles(): Promise<RoleSnapshot[]> {
+    const guild = await this.guild();
+    const roles = await attempt('list roles', () => guild.roles.fetch());
+    return roles.map((role) => ({
+      id: role.id,
+      name: role.name,
+      position: role.position,
+      managed: role.managed,
+      everyone: role.id === guild.id,
+    }));
   }
 }

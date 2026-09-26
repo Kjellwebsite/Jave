@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { auditLogs } from '@jave/database';
+import { auditLogs, jobs, members } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import { ForbiddenError, ValidationError } from '../kernel/errors';
 import { defaultSettings, SETTINGS_SECTIONS } from './schemas';
 import { getAllSettings, getSettings, updateSettings } from './settings.service';
+import { DISCORD_ROLE_SYNC_JOB } from '../identity/users.service';
 
 describe('settings', () => {
   let kit: TestKit;
@@ -48,6 +49,51 @@ describe('settings', () => {
         links: { mode: 'allowlist', allowlist: ['javascript:alert(1)'], denylist: [] },
       }),
     ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it('BREAK: refuses one Discord role for two JAVE roles, or a managed quarantine role', async () => {
+    const founder = kit.as(await kit.member({ roles: ['founder'] }));
+    await expect(
+      updateSettings(founder, 'roles', {
+        discordRoleIds: { member: '500000000000000001', verified: '500000000000000001' },
+      }),
+    ).rejects.toThrow(/already mapped to MEMBER/);
+    await updateSettings(founder, 'roles', { discordRoleIds: { trial: '500000000000000002' } });
+    await expect(
+      updateSettings(founder, 'roles', { quarantineRoleId: '500000000000000002' }),
+    ).rejects.toThrow(/quarantine needs its own role/);
+    await expect(
+      updateSettings(founder, 'roles', { quarantineRoleId: '500000000000000003' }),
+    ).resolves.toMatchObject({ quarantineRoleId: '500000000000000003' });
+  });
+
+  it('re-syncs every present member when the role mapping changes, in the background', async () => {
+    const founder = kit.as(await kit.member({ roles: ['founder'] }));
+    const present = await kit.member();
+    const departed = await kit.member();
+    await kit.db
+      .update(members)
+      .set({ guildStatus: 'departed' })
+      .where(eq(members.id, departed.memberId!));
+    await kit.db.delete(jobs);
+
+    await updateSettings(founder, 'roles', { discordRoleIds: { member: '500000000000000001' } });
+    const queued = await kit.db.select().from(jobs).where(eq(jobs.type, DISCORD_ROLE_SYNC_JOB));
+    const memberIds = queued.map((job) => job.payload.memberId);
+    expect(memberIds).toContain(present.memberId);
+    expect(memberIds).not.toContain(departed.memberId);
+    expect(founder.effects.jobIds).not.toEqual(expect.arrayContaining(queued.map((j) => j.id)));
+
+    await kit.db.delete(jobs);
+    await updateSettings(founder, 'roles', { syncToDiscord: false });
+    await updateSettings(founder, 'tickets', { maxOpenPerUser: 4 });
+    expect(await kit.db.select().from(jobs).where(eq(jobs.type, DISCORD_ROLE_SYNC_JOB))).toEqual(
+      [],
+    );
+    await updateSettings(founder, 'roles', { syncToDiscord: true });
+    expect(
+      (await kit.db.select().from(jobs).where(eq(jobs.type, DISCORD_ROLE_SYNC_JOB))).length,
+    ).toBeGreaterThan(0);
   });
 
   it('BREAK: operations can view but not change settings', async () => {

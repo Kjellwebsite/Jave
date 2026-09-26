@@ -8,9 +8,11 @@ import { onboardingComponents, onboardingModals, startCommand } from './onboardi
 import { profileCommand, profileComponents, profileContextCommand } from './profile';
 import { rankCommand } from './rank';
 import { roleSyncHandler } from './role-sync';
+import { settingsCommand, settingsComponents } from './settings-command';
+import { setupComponents } from './setup';
 import { statusCommand } from './status';
 
-/** Identity, onboarding, ranks, help and diagnostics. */
+/** Identity, onboarding, ranks, help, diagnostics, setup and settings. */
 export function coreFeature(catalog: () => readonly CommandDefinition[]): BotFeature {
   return {
     name: 'core',
@@ -21,8 +23,9 @@ export function coreFeature(catalog: () => readonly CommandDefinition[]): BotFea
       profileContextCommand,
       rankCommand,
       statusCommand,
+      settingsCommand,
     ],
-    components: [onboardingComponents, profileComponents],
+    components: [onboardingComponents, profileComponents, settingsComponents, setupComponents],
     modals: [onboardingModals],
     jobHandlers: (services) => ({
       [DISCORD_ROLE_SYNC_JOB]: roleSyncHandler(services),

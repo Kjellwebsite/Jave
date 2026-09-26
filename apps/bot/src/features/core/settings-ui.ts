@@ -1,0 +1,90 @@
+import {
+  type APIChannelSelectComponent,
+  type APIRoleSelectComponent,
+  ChannelType,
+  ComponentType,
+  SelectMenuDefaultValueType,
+} from 'discord.js';
+import type { HandlerContext, ReplyPayload } from '../../interactions/types';
+import { LIMITS } from '../../ui/theme';
+
+/** Custom id namespaces of the settings and setup controls. */
+export const SETTINGS_NS = 'settings';
+export const SETUP_NS = 'setup';
+
+/** Placeholders are capped by Discord at 150 characters. */
+const PLACEHOLDER_MAX = 150;
+
+const TEXT_CHANNEL_TYPES = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
+
+/** Native Discord channel picker, filtered to the kinds the setting accepts. */
+export function channelSelect(
+  customId: string,
+  placeholder: string,
+  options: { kind: 'text' | 'category'; current?: string },
+): APIChannelSelectComponent {
+  return {
+    type: ComponentType.ChannelSelect,
+    custom_id: customId,
+    placeholder: placeholder.slice(0, PLACEHOLDER_MAX),
+    channel_types: options.kind === 'category' ? [ChannelType.GuildCategory] : TEXT_CHANNEL_TYPES,
+    min_values: 1,
+    max_values: 1,
+    ...(options.current && {
+      default_values: [{ id: options.current, type: SelectMenuDefaultValueType.Channel }],
+    }),
+  };
+}
+
+/** Native Discord role picker. */
+export function roleSelect(
+  customId: string,
+  placeholder: string,
+  current?: string,
+): APIRoleSelectComponent {
+  return {
+    type: ComponentType.RoleSelect,
+    custom_id: customId,
+    placeholder: placeholder.slice(0, PLACEHOLDER_MAX),
+    min_values: 1,
+    max_values: 1,
+    ...(current && { default_values: [{ id: current, type: SelectMenuDefaultValueType.Role }] }),
+  };
+}
+
+/**
+ * Join lines into one embed field value without cutting a line in half: the
+ * tail is summarized as "… N more".
+ */
+export function fitLines(lines: readonly string[], max: number = LIMITS.fieldValue): string {
+  const kept: string[] = [];
+  let length = 0;
+  for (const [index, line] of lines.entries()) {
+    const remaining = lines.length - index;
+    const overflow = `… ${remaining} more`;
+    const next = length + line.length + (kept.length ? 1 : 0);
+    const reserve = remaining > 1 ? overflow.length + 1 : 0;
+    if (next + reserve > max) {
+      kept.push(overflow);
+      break;
+    }
+    kept.push(line);
+    length = next;
+  }
+  return kept.join('\n');
+}
+
+/**
+ * Show an ephemeral panel: commands reply with it; buttons and selects replace
+ * the message they are attached to (after a deferUpdate, through editReply).
+ */
+export async function showPanel(h: HandlerContext, payload: ReplyPayload): Promise<void> {
+  const { interaction } = h;
+  if (interaction.kind !== 'button' && interaction.kind !== 'select') {
+    await h.respond({ ...payload, ephemeral: true });
+  } else if (interaction.deferred) {
+    await interaction.editReply(payload);
+  } else {
+    await interaction.update(payload);
+  }
+}

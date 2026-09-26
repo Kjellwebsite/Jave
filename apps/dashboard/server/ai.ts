@@ -39,6 +39,8 @@ export interface ProviderStatus {
 export const PROVIDER_STATUS_CACHE_MS = 60_000;
 /** Page renders never wait longer than this for the provider's health probe. */
 export const PROVIDER_STATUS_TIMEOUT_MS = 4000;
+const TIMED_OUT_DETAIL = 'Health check timed out.';
+const FAILED_DETAIL = 'Health check failed.';
 
 const INTEGRATIONS_KEY = Symbol.for('jave.dashboard.integrations');
 const STATUS_KEY = Symbol.for('jave.dashboard.ai-status');
@@ -93,22 +95,33 @@ export function getAiDeps(): ai.AiDeps {
   return getIntegrations().ai;
 }
 
-async function probe(provider: AIProvider, now: () => Date): Promise<ProviderStatus> {
+/**
+ * One bounded reachability probe: `disabled` for the disabled provider
+ * (never probed), otherwise `ok`/`down` from `provider.health()`. A hanging
+ * or throwing probe reads as down with a generic detail (provider errors can
+ * carry upstream text; it is never shown).
+ */
+export async function probeProvider(
+  provider: AIProvider,
+  now: () => Date,
+  timeoutMs: number = PROVIDER_STATUS_TIMEOUT_MS,
+): Promise<ProviderStatus> {
   const base = { provider: provider.name, model: provider.defaultModel };
   if (provider.name === DISABLED_PROVIDER_NAME) {
     return { ...base, state: 'disabled', detail: 'AI_PROVIDER=disabled', checkedAt: now() };
   }
   let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), timeoutMs);
+  });
   try {
-    const health = await Promise.race([
-      provider.health(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('timed out')), PROVIDER_STATUS_TIMEOUT_MS);
-      }),
-    ]);
+    const health = await Promise.race([provider.health(), timeout]);
+    if (health === 'timeout') {
+      return { ...base, state: 'down', detail: TIMED_OUT_DETAIL, checkedAt: now() };
+    }
     return { ...base, state: health.ok ? 'ok' : 'down', detail: health.detail, checkedAt: now() };
   } catch {
-    return { ...base, state: 'down', detail: 'Health check timed out.', checkedAt: now() };
+    return { ...base, state: 'down', detail: FAILED_DETAIL, checkedAt: now() };
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -120,7 +133,7 @@ export function getProviderStatus(now: () => Date = () => new Date()): Promise<P
   const cached = host[STATUS_KEY];
   const at = now().getTime();
   if (cached && at - cached.at < PROVIDER_STATUS_CACHE_MS) return cached.status;
-  const status = probe(getIntegrations().ai.provider, now);
+  const status = probeProvider(getIntegrations().ai.provider, now);
   host[STATUS_KEY] = { at, status };
   return status;
 }

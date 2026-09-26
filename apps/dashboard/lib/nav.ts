@@ -1,6 +1,8 @@
 import {
   Bell,
   ChartNoAxesColumn,
+  Cpu,
+  FlaskConical,
   LayoutGrid,
   type LucideIcon,
   ScrollText,
@@ -41,7 +43,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
   { label: 'OPERATIONS', items: [] },
   { label: 'SUPPORT & SAFETY', items: [] },
-  { label: 'INTELLIGENCE', items: [] },
+  {
+    label: 'INTELLIGENCE',
+    items: [
+      { href: '/ai', label: 'JAVE AI', icon: Cpu, capability: 'canUseAI' },
+      { href: '/research', label: 'Research', icon: FlaskConical, capability: 'canViewMembers' },
+    ],
+  },
   {
     label: 'SYSTEM',
     items: [

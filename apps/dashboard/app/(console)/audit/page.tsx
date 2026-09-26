@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ScrollText } from 'lucide-react';
-import { auditQuerySchema, listAuditLogs } from '@jave/core';
+import { listAuditLogs } from '@jave/core';
 import {
   Button,
   buttonStyles,
@@ -18,6 +18,11 @@ import {
 import { AuditResultBadge } from '@/components/audit/audit-result-badge';
 import { NextLink } from '@/components/next-link';
 import { RestrictedPage } from '@/components/restricted-page';
+import {
+  AUDIT_FILTER_KEYS,
+  describeRejectedFilters,
+  parseAuditFilters,
+} from '@/lib/audit-filters';
 import { formatAuditContext, formatAuditTarget } from '@/lib/audit-view';
 import { firstParam, offsetParam, type SearchParams, toQueryString } from '@/lib/search-params';
 import { formatTimestamp } from '@/lib/time';
@@ -29,17 +34,6 @@ export const metadata: Metadata = { title: 'Audit log' };
 
 const PAGE_SIZE = 50;
 const ROW_GRID = 'md:grid-cols-[132px_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_96px]';
-const FILTER_KEYS = [
-  'action',
-  'result',
-  'targetType',
-  'targetId',
-  'actor',
-  'since',
-  'until',
-] as const;
-const DAY_END_SUFFIX = 'T23:59:59.999Z';
-const DAY_START_SUFFIX = 'T00:00:00.000Z';
 
 const RESULT_OPTIONS = [
   { value: 'success', label: 'Success' },
@@ -51,32 +45,23 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   const { ctx } = await requireConsoleContext();
   const params = await searchParams;
   const raw = Object.fromEntries(
-    FILTER_KEYS.map((key) => [key, firstParam(params[key])?.trim() || undefined]),
+    AUDIT_FILTER_KEYS.map((key) => [key, firstParam(params[key])?.trim() || undefined]),
   );
   const offset = offsetParam(params.offset);
+  // Dates are days in the viewer's time zone — the zone every timestamp below is shown in.
+  const viewer = await loadViewer(ctx);
+  const filters = parseAuditFilters(raw, viewer.timeZone);
+  const rejectedNotice = describeRejectedFilters(filters);
 
-  const parsed = auditQuerySchema.safeParse({
-    action: raw.action,
-    result: raw.result,
-    targetType: raw.targetType,
-    targetId: raw.targetId,
-    actorUserId: raw.actor,
-    since: raw.since ? `${raw.since}${DAY_START_SUFFIX}` : undefined,
-    until: raw.until ? `${raw.until}${DAY_END_SUFFIX}` : undefined,
-    limit: PAGE_SIZE,
-    offset,
-  });
-  const invalidFilter = parsed.success
-    ? null
-    : (parsed.error.issues[0]?.path.join('.') ?? 'filter');
-  const query = parsed.success ? parsed.data : { limit: PAGE_SIZE, offset };
-
-  const result = await guarded(() => listAuditLogs(ctx, query));
+  const result = await guarded(() =>
+    listAuditLogs(ctx, { ...filters.query, limit: PAGE_SIZE, offset }),
+  );
   if (!result.ok)
     return <RestrictedPage eyebrow="SYSTEM" title="Audit log" capability="canViewAuditLogs" />;
   const page = result.value;
-  const viewer = await loadViewer(ctx);
-  const filtered = FILTER_KEYS.some((key) => raw[key]);
+  const filtered = Object.keys(filters.applied).length > 0;
+  const submitted = AUDIT_FILTER_KEYS.some((key) => raw[key]);
+  const datesApplied = Boolean(filters.applied.since || filters.applied.until);
 
   return (
     <div className="space-y-8">
@@ -147,21 +132,28 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
               aria-label="To date"
               mono
             />
-            {raw.actor ? <input type="hidden" name="actor" value={raw.actor} /> : null}
+            {filters.applied.actor ? (
+              <input type="hidden" name="actor" value={filters.applied.actor} />
+            ) : null}
             <div className="col-span-2 flex gap-2 md:col-span-1">
               <Button type="submit" variant="primary" className="flex-1 xl:flex-none">
                 Apply
               </Button>
-              {filtered ? (
+              {submitted ? (
                 <Link href="/audit" className={buttonStyles({ variant: 'ghost' })}>
                   Reset
                 </Link>
               ) : null}
             </div>
           </Toolbar>
-          {invalidFilter ? (
-            <Callout tone="warning" className="mt-3">
-              The {invalidFilter} filter is not valid and was ignored.
+          {datesApplied ? (
+            <p className="mt-3 text-small text-fg-subtle">
+              Dates are whole days in your time zone, <Mono>{viewer.timeZone}</Mono>.
+            </p>
+          ) : null}
+          {rejectedNotice ? (
+            <Callout tone="warning" role="note" className="mt-3">
+              {rejectedNotice}
             </Callout>
           ) : null}
         </form>
@@ -280,7 +272,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
               total={page.total}
               linkComponent={NextLink}
               hrefForOffset={(next) =>
-                `/audit${toQueryString({ ...raw, offset: next || undefined })}`
+                `/audit${toQueryString({ ...filters.applied, offset: next || undefined })}`
               }
             />
           </div>

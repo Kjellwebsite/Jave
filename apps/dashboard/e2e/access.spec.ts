@@ -72,9 +72,9 @@ test.describe('access and security', () => {
     }
   });
 
-  test('BREAK: a forged session cookie is not a session', async ({ page, context }) => {
+  test('BREAK: a forged session cookie is not a session', async ({ page, context, baseURL }) => {
     await context.addCookies([
-      { name: 'jave_session', value: 'A'.repeat(43), url: 'http://localhost:3107' },
+      { name: 'jave_session', value: 'A'.repeat(43), url: baseURL! },
     ]);
     await page.goto('/overview');
     await expect(page).toHaveURL(/\/login/);
@@ -119,6 +119,25 @@ test.describe('access and security', () => {
     await expect(page.getByText('canViewAuditLogs')).toBeVisible();
   });
 
+  test('BREAK: a member sees neither moderation standing nor staff-only profiles in the directory', async ({
+    page,
+  }) => {
+    await signInAs(page, 'member');
+    // The standing filter is staff-only: here it is ignored, not applied.
+    await page.goto('/members?standing=restricted');
+    const rows = page.getByRole('table', { name: 'Members' }).locator('tbody tr');
+    const ayla = rows.filter({ hasText: 'Ayla Moreau' });
+    await expect(ayla).toHaveCount(1);
+    await expect(ayla).not.toContainText(/restricted/i);
+    await expect(rows.filter({ hasText: 'Mara Voss' })).toHaveCount(1);
+    await expect(page.getByRole('combobox', { name: 'Standing' })).toHaveCount(0);
+    await expect(page.getByText(/\d+ matching/)).toHaveCount(0);
+    // A staff-only profile is not listed to someone who could not open it.
+    await expect(rows.filter({ hasText: 'Sol Arden' })).toHaveCount(0);
+    await page.goto('/members?q=Sol');
+    await expect(page.getByText('NO MATCHES')).toBeVisible();
+  });
+
   test('a member cannot see evaluator or role controls on another member', async ({ page }) => {
     await signInAs(page, 'member');
     await page.goto('/members?q=Mara');
@@ -139,7 +158,7 @@ test.describe('access and security', () => {
     await expect(page.getByRole('button', { name: /Save/ })).toHaveCount(0);
   });
 
-  test('signing out revokes the session', async ({ page, context }) => {
+  test('signing out revokes the session', async ({ page, context, baseURL }) => {
     await signInAs(page, 'verified');
     const before = (await context.cookies()).find((cookie) => cookie.name === 'jave_session');
     expect(before?.httpOnly).toBe(true);
@@ -148,7 +167,7 @@ test.describe('access and security', () => {
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
     await page.waitForURL('**/login');
     await context.addCookies([
-      { name: 'jave_session', value: before!.value, url: 'http://localhost:3107' },
+      { name: 'jave_session', value: before!.value, url: baseURL! },
     ]);
     await page.goto('/overview');
     await expect(page).toHaveURL(/\/login/);

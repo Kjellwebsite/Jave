@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { issuesToFieldErrors } from './action-state';
+import { actionToast, IDLE_STATE, issuesToFieldErrors } from './action-state';
 import { formatAuditContext, formatAuditTarget, MAX_CONTEXT_CHARS } from './audit-view';
 import { buildContentSecurityPolicy, createNonce } from './csp';
 import { referenceFromDigest } from './error-reference';
@@ -254,6 +254,29 @@ describe('forms and query strings', () => {
         ['links.allowlist'],
       ),
     ).toEqual({ 'links.allowlist': 'bad domain', reason: 'Give a reason' });
+  });
+
+  it('BREAK: announces a failed action as a failure, with its reference', () => {
+    expect(actionToast(IDLE_STATE)).toBeNull();
+    expect(actionToast({ status: 'success', message: 'Marked read.', at: 1 })).toEqual({
+      text: 'Marked read.',
+      tone: 'success',
+    });
+    expect(
+      actionToast({
+        status: 'error',
+        message: 'Your session has ended. Sign in again.',
+        at: 1,
+      }),
+    ).toMatchObject({ tone: 'danger', text: 'Your session has ended. Sign in again.' });
+    expect(
+      actionToast({
+        status: 'error',
+        message: 'The action did not complete.',
+        reference: 'E-1A2B3C4D',
+        at: 1,
+      }),
+    ).toEqual({ text: 'The action did not complete.', tone: 'danger', reference: 'E-1A2B3C4D' });
   });
 
   it('builds and reads query strings', () => {

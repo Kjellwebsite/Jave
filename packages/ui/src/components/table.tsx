@@ -51,11 +51,15 @@ export function TableBody(props: HTMLAttributes<HTMLTableSectionElement>) {
   return <tbody {...props} />;
 }
 
+/**
+ * A table row. Give one cell's link the `row-link` utility to make the whole
+ * row its target: the row is the positioning context and lights up on focus.
+ */
 export function TableRow({ className, ...rest }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
       className={cx(
-        'border-b border-line-subtle transition-colors last:border-0 hover:bg-surface-raised/60',
+        'relative border-b border-line-subtle transition-colors last:border-0 hover:bg-surface-raised/60 has-[.row-link:focus-visible]:bg-surface-raised/60',
         className,
       )}
       {...rest}

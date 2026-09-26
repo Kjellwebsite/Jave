@@ -2,8 +2,6 @@ import { type NextRequest, NextResponse } from 'next/server';
 import {
   type DiscordProfile,
   ensureMember,
-  recordAudit,
-  resolveUserActor,
   safeEqual,
   systemActor,
   upsertDiscordUser,
@@ -17,7 +15,7 @@ import { createDiscordOAuthClient, oauthRedirectUri } from '@/server/auth/discor
 import type { LoginErrorCode } from '@/server/auth/login-errors';
 import { decodeOAuthState } from '@/server/auth/oauth-state';
 import { allowAuthAttempt } from '@/server/auth/rate-limits';
-import { createSession, revokeSession } from '@/server/auth/session-store';
+import { startSession } from '@/server/auth/sign-in';
 import { hashClientIp } from '@/server/auth/tokens';
 import { getRuntime } from '@/server/runtime';
 import { authCookieOptions } from '@/server/session-cookie';
@@ -99,19 +97,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     await ensureMember(tx, record, { inGuild: false });
     return record;
   });
-  // Rotate: a new sign-in never leaves a previous session in this browser alive.
-  const previous = request.cookies.get(SESSION_COOKIE)?.value;
-  if (previous) await revokeSession(ctx, previous);
-  const session = await createSession(ctx, {
+  // Rotates out any previous session in this browser; session + auth.login commit together.
+  const session = await startSession(ctx, {
     userId: user.id,
+    previousToken: request.cookies.get(SESSION_COOKIE)?.value,
     userAgent: request.headers.get('user-agent'),
     ipHash,
-  });
-  await recordAudit(withActor(ctx, await resolveUserActor(ctx, user.id)), {
-    action: 'auth.login',
-    targetType: 'user',
-    targetId: user.id,
-    context: { method: 'discord_oauth' },
+    audit: { action: 'auth.login', context: { method: 'discord_oauth' } },
   });
 
   const response = NextResponse.redirect(new URL(stored.next, env.JAVE_PUBLIC_URL));

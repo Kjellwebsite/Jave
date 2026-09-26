@@ -31,6 +31,7 @@ describe('routes', () => {
       '/p/mara',
       '/api/auth/discord',
       '/api/auth/discord/callback',
+      '/api/activity/me',
     ]) {
       expect(isPublicPath(path), path).toBe(true);
     }

@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { AIRateLimitError, MockProvider, type MockResponder } from '@jave/ai';
+import { AIRateLimitError, DisabledProvider, MockProvider, type MockResponder } from '@jave/ai';
 import { aiRequests, tickets } from '@jave/database';
-import { ExternalServiceError, ForbiddenError } from '../kernel/errors';
+import {
+  DisabledError,
+  ExternalServiceError,
+  ForbiddenError,
+  RateLimitedError,
+} from '../kernel/errors';
 import type { UserActor } from '../permissions/actor';
 import { updateSettings } from '../settings/settings.service';
 import type { TestKit } from '../testing';
@@ -117,6 +122,21 @@ describe('AI surfaces: ticket summaries and the request ledger', INTEGRATION_SUI
       ).rejects.toBeInstanceOf(ExternalServiceError);
       const [stored] = await kit.db.select().from(tickets).where(eq(tickets.id, ticket.id));
       expect(stored!.aiSummary).toBeNull();
+    });
+
+    it('surfaces the AI module’s own refusals (disabled provider, daily limit) unchanged', async () => {
+      const member = await kit.member({ roles: ['member'] });
+      const mod = await kit.member({ roles: ['moderator'] });
+      const ticket = await openAs(kit, member);
+      const ctx = kit.as(mod);
+      await expect(
+        summarizeTicket(ctx, ticket.id, ticketSummarizer(ctx, { provider: new DisabledProvider() })),
+      ).rejects.toBeInstanceOf(DisabledError);
+      await updateSettings(kit.system, 'ai', { dailyRequestsPerUser: 1 });
+      await ask(ctx, deps(), { question: 'Spend the only request.' });
+      await expect(
+        summarizeTicket(ctx, ticket.id, ticketSummarizer(ctx, deps())),
+      ).rejects.toBeInstanceOf(RateLimitedError);
     });
   });
 

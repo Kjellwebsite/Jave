@@ -18,6 +18,13 @@ const TASK_DRAFT = JSON.stringify({
   type: 'build',
 });
 
+/** Enqueue a raw announce job (no dedupe key, so an id always comes back). */
+async function enqueueAnnounce(t: AiHarness, payload: Record<string, unknown>): Promise<number> {
+  const id = await enqueueJob(t.bot.kit.system, ai.DISCORD_AI_ANNOUNCE_JOB, payload);
+  if (id === null) throw new Error('job was not enqueued');
+  return id;
+}
+
 function buttonIds(interaction: FakeInteraction): string[] {
   return (interaction.lastPayload()?.components ?? []).flatMap((r) =>
     r.components.map((c) => ('custom_id' in c ? c.custom_id : '')),
@@ -187,7 +194,7 @@ describe('ai feature: proposals, announcements, usage', SUITE, () => {
       expect(t.bot.gateway.messages.size).toBe(0);
       const [row] = await proposalRows();
       expect(row!.result).toMatchObject({ messageId: '700000000000000001' });
-      const rerun = await enqueueJob(t.bot.kit.system, ai.DISCORD_AI_ANNOUNCE_JOB, {
+      const rerun = await enqueueAnnounce(t, {
         proposalId,
         channelId: ANNOUNCEMENTS_CHANNEL,
         title: 'TRIAL WEEK',
@@ -236,7 +243,7 @@ describe('ai feature: proposals, announcements, usage', SUITE, () => {
     });
 
     it('BREAK: an invalid payload dead-letters without posting', async () => {
-      const id = await enqueueJob(t.bot.kit.system, ai.DISCORD_AI_ANNOUNCE_JOB, {
+      const id = await enqueueAnnounce(t, {
         proposalId: 'nope',
         channelId: '1',
       });

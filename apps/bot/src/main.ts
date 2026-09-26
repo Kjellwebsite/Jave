@@ -1,12 +1,12 @@
 import { EnvError, fullBotEnvSchema, parseEnv } from '@jave/config';
-import { createProviderFromEnv } from '@jave/ai';
-import { createLogger, research, systemClock, TtlCache } from '@jave/core';
+import { createLogger, systemClock, TtlCache } from '@jave/core';
 import { createDatabase } from '@jave/database';
 import { createBotApp } from './app';
 import { createDiscordClient, wireClient } from './discord/client';
 import { DiscordJsGateway } from './discord/discord-gateway';
 import { allFeatures } from './features';
 import { startHealthServer } from './health/server';
+import { type BotIntegrations, integrationsFromEnv } from './integrations';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -23,21 +23,20 @@ async function main(): Promise<void> {
   }
 
   const logger = createLogger({ name: 'jave-bot', level: env.LOG_LEVEL });
-  let aiProvider;
-  let sidus;
+  let integrations: BotIntegrations;
   try {
-    // Both factories' errors name the variable, never its value.
-    aiProvider = createProviderFromEnv(env);
-    sidus = research.createSidusClient({ baseUrl: env.SIDUS_API_URL, apiKey: env.SIDUS_API_KEY });
+    integrations = integrationsFromEnv(env);
   } catch (error) {
-    if (error instanceof Error) {
-      console.error(`Invalid AI / Sidus configuration: ${error.message}`);
-      process.exit(1);
-    }
-    throw error;
+    // The factories name the offending variable, never its value.
+    console.error(`Invalid AI / Sidus configuration: ${error instanceof Error ? error.message : 'unknown error'}`);
+    process.exit(1);
   }
   logger.info(
-    { aiProvider: aiProvider.name, aiModel: aiProvider.defaultModel, sidus: sidus.configured },
+    {
+      aiProvider: integrations.ai.provider.name,
+      aiModel: integrations.ai.provider.defaultModel,
+      sidus: integrations.researchJobs.sidus.configured,
+    },
     'integrations configured',
   );
   const database = createDatabase(env.DATABASE_URL, {
@@ -61,8 +60,8 @@ async function main(): Promise<void> {
     gateway,
     features: allFeatures(),
     worker: { concurrency: env.JAVE_WORKER_CONCURRENCY, pollMs: env.JAVE_WORKER_POLL_MS },
-    ai: { provider: aiProvider, dailyRequestCeiling: env.AI_DAILY_REQUEST_LIMIT },
-    researchJobs: { ...research.defaultResearchJobDeps(), sidus },
+    ai: integrations.ai,
+    researchJobs: integrations.researchJobs,
   });
 
   wireClient(client, app, env.DISCORD_GUILD_ID, logger);

@@ -64,6 +64,8 @@ const SHOTS: readonly Shot[] = [
   { name: 'settings', path: '/settings', persona: 'founder' },
   { name: 'settings-moderation', path: '/settings?section=moderation', persona: 'founder' },
   { name: 'overview-member', path: '/overview', persona: 'member' },
+  // The non-staff directory: no standing filter, so its toolbar has its own grid.
+  { name: 'members-member', path: '/members', persona: 'member' },
   { name: 'restricted', path: '/settings', persona: 'member' },
   { name: 'not-found', path: '/p/nobody-here', persona: null },
 ];

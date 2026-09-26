@@ -37,9 +37,45 @@ test.describe('founder operations', () => {
     await page.goto('/members?standing=restricted');
     await expect(page.getByRole('table', { name: 'Members' }).locator('tbody tr')).toHaveCount(1);
     await expect(page.getByText('Ayla Moreau')).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Standing' })).toHaveValue('restricted');
+
+    // Staff see staff-only profiles too.
+    await page.goto('/members?q=Sol');
+    await expect(page.getByRole('table', { name: 'Members' }).locator('tbody tr')).toHaveCount(1);
+    await expect(page.getByText('Sol Arden')).toBeVisible();
 
     await page.goto('/members?q=zzzz-nobody');
     await expect(page.getByText('NO MATCHES')).toBeVisible();
+  });
+
+  test('keyboard focus on a member row is visible across the whole row', async ({ page }) => {
+    await page.goto('/members?q=voss');
+    await page.getByRole('searchbox', { name: 'Search members' }).focus();
+    const MAX_TABS = 12;
+    for (let step = 0; step < MAX_TABS; step++) {
+      await page.keyboard.press('Tab');
+      if (await page.evaluate(() => Boolean(document.activeElement?.closest('tbody')))) break;
+    }
+    const focus = await page.evaluate(() => {
+      const link = document.activeElement as HTMLElement;
+      const overlay = getComputedStyle(link, '::after');
+      return {
+        focusVisible: link.matches(':focus-visible'),
+        href: link.getAttribute('href'),
+        overlayPosition: overlay.position,
+        overlayOutlineStyle: overlay.outlineStyle,
+        overlayOutlineWidth: overlay.outlineWidth,
+        rowPosition: getComputedStyle(link.closest('tr')!).position,
+      };
+    });
+    expect(focus).toMatchObject({
+      focusVisible: true,
+      overlayPosition: 'absolute',
+      overlayOutlineStyle: 'solid',
+      overlayOutlineWidth: '2px',
+      rowPosition: 'relative',
+    });
+    expect(focus.href).toMatch(/^\/members\/[0-9a-f-]{36}$/);
   });
 
   test('a role is granted with a required reason, after confirmation', async ({ page }) => {
@@ -158,13 +194,51 @@ test.describe('founder operations', () => {
     await expect(page.locator('[data-action="settings.updated"]').first()).toBeVisible();
     await page.goto('/audit?until=2000-01-01');
     await expect(page.getByText('NO MATCHING ENTRIES')).toBeVisible();
+
+    // BREAK: one malformed filter is dropped alone and named; the valid one still applies.
+    await page.goto('/audit?action=role.*&actor=not-a-user-id');
+    await expect(
+      page.getByText(
+        'The actor filter is not valid and was not applied. The other filters still apply.',
+      ),
+    ).toBeVisible();
+    await expect(page.locator('[data-action="role.granted"]').first()).toBeVisible();
+    await expect(page.locator('[data-action="settings.updated"]')).toHaveCount(0);
+    await expect(page.getByText(/\d+ matching/)).toBeVisible();
   });
 
-  test('notifications can be marked read', async ({ page }) => {
+  test('notifications can be marked read, and a failure is never silent', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
     await page.goto('/notifications');
     await expect(page.getByText('SECURITY EVENT')).toBeVisible();
+    const unread = page.locator('li[data-unread]');
+    await unread.first().getByRole('button', { name: 'Mark read' }).click();
+    await expect(
+      page.locator('[data-tone="success"]').filter({ hasText: 'Marked read.' }),
+    ).toBeVisible();
+    await expect(page.getByTestId('unread-count')).toHaveText('2');
+    await expect(unread).toHaveCount(2);
+
+    // BREAK: the session ends while the inbox is open.
+    const session = (await context.cookies()).find((cookie) => cookie.name === 'jave_session')!;
+    await context.addCookies([{ name: 'jave_session', value: 'A'.repeat(43), url: baseURL! }]);
+    await unread.first().getByRole('button', { name: 'Mark read' }).click();
+    const failure = page
+      .getByRole('alert')
+      .filter({ hasText: 'Your session has ended. Sign in again.' });
+    await expect(failure).toBeVisible();
+    // Announced as an alert, in the danger tone, while the toast stays a list item.
+    await expect(
+      page.getByRole('listitem').and(page.locator('[data-tone="danger"]')).filter({ has: failure }),
+    ).toHaveCount(1);
+    await expect(unread).toHaveCount(2);
+    await context.addCookies([{ name: 'jave_session', value: session.value, url: baseURL! }]);
+
     await page.getByRole('button', { name: 'Mark all read' }).click();
-    await expect(page.getByText('3 marked read.')).toBeVisible();
+    await expect(page.getByText('2 marked read.')).toBeVisible();
     await expect(page.getByTestId('unread-count')).toHaveCount(0);
     await page.goto('/notifications?filter=unread');
     await expect(page.getByText('ALL CAUGHT UP')).toBeVisible();
@@ -214,5 +288,25 @@ test.describe('founder operations', () => {
     await expect(page.getByText('Preferences saved.')).toBeVisible();
     await page.reload();
     await expect(page.getByLabel('Time zone')).toHaveValue('Europe/Berlin');
+  });
+});
+
+test.describe('preferences', () => {
+  test('BREAK: a stored time zone the runtime does not list survives an unrelated save', async ({
+    page,
+  }) => {
+    // Seeded for the core persona: Asia/Kolkata is valid, but Node lists Asia/Calcutta.
+    await signInAs(page, 'core');
+    await page.goto('/me?tab=preferences');
+    await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Kolkata');
+    await page.getByRole('switch', { name: 'Discord DMs' }).click();
+    await page.getByRole('button', { name: 'Save preferences' }).click();
+    await expect(page.getByText('Preferences saved.')).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Kolkata');
+    await expect(page.getByRole('switch', { name: 'Discord DMs' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 });

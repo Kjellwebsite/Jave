@@ -164,14 +164,14 @@ export default async function RankingPage({
               </TableHead>
               <TableBody>
                 {board.value.map((row, index) => (
-                  <TableRow key={row.memberId} className="relative">
+                  <TableRow key={row.memberId}>
                     <TableCell>
                       <Mono dim>{String(index + 1).padStart(POSITION_DIGITS, '0')}</Mono>
                     </TableCell>
                     <TableCell>
                       <Link
                         href={`/members/${row.memberId}`}
-                        className="flex min-w-0 items-center gap-3 after:absolute after:inset-0"
+                        className="row-link flex min-w-0 items-center gap-3"
                       >
                         <Avatar name={row.displayName} size="sm" />
                         <span className="min-w-0">

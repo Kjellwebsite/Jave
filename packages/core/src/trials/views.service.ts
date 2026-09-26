@@ -79,7 +79,13 @@ export interface ParticipantTrialView extends TrialSummaryView {
     status: ParticipantStatus;
     statement: string | null;
     appliedAt: Date;
-    team: { name: string; role: 'lead' | 'member'; members: TeammateView[] } | null;
+    team: {
+      name: string;
+      role: 'lead' | 'member';
+      members: TeammateView[];
+      /** The team's own private Discord channel, once provisioned (its members can see it anyway). */
+      channelId: string | null;
+    } | null;
   } | null;
   mySubmissions: SubmissionView[];
   /** Latest submission of every other team — only once the trial is completed. */
@@ -182,6 +188,7 @@ export async function getTrialForParticipant(
             ? {
                 name: myTeam.name,
                 role: participation.teamRole ?? 'member',
+                channelId: myTeam.discordChannelId,
                 members: competitors
                   .filter((c) => c.teamId === myTeam.id)
                   .map((c) => ({

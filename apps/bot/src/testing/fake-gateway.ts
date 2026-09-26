@@ -235,4 +235,16 @@ export class FakeDiscordGateway implements DiscordGateway {
     const existing = this.scheduledEvents.get(eventId);
     if (existing) existing.cancelled = true;
   }
+  async setChannelOverwrite(channelId: string, overwrite: PermissionOverwriteSpec, reason: string) {
+    this.record('setChannelOverwrite', channelId, overwrite, reason);
+    const channel = this.channels.get(channelId);
+    if (!channel) throw new DiscordActionError('unknown channel', 10003, true);
+    channel.overwrites = [...channel.overwrites.filter((o) => o.id !== overwrite.id), overwrite];
+  }
+  async roleMemberIds(roleId: string) {
+    this.record('roleMemberIds', roleId);
+    return [...this.members.values()]
+      .filter((member) => member.roleIds.includes(roleId))
+      .map((member) => member.userId);
+  }
 }

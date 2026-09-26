@@ -19,6 +19,7 @@ import {
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
+  type PermissionName,
   type PermissionOverwriteSpec,
   type ScheduledEventSpec,
   type SentMessage,
@@ -397,5 +398,30 @@ export class DiscordJsGateway implements DiscordGateway {
         reason,
       });
     });
+  }
+
+  async setChannelOverwrite(channelId: string, overwrite: PermissionOverwriteSpec, reason: string) {
+    const channel = await this.textChannel(channelId);
+    if (channel.isThread()) throw new DiscordActionError('threads have no overwrites', null, true);
+    const options: Partial<Record<PermissionName, boolean>> = {};
+    for (const permission of overwrite.allow ?? []) options[permission] = true;
+    for (const permission of overwrite.deny ?? []) options[permission] = false;
+    await attempt(
+      'set overwrite',
+      async () =>
+        // create() replaces this one overwrite; the channel's other overwrites stay as they are.
+        void (await (channel as TextChannel).permissionOverwrites.create(overwrite.id, options, {
+          reason,
+          type: overwrite.type === 'member' ? OverwriteType.Member : OverwriteType.Role,
+        })),
+    );
+  }
+
+  async roleMemberIds(roleId: string): Promise<string[]> {
+    const guild = await this.guild();
+    // role.members reads the member cache: fetch the member list first (GuildMembers intent).
+    await attempt('fetch members', () => guild.members.fetch());
+    const role = await attempt('fetch role', () => guild.roles.fetch(roleId));
+    return role ? [...role.members.keys()] : [];
   }
 }

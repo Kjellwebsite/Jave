@@ -230,7 +230,10 @@ test.describe('founder operations', () => {
       .getByRole('alert')
       .filter({ hasText: 'Your session has ended. Sign in again.' });
     await expect(failure).toBeVisible();
-    await expect(failure).toHaveAttribute('data-tone', 'danger');
+    // Announced as an alert, in the danger tone, while the toast stays a list item.
+    await expect(
+      page.getByRole('listitem').and(page.locator('[data-tone="danger"]')).filter({ has: failure }),
+    ).toHaveCount(1);
     await expect(unread).toHaveCount(2);
     await context.addCookies([{ name: 'jave_session', value: session.value, url: baseURL! }]);
 

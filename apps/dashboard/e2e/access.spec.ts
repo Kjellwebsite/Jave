@@ -73,9 +73,7 @@ test.describe('access and security', () => {
   });
 
   test('BREAK: a forged session cookie is not a session', async ({ page, context, baseURL }) => {
-    await context.addCookies([
-      { name: 'jave_session', value: 'A'.repeat(43), url: baseURL! },
-    ]);
+    await context.addCookies([{ name: 'jave_session', value: 'A'.repeat(43), url: baseURL! }]);
     await page.goto('/overview');
     await expect(page).toHaveURL(/\/login/);
   });
@@ -166,9 +164,7 @@ test.describe('access and security', () => {
     await page.getByRole('button', { name: /Account menu/ }).click();
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
     await page.waitForURL('**/login');
-    await context.addCookies([
-      { name: 'jave_session', value: before!.value, url: baseURL! },
-    ]);
+    await context.addCookies([{ name: 'jave_session', value: before!.value, url: baseURL! }]);
     await page.goto('/overview');
     await expect(page).toHaveURL(/\/login/);
   });

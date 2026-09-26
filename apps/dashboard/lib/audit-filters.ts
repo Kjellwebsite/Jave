@@ -41,11 +41,7 @@ export interface AuditFilters {
 const shape = auditQuerySchema.shape;
 
 /** Validates one filter on its own, so a single bad value never discards the others. */
-function toQuery(
-  key: AuditFilterKey,
-  value: string,
-  timeZone: string,
-): Partial<AuditQuery> | null {
+function toQuery(key: AuditFilterKey, value: string, timeZone: string): Partial<AuditQuery> | null {
   const valid = <T>(schema: z.ZodType<T>, input: unknown): T | null => {
     const parsed = schema.safeParse(input);
     return parsed.success ? parsed.data : null;

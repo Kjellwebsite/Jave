@@ -114,8 +114,6 @@ describe('member directory privacy', () => {
 
   it('BREAK: an applicant without canViewMembers is refused', async () => {
     const applicant = await kit.member({ roles: ['applicant'] });
-    await expect(loadMemberDirectory(kit.as(applicant), {})).rejects.toBeInstanceOf(
-      ForbiddenError,
-    );
+    await expect(loadMemberDirectory(kit.as(applicant), {})).rejects.toBeInstanceOf(ForbiddenError);
   });
 });

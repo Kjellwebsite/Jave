@@ -17,7 +17,10 @@ describe('time zone options', () => {
       expect(isKnownTimeZone(alias), alias).toBe(true);
       const zones = timeZoneOptions(alias);
       expect(zones, alias).toContain(alias);
-      expect(zones.filter((zone) => zone === alias), alias).toHaveLength(1);
+      expect(
+        zones.filter((zone) => zone === alias),
+        alias,
+      ).toHaveLength(1);
     }
     // Sorted in place, not appended at the end.
     const zones = timeZoneOptions('Asia/Kolkata');

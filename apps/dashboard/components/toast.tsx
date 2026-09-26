@@ -1,9 +1,18 @@
 'use client';
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  useTransition,
+} from 'react';
 import { CircleAlert, CircleCheck, X } from 'lucide-react';
 import { cx, Icon, IconButton, Mono } from '@jave/ui';
-import { type ActionState, actionToast, type ToastInput, type ToastTone } from '@/lib/action-state';
+import { actionToast, IDLE_STATE, type ToastInput, type ToastTone } from '@/lib/action-state';
+import type { FormAction } from './forms/action-form';
 
 /** Confirmations fade on their own; failures stay long enough to read and copy the reference. */
 const TOAST_DURATION_MS: Record<ToastTone, number> = { success: 4_500, danger: 12_000 };
@@ -21,13 +30,31 @@ export function useToast(): (toast: ToastInput) => void {
   return useContext(ToastContext);
 }
 
-/** Toasts every new result of a `useActionState` action, success or failure, in its own tone. */
-export function useActionResultToast(state: ActionState): void {
+export interface ToastedAction {
+  run: (data: FormData) => void;
+  pending: boolean;
+}
+
+/**
+ * Runs a Server Action and announces its result, success or failure, in its
+ * own tone. The toast is raised by the call itself, not by an effect in the
+ * calling component: an action that revalidates the page often unmounts its
+ * own button (a "Mark read" on an item that is now read), and an effect in an
+ * unmounted component never runs, so the result would go unannounced.
+ */
+export function useToastedAction(action: FormAction): ToastedAction {
   const toast = useToast();
-  useEffect(() => {
-    const next = actionToast(state);
-    if (next) toast(next);
-  }, [state, toast]);
+  const [pending, startTransition] = useTransition();
+  const run = useCallback(
+    (data: FormData) => {
+      startTransition(async () => {
+        const next = actionToast(await action(IDLE_STATE, data));
+        if (next) toast(next);
+      });
+    },
+    [action, toast],
+  );
+  return { run, pending };
 }
 
 const TONE_ICON = {
@@ -44,14 +71,17 @@ function ToastItem({ toast, onDone }: { toast: ToastMessage; onDone: (id: number
   return (
     <li
       data-tone={toast.tone}
-      role={toast.tone === 'danger' ? 'alert' : undefined}
       className={cx(
         'machined pointer-events-auto relative flex w-full items-start gap-3 rounded-lg border bg-surface-overlay py-3 pl-4 pr-2 shadow-lg motion-safe:animate-rise-in',
         toast.tone === 'danger' ? 'border-danger/40' : 'border-line-strong',
       )}
     >
       <Icon icon={tone.icon} className={cx('mt-0.5', tone.className)} />
-      <div className="min-w-0 flex-1 text-small">
+      {/* A failure interrupts (alert); the item itself stays a list item. */}
+      <div
+        role={toast.tone === 'danger' ? 'alert' : undefined}
+        className="min-w-0 flex-1 text-small"
+      >
         <p className="text-fg">{toast.text}</p>
         {toast.reference ? (
           <p className="mt-1 text-fg-muted">

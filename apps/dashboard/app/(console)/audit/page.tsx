@@ -18,11 +18,7 @@ import {
 import { AuditResultBadge } from '@/components/audit/audit-result-badge';
 import { NextLink } from '@/components/next-link';
 import { RestrictedPage } from '@/components/restricted-page';
-import {
-  AUDIT_FILTER_KEYS,
-  describeRejectedFilters,
-  parseAuditFilters,
-} from '@/lib/audit-filters';
+import { AUDIT_FILTER_KEYS, describeRejectedFilters, parseAuditFilters } from '@/lib/audit-filters';
 import { formatAuditContext, formatAuditTarget } from '@/lib/audit-view';
 import { firstParam, offsetParam, type SearchParams, toQueryString } from '@/lib/search-params';
 import { formatTimestamp } from '@/lib/time';

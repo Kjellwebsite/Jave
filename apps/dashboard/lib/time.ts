@@ -88,7 +88,9 @@ function startOfZonedDay(day: string, timeZone: string): number | null {
   // skipped or repeated, the earliest instant that is already on `day` wins.
   const first = midnightUtc - zoneOffsetMs(midnightUtc, timeZone);
   const second = midnightUtc - zoneOffsetMs(first, timeZone);
-  const onDay = [first, second].filter((instant) => formatDate(new Date(instant), timeZone) === day);
+  const onDay = [first, second].filter(
+    (instant) => formatDate(new Date(instant), timeZone) === day,
+  );
   return onDay.length > 0 ? Math.min(...onDay) : Math.max(first, second);
 }
 

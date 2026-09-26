@@ -1,18 +1,16 @@
 'use client';
 
-import { startTransition, useActionState } from 'react';
 import { Button } from '@jave/ui';
-import { IDLE_STATE } from '@/lib/action-state';
 import type { FormAction } from '../forms/action-form';
-import { useActionResultToast } from '../toast';
+import { useToastedAction } from '../toast';
 
 /**
  * Marks one notification read. The result is always announced: a refusal
- * or failure (ended session, rejected origin, E- reference) is never silent.
+ * or failure (ended session, rejected origin, E- reference) is never silent,
+ * and neither is success, although the button leaves with the unread state.
  */
 export function MarkRead({ action, id }: { action: FormAction; id: string }) {
-  const [state, dispatch, pending] = useActionState(action, IDLE_STATE);
-  useActionResultToast(state);
+  const { run, pending } = useToastedAction(action);
   return (
     <Button
       size="sm"
@@ -21,7 +19,7 @@ export function MarkRead({ action, id }: { action: FormAction; id: string }) {
       onClick={() => {
         const data = new FormData();
         data.set('id', id);
-        startTransition(() => dispatch(data));
+        run(data);
       }}
     >
       Mark read

@@ -1,6 +1,8 @@
 import {
   Bell,
+  CalendarDays,
   ChartNoAxesColumn,
+  Gamepad2,
   LayoutGrid,
   type LucideIcon,
   ScrollText,
@@ -39,7 +41,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/ranking', label: 'Ranking', icon: ChartNoAxesColumn, capability: 'canViewMembers' },
     ],
   },
-  { label: 'OPERATIONS', items: [] },
+  {
+    label: 'OPERATIONS',
+    items: [
+      { href: '/events', label: 'Events', icon: CalendarDays, capability: null },
+      { href: '/games', label: 'Games', icon: Gamepad2, capability: null },
+    ],
+  },
   { label: 'SUPPORT & SAFETY', items: [] },
   { label: 'INTELLIGENCE', items: [] },
   {

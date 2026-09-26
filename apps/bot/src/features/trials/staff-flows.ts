@@ -117,6 +117,7 @@ export async function askConfirmation(
   operation: ConfirmedOperation,
   trialId: string,
 ): Promise<void> {
+  assertTrialStaff(h);
   const view = await trials.getTrialForStaff(h.ctx, { trialId });
   const preview =
     operation === 'publish' || operation === 'publish-incomplete'
@@ -155,6 +156,7 @@ export async function runOperation(
   operation: ConfirmedOperation,
   trialId: string,
 ): Promise<void> {
+  assertTrialStaff(h);
   let notice: APIEmbed;
   switch (operation) {
     case 'open': {

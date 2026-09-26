@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { adversarialRoles, adversarialScenarios, jobs, notifications } from '@jave/database';
+import {
+  adversarialRoles,
+  adversarialScenarios,
+  jobs,
+  members,
+  notifications,
+} from '@jave/database';
 import { adversarial, trials, updateSettings } from '@jave/core';
 import { DiscordActionError } from '../../discord/gateway';
 import { customId } from '../../interactions/custom-id';
+import type { FakeInteraction } from '../../testing/fake-interaction';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
 import {
   activeTrial,
@@ -12,6 +19,7 @@ import {
   HOOK_TIMEOUT_MS,
   type Person,
   people,
+  pace,
   SUITE,
 } from '../trials/test-fixtures';
 import { noBriefingReply } from './operative';
@@ -29,7 +37,10 @@ interface Exercise {
 }
 
 /** An active trial with an authorized, briefed and activated operative on one team. */
-async function exercise(bot: BotHarness): Promise<Exercise> {
+async function exercise(
+  bot: BotHarness,
+  options: { withTrigger?: boolean } = {},
+): Promise<Exercise> {
   await configureDiscord(bot);
   await updateSettings(bot.kit.system, 'trials', { adversarialEnabled: true });
   const [planner] = await people(bot, 1, ['core']);
@@ -61,6 +72,12 @@ async function exercise(bot: BotHarness): Promise<Exercise> {
     operativeMemberId: operative.actor.memberId!,
     scenarioId: scenario!.id,
   });
+  if (options.withTrigger)
+    await adversarial.addTrigger(as(bot, planner!), {
+      roleId: role.id,
+      label: 'Urgent request',
+      description: 'Post the fictional urgent request from the scenario in the team channel.',
+    });
   await adversarial.authorizeRole(as(bot, authorizer!), { roleId: role.id, sandboxAttested: true });
   await adversarial.briefRole(as(bot, planner!), { roleId: role.id });
   await adversarial.activateRole(as(bot, planner!), { roleId: role.id });
@@ -68,6 +85,30 @@ async function exercise(bot: BotHarness): Promise<Exercise> {
   const staff = await trials.getTrialForStaff(as(bot, planner!), { trialId });
   const teamChannelId = staff.teams.find((t) => t.id === operativeTeam.id)!.discordChannelId!;
   return { trialId, roleId: role.id, operative, teammate, otherTeam, teamChannelId, planner: planner!, authorizer: authorizer! };
+}
+
+/** Words that would tell a participant their trial hosts a hidden role. */
+const ADVERSARIAL_TELLS = /adversar|operative|red[\s_-]?flag|sandbox|security.culture|two-person|stop word|exercise/i;
+
+/** The visible shape of a set of replies: titles (refs normalized), field names, control labels. */
+function shape(interaction: FakeInteraction): string {
+  return JSON.stringify(
+    interaction.responses.map((response) => {
+      if (!('payload' in response)) return response.type;
+      const payload = response.payload;
+      return {
+        embeds: (payload.embeds ?? []).map((embed) => ({
+          title: (embed.title ?? '').replace(/TRIAL-\d+/g, 'TRIAL-N').replace(/USER\d+/g, 'USER'),
+          fields: (embed.fields ?? []).map((f) => f.name.replace(/TRIAL-\d+/g, 'TRIAL-N')),
+        })),
+        controls: ((payload.components ?? []) as {
+          components: { label?: string; custom_id?: string }[];
+        }[]).flatMap((row) =>
+          row.components.map((c) => c.label ?? c.custom_id?.split(':').slice(0, 2).join(':')),
+        ),
+      };
+    }),
+  );
 }
 
 async function roleRow(bot: BotHarness, roleId: string) {
@@ -78,7 +119,7 @@ async function roleRow(bot: BotHarness, roleId: string) {
 describe('adversarial: Discord surface', SUITE, () => {
   let bot: BotHarness;
   beforeEach(async () => {
-    bot = await createBotHarness();
+    bot = pace(await createBotHarness());
   }, HOOK_TIMEOUT_MS);
   afterEach(async () => {
     await bot.close();
@@ -135,38 +176,172 @@ describe('adversarial: Discord surface', SUITE, () => {
       expect(JSON.stringify(interaction.lastPayload())).toBe(expected);
     }
     // A quarantined operative is indistinguishable from nobody.
-    await bot.kit.db.update(adversarialRoles).set({}).where(eq(adversarialRoles.id, ex.roleId));
+    await bot.kit.db
+      .update(members)
+      .set({ standing: 'quarantined' })
+      .where(eq(members.id, ex.operative.actor.memberId!));
+    const quarantined = await bot.run({
+      kind: 'slash',
+      name: 'trial',
+      subcommand: 'briefing',
+      user: ex.operative.user,
+    });
+    expect(JSON.stringify(quarantined.interaction.lastPayload())).toBe(expected);
   });
 
-  it('RED FLAG: the operative stops the exercise; STOP DM without the reason; forged presses look like nothing', async () => {
+  it('RED FLAG: one press stops the exercise; STOP DM without the reason; forged presses look like nothing', async () => {
     const ex = await exercise(bot);
     const forged = await bot.run({
       kind: 'button',
-      name: customId('adversarial', 'redflag-yes', ex.roleId),
+      name: customId('adversarial', 'redflag', ex.roleId),
       user: ex.teammate.user,
     });
     const random = await bot.run({
       kind: 'button',
-      name: customId('adversarial', 'redflag-yes', '00000000-0000-4000-8000-000000000000'),
+      name: customId('adversarial', 'redflag', '00000000-0000-4000-8000-000000000000'),
       user: ex.teammate.user,
     });
-    expect(JSON.stringify(forged.interaction.lastPayload())).toBe(JSON.stringify(random.interaction.lastPayload()));
-    expect(JSON.stringify(forged.interaction.lastPayload())).toBe(JSON.stringify(noBriefingReply()));
+    const garbage = await bot.run({
+      kind: 'button',
+      name: customId('adversarial', 'redflag', 'not-a-role'),
+      user: ex.teammate.user,
+    });
+    const trigger = await bot.run({
+      kind: 'select',
+      name: customId('adversarial', 'fire', ex.roleId),
+      values: ['00000000-0000-4000-8000-000000000001'],
+      user: ex.teammate.user,
+    });
+    const expected = JSON.stringify(noBriefingReply());
+    for (const attempt of [forged, random, garbage, trigger])
+      expect(JSON.stringify(attempt.interaction.lastPayload())).toBe(expected);
     expect((await roleRow(bot, ex.roleId)).status).toBe('active');
 
-    const ask = await bot.run({ kind: 'button', name: customId('adversarial', 'redflag', ex.roleId), user: ex.operative.user });
-    expect(ask.interaction.lastText()).toContain('RAISE RED FLAG');
-    const raise = await bot.run({ kind: 'button', name: customId('adversarial', 'redflag-yes', ex.roleId), user: ex.operative.user });
+    const raise = await bot.run({
+      kind: 'button',
+      name: customId('adversarial', 'redflag', ex.roleId),
+      user: ex.operative.user,
+    });
     expect(raise.interaction.lastText()).toContain('EXERCISE STOPPED');
+    expect(raise.interaction.lastPayload()!.ephemeral).toBe(true);
     await bot.drain();
     const role = await roleRow(bot, ex.roleId);
     expect(role).toMatchObject({ status: 'aborted', stopNoticeDelivery: 'sent' });
-    const stop = bot.gateway.dms.filter((dm) => dm.userId === ex.operative.actor.discordId && JSON.stringify(dm.payload).includes('STOP — EXERCISE ENDED'));
+    const stop = bot.gateway.dms.filter(
+      (dm) =>
+        dm.userId === ex.operative.actor.discordId &&
+        JSON.stringify(dm.payload).includes('STOP — EXERCISE ENDED'),
+    );
     expect(stop).toHaveLength(1);
     expect(JSON.stringify(stop[0]!.payload)).not.toContain('Raised by the operative');
     // Idempotent: a second press reports the exercise as already stopped.
-    const again = await bot.run({ kind: 'button', name: customId('adversarial', 'redflag-yes', ex.roleId), user: ex.operative.user });
+    const again = await bot.run({
+      kind: 'button',
+      name: customId('adversarial', 'redflag', ex.roleId),
+      user: ex.operative.user,
+    });
     expect(again.interaction.lastText()).toContain('already stopped');
+  });
+
+  it('operative marks a planned trigger as carried out from the briefing', async () => {
+    const ex = await exercise(bot, { withTrigger: true });
+    const briefing = await bot.run({
+      kind: 'slash',
+      name: 'trial',
+      subcommand: 'briefing',
+      user: ex.operative.user,
+    });
+    const text = JSON.stringify(briefing.interaction.responses);
+    expect(text).toContain(customId('adversarial', 'fire', ex.roleId));
+    const role = await adversarial.getRole(as(bot, ex.planner), { roleId: ex.roleId });
+    const triggerId = role.triggers[0]!.id;
+    const fired = await bot.run({
+      kind: 'select',
+      name: customId('adversarial', 'fire', ex.roleId),
+      values: [triggerId],
+      user: ex.operative.user,
+    });
+    expect(fired.interaction.lastText()).toContain('TRIGGER RECORDED');
+    const twice = await bot.run({
+      kind: 'select',
+      name: customId('adversarial', 'fire', ex.roleId),
+      values: [triggerId],
+      user: ex.operative.user,
+    });
+    expect(twice.interaction.lastText()).toContain('already fired');
+  });
+
+  it('BREAK: no participant-facing command, card, DM or error reveals that a trial hosts a role', async () => {
+    const ex = await exercise(bot, { withTrigger: true });
+    // A twin trial without any hidden role, with the same participants' counterparts.
+    const [manager] = await people(bot, 1, ['operations']);
+    const twins = await people(bot, 4, ['verified']);
+    const plain = await activeTrial(bot, manager!, twins, { teamSize: 2 });
+    await bot.drain();
+    const twin = twins.find((p) => plain.assignment.teams[0]!.memberIds.includes(p.actor.memberId!))!;
+
+    async function battery(person: Person, trialId: string) {
+      const runs = [
+        await bot.run({ kind: 'slash', name: 'trial', subcommand: 'list', user: person.user }),
+        await bot.run({
+          kind: 'slash',
+          name: 'trial',
+          subcommand: 'view',
+          user: person.user,
+          options: { trial: trialId },
+        }),
+        await bot.run({ kind: 'slash', name: 'trial', subcommand: 'status', user: person.user }),
+        await bot.run({ kind: 'slash', name: 'team', user: person.user }),
+        await bot.run({
+          kind: 'button',
+          name: customId('trials', 'submit', trialId),
+          user: person.user,
+        }),
+        await bot.run({
+          kind: 'button',
+          name: customId('trials', 'panel', trialId),
+          user: person.user,
+        }),
+        await bot.run({
+          kind: 'user_context',
+          name: 'Trial Record',
+          user: person.user,
+          targetUser: person.user,
+        }),
+      ];
+      return runs.map((run) => run.interaction);
+    }
+
+    for (const person of [ex.teammate, ex.otherTeam]) {
+      const interactions = await battery(person, ex.trialId);
+      for (const interaction of interactions)
+        expect(JSON.stringify(interaction.responses), interaction.name).not.toMatch(ADVERSARIAL_TELLS);
+      const briefing = await bot.run({
+        kind: 'slash',
+        name: 'trial',
+        subcommand: 'briefing',
+        user: person.user,
+      });
+      expect(JSON.stringify(briefing.interaction.lastPayload())).toBe(
+        JSON.stringify(noBriefingReply()),
+      );
+    }
+
+    // Same shapes as the twin trial without a role: nothing extra, nothing missing.
+    const withRole = await battery(ex.teammate, ex.trialId);
+    const withoutRole = await battery(twin, plain.trialId);
+    for (const [index, interaction] of withRole.entries())
+      expect(shape(interaction), interaction.name).toBe(shape(withoutRole[index]!));
+
+    // Cards, channel posts and every DM to a participant other than the operative.
+    const posts = bot.gateway.callsTo('sendMessage').map((call) => call.args[1]);
+    expect(JSON.stringify(posts)).not.toMatch(ADVERSARIAL_TELLS);
+    const participants = new Set(
+      [ex.teammate, ex.otherTeam, ...twins].map((person) => person.actor.discordId),
+    );
+    const toParticipants = bot.gateway.dms.filter((dm) => participants.has(dm.userId));
+    expect(toParticipants.length).toBeGreaterThan(0);
+    expect(JSON.stringify(toParticipants)).not.toMatch(ADVERSARIAL_TELLS);
   });
 
   it('stop word in the team channel stops the exercise silently; elsewhere it does nothing', async () => {

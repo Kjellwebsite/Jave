@@ -10,9 +10,12 @@ import { briefingEmbeds, SANDBOX_MARK } from './render';
 
 export const ADVERSARIAL_NS = 'adversarial';
 
-const ACTIONS = {
+/**
+ * Operative controls. RED FLAG is a single press, never behind a
+ * confirmation: the stop protocol says the exercise ends immediately.
+ */
+export const OPERATIVE_ACTIONS = {
   redFlag: 'redflag',
-  redFlagConfirm: 'redflag-yes',
   fireTrigger: 'fire',
 } as const;
 
@@ -53,7 +56,7 @@ function operativeControls(entry: adversarial.MyBriefing): ReplyPayload['compone
     rows.push(
       row(
         stringSelect(
-          customId(ADVERSARIAL_NS, ACTIONS.fireTrigger, briefing.roleId),
+          customId(ADVERSARIAL_NS, OPERATIVE_ACTIONS.fireTrigger, briefing.roleId),
           'Mark a trigger as carried out',
           options,
         ),
@@ -63,8 +66,8 @@ function operativeControls(entry: adversarial.MyBriefing): ReplyPayload['compone
   rows.push(
     row(
       button(
-        `Raise ${adversarial.STOP_WORD}`,
-        customId(ADVERSARIAL_NS, ACTIONS.redFlag, briefing.roleId),
+        `${adversarial.STOP_WORD} — stop now`,
+        customId(ADVERSARIAL_NS, OPERATIVE_ACTIONS.redFlag, briefing.roleId),
         'danger',
       ),
     ),
@@ -94,32 +97,6 @@ export async function showMyBriefings(h: HandlerContext): Promise<void> {
   for (const reply of replies.slice(1)) await h.interaction.followUp(reply);
 }
 
-function redFlagConfirmation(roleId: string): ReplyPayload {
-  return {
-    embeds: [
-      panel({
-        kicker: SANDBOX_MARK,
-        title: `Raise ${adversarial.STOP_WORD}?`,
-        description: [
-          'The exercise stops immediately and managers are alerted.',
-          'No questions asked, no penalty.',
-        ].join('\n'),
-        color: COLORS.danger,
-      }),
-    ],
-    components: [
-      row(
-        button(
-          `Raise ${adversarial.STOP_WORD}`,
-          customId(ADVERSARIAL_NS, ACTIONS.redFlagConfirm, roleId),
-          'danger',
-        ),
-      ),
-    ],
-    ephemeral: true,
-  };
-}
-
 /**
  * Operative controls (RED FLAG, trigger fired). Core decides who may act;
  * anyone else — a forged id, a teammate, a stale control — gets exactly the
@@ -132,9 +109,7 @@ export const adversarialComponents: ComponentHandler = {
     if (!isUuid(roleId)) return h.respond(noBriefingReply());
     try {
       switch (action) {
-        case ACTIONS.redFlag:
-          return await h.respond(redFlagConfirmation(roleId));
-        case ACTIONS.redFlagConfirm: {
+        case OPERATIVE_ACTIONS.redFlag: {
           const result = await adversarial.raiseRedFlag(h.ctx, { roleId, note: RED_FLAG_NOTE });
           return await h.respond({
             embeds: [
@@ -150,7 +125,7 @@ export const adversarialComponents: ComponentHandler = {
             ephemeral: true,
           });
         }
-        case ACTIONS.fireTrigger: {
+        case OPERATIVE_ACTIONS.fireTrigger: {
           const triggerId = h.interaction.values[0] ?? '';
           if (!isUuid(triggerId)) return await h.respond(noBriefingReply());
           const trigger = await adversarial.fireTrigger(h.ctx, { roleId, triggerId });

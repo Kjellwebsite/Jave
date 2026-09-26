@@ -4,7 +4,7 @@ import {
   SlashCommandBuilder,
   type SlashCommandStringOption,
 } from 'discord.js';
-import { findMemberByDiscordId, NotFoundError, trials, ValidationError } from '@jave/core';
+import { findMemberByDiscordId, isUuid, NotFoundError, trials, ValidationError } from '@jave/core';
 import type { CommandDefinition, HandlerContext } from '../../interactions/types';
 import { clip } from '../../ui/format';
 import { LIMITS } from '../../ui/theme';
@@ -18,7 +18,6 @@ import {
   openApplyModal,
   openSubmitModal,
   pickToView,
-  requireTrialId,
   showStatus,
   showTeams,
   showTrial,
@@ -29,6 +28,10 @@ import { openPanel, pickTrialToManage } from './staff-flows';
 
 const TRIAL_OPTION = 'trial';
 const CHOICE_NAME_MAX = 100;
+/** How many visible trials a typed reference is matched against. */
+const TYPED_LOOKUP_LIMIT = 100;
+/** "TRIAL-0042", "#42" or "42". */
+const REF_NUMBER = /^(?:trial-|#)?0*(\d{1,9})$/i;
 
 const trialOption = (description: string) => (option: SlashCommandStringOption) =>
   option.setName(TRIAL_OPTION).setDescription(description).setAutocomplete(true);
@@ -44,6 +47,27 @@ async function trialChoices(h: HandlerContext, query: string) {
       name: clip(`${item.ref} — ${item.title} · ${STATUS_LABEL[item.status]}`, CHOICE_NAME_MAX),
       value: item.id,
     }));
+}
+
+/**
+ * The trial option: the id autocomplete supplies, or — when someone typed
+ * instead of picking — a reference ("TRIAL-0042", "42") or an exact title
+ * among the trials they may see.
+ */
+async function resolveTrialOption(h: HandlerContext, given: string): Promise<string> {
+  const value = given.trim();
+  if (isUuid(value)) return value;
+  const page = await trials.listTrials(h.ctx, { limit: TYPED_LOOKUP_LIMIT });
+  const wanted = value.toLowerCase();
+  const number = REF_NUMBER.exec(value)?.[1];
+  const match = page.items.find(
+    (item) =>
+      item.ref.toLowerCase() === wanted ||
+      (number !== undefined && item.number === Number(number)) ||
+      item.title.toLowerCase() === wanted,
+  );
+  if (!match) throw new NotFoundError('Trial');
+  return match.id;
 }
 
 /** Everything except the modal-opening paths answers after a (private) defer. */
@@ -109,7 +133,7 @@ export const trialCommand: CommandDefinition = {
   async execute(h) {
     const o = h.interaction.options;
     const given = o.string(TRIAL_OPTION);
-    const trialId = given ? requireTrialId(given) : null;
+    const trialId = given ? await resolveTrialOption(h, given) : null;
     switch (o.subcommand()) {
       // Modal paths answer with the modal itself: no defer.
       case 'apply':

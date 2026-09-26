@@ -1,3 +1,4 @@
+import { isUuid } from '@jave/core';
 import type { ComponentHandler, HandlerContext, ModalHandler } from '../../interactions/types';
 import { failure } from '../../ui/components';
 import {
@@ -16,7 +17,6 @@ import {
   openApplyModal,
   openSubmitModal,
   requireTrialId,
-  requireUuid,
   showStatus,
   showTeams,
   showTrial,
@@ -76,7 +76,9 @@ export const trialComponents: ComponentHandler = {
       case MEMBER_ACTIONS.pick:
         return isPickPurpose(args[0]) ? picked(h, args[0]) : expired(h);
     }
-    const trialId = requireTrialId(action === STAFF_ACTIONS.ask || action === STAFF_ACTIONS.run ? args[1] : args[0]);
+    const trialId =
+      action === STAFF_ACTIONS.ask || action === STAFF_ACTIONS.run ? args[1] : args[0];
+    if (!trialId || !isUuid(trialId)) return expired(h);
     switch (action) {
       case MEMBER_ACTIONS.view:
         return showTrial(h, trialId);
@@ -117,7 +119,8 @@ export const trialComponents: ComponentHandler = {
 export const trialModals: ModalHandler = {
   namespace: TRIALS_NS,
   async handle(h, action, args) {
-    const trialId = requireTrialId(args[0]);
+    const trialId = args[0];
+    if (!trialId || !isUuid(trialId)) return expired(h);
     switch (action) {
       case MEMBER_ACTIONS.apply:
         return completeApplication(h, trialId);
@@ -132,7 +135,7 @@ export const trialModals: ModalHandler = {
       case STAFF_ACTIONS.cancel:
         return submitCancellation(h, trialId);
       case STAFF_ACTIONS.evaluate:
-        return submitEvaluation(h, trialId, requireUuid(args[1], 'a team'));
+        return isUuid(args[1] ?? '') ? submitEvaluation(h, trialId, args[1]!) : expired(h);
       default:
         return expired(h);
     }

@@ -6,6 +6,7 @@
 import type { z } from 'zod';
 import { type ServiceContext, trials, type UserActor, updateSettings } from '@jave/core';
 import type { OrgRole } from '@jave/core';
+import { INTERACTION_LIMIT } from '../../interactions/router';
 import type { InteractionUser } from '../../interactions/types';
 import type { FakeInteraction } from '../../testing/fake-interaction';
 import type { BotHarness } from '../../testing/harness';
@@ -36,6 +37,23 @@ export const TRIAL_INPUT: z.input<typeof trials.createTrialSchema> = {
   durationMinutes: 120,
   teamSize: 2,
 };
+
+/** Just enough time between interactions to stay inside the per-user rate limit. */
+export const PACE_MS = Math.ceil(INTERACTION_LIMIT.windowMs / INTERACTION_LIMIT.max);
+
+/**
+ * The manual clock never moves on its own, so a scripted user would hit the
+ * router's rate limit after a dozen interactions. Advance it a little before
+ * each one, like a person clicking through the flow.
+ */
+export function pace(bot: BotHarness): BotHarness {
+  const run = bot.run.bind(bot);
+  bot.run = async (init) => {
+    bot.kit.clock.advance(PACE_MS);
+    return run(init);
+  };
+  return bot;
+}
 
 export interface Person {
   actor: UserActor;

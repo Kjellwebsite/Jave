@@ -53,10 +53,10 @@ function label(name: string, input: TextInputBuilder, description?: string): Lab
   return builder;
 }
 
-export function applyModal(trialId: string): ModalPayload {
+export function applyModal(trialId: string, ref: string): ModalPayload {
   return new ModalBuilder()
     .setCustomId(trialsId(MEMBER_ACTIONS.apply, trialId))
-    .setTitle(title('Trial application'))
+    .setTitle(title(`Apply — ${ref}`))
     .addLabelComponents(
       label(
         'Statement',
@@ -71,10 +71,20 @@ export function applyModal(trialId: string): ModalPayload {
     .toJSON();
 }
 
-export function submitModal(trialId: string): ModalPayload {
+export interface SubmitModalContext {
+  /** The version this submission becomes. */
+  nextVersion: number;
+  /** Past the deadline, inside the late window: accepted and flagged. */
+  late: boolean;
+  /** The team's latest version, prefilled so a resubmission is an edit. */
+  previous: { summary: string; links: readonly string[] } | null;
+}
+
+export function submitModal(trialId: string, context: SubmitModalContext): ModalPayload {
+  const version = `Becomes version ${context.nextVersion}.`;
   return new ModalBuilder()
     .setCustomId(trialsId(MEMBER_ACTIONS.submit, trialId))
-    .setTitle(title('Team submission'))
+    .setTitle(title(context.late ? 'Team submission — late' : 'Team submission'))
     .addLabelComponents(
       label(
         'Summary',
@@ -82,8 +92,11 @@ export function submitModal(trialId: string): ModalPayload {
           style: TextInputStyle.Paragraph,
           min: trials.LIMITS.submissionSummaryMin,
           max: trials.LIMITS.submissionSummary,
+          value: context.previous?.summary,
         }),
-        'What the team delivered, against the rubric. Outcomes, not effort.',
+        context.late
+          ? `${version} Past the deadline: accepted, flagged LATE.`
+          : `${version} What the team delivered. Outcomes, not effort.`,
       ),
       label(
         'Links',
@@ -92,6 +105,7 @@ export function submitModal(trialId: string): ModalPayload {
           max: TEXT_INPUT_MAX,
           required: false,
           placeholder: 'https://…',
+          value: context.previous?.links.join('\n'),
         }),
         `One http(s) link per line, up to ${trials.LIMITS.submissionLinks}.`,
       ),

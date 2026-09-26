@@ -1,5 +1,5 @@
 import type { APISelectMenuOption } from 'discord.js';
-import { isUuid, ValidationError, trials } from '@jave/core';
+import { isUuid, requireMember, trials, ValidationError } from '@jave/core';
 import type { HandlerContext, ReplyPayload } from '../../interactions/types';
 import { button, panel, row, stringSelect, success } from '../../ui/components';
 import { clip, discordTime, userText } from '../../ui/format';
@@ -7,7 +7,7 @@ import { COLORS, GLYPH, LIMITS } from '../../ui/theme';
 import { MEMBER_ACTIONS, type PickPurpose, trialsId } from './ids';
 import { applyModal, submitModal } from './modals';
 import { deadlineLine } from './render/cards';
-import { ONGOING_STATUSES, STATUS_LABEL } from './render/labels';
+import { ONGOING_STATUSES, PARTICIPANT_LABEL, STATUS_LABEL } from './render/labels';
 import {
   buttonRows,
   factsLine,
@@ -19,6 +19,7 @@ import {
 } from './render/member';
 
 type Summary = trials.TrialSummaryView;
+type ParticipantView = trials.ParticipantTrialView;
 
 /** How many trials a list shows (one embed, one select menu). */
 const LIST_SIZE = 10;
@@ -156,12 +157,65 @@ export async function offerApply(h: HandlerContext): Promise<void> {
   });
 }
 
-export async function openApplyModal(h: HandlerContext, trialId: string): Promise<void> {
-  await h.interaction.showModal(applyModal(trialId));
+/**
+ * Why the member cannot apply, from what core computed for them. Core
+ * re-checks everything when the statement arrives; this only spares the
+ * member typing a statement that would be refused.
+ */
+function applyBlocker(h: HandlerContext, view: ParticipantView): string {
+  const participation = view.participation;
+  if (participation && (STAKE_STATUSES as readonly string[]).includes(participation.status))
+    return `You already hold a place: ${PARTICIPANT_LABEL[participation.status]}.`;
+  if (participation?.status === 'removed') return 'You were removed from this trial.';
+  const closesAt = view.recruitmentClosesAt?.getTime() ?? Number.POSITIVE_INFINITY;
+  if (view.status !== 'recruiting' || closesAt <= h.ctx.clock.now().getTime())
+    return 'Recruitment for this trial is closed.';
+  const actor = requireMember(h.ctx);
+  return (
+    trials.eligibilityProblem({
+      roles: actor.roles,
+      standing: actor.standing,
+      guildStatus: 'present',
+    }) ?? 'This trial is not open to you.'
+  );
 }
 
+/** APPLY (card, list, /trial apply): the statement modal, or why applying is not possible. */
+export async function openApplyModal(h: HandlerContext, trialId: string): Promise<void> {
+  const view = await trials.getTrialForParticipant(h.ctx, { trialId });
+  if (!view.canApply) {
+    await h.respond(
+      infoReply(`Cannot apply — ${view.ref}`, `${trialTitle(view)}\n${applyBlocker(h, view)}`),
+    );
+    return;
+  }
+  await h.interaction.showModal(applyModal(trialId, view.ref));
+}
+
+function submitBlocker(view: ParticipantView): string {
+  const participation = view.participation;
+  if (!participation?.team) return 'Only members of a team in this trial can submit.';
+  if (view.status === 'teams_assigned') return 'The submission window opens when the trial starts.';
+  return 'The submission window is closed.';
+}
+
+/** SUBMIT: the modal prefilled with the team's latest version, or why submitting is not possible. */
 export async function openSubmitModal(h: HandlerContext, trialId: string): Promise<void> {
-  await h.interaction.showModal(submitModal(trialId));
+  const view = await trials.getTrialForParticipant(h.ctx, { trialId });
+  if (!view.canSubmit) {
+    await h.respond(
+      infoReply(`Cannot submit — ${view.ref}`, `${trialTitle(view)}\n${submitBlocker(view)}`),
+    );
+    return;
+  }
+  const latest = view.mySubmissions[0] ?? null;
+  await h.interaction.showModal(
+    submitModal(trialId, {
+      nextVersion: (latest?.version ?? 0) + 1,
+      late: view.timing.phase === 'grace',
+      previous: latest ? { summary: latest.summary, links: latest.links } : null,
+    }),
+  );
 }
 
 export async function completeApplication(h: HandlerContext, trialId: string): Promise<void> {

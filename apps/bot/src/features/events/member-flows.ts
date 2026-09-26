@@ -5,10 +5,12 @@ import { discordTime, userText } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
 import {
   HISTORY_LIMIT,
+  LIST_NOTICE_TITLE_MAX,
   LIST_LIMIT,
   PICK_PURPOSE,
   PICKER_LIMIT,
   type RsvpChoice,
+  type RsvpOrigin,
 } from './constants';
 import { checkInModal } from './modal-forms';
 import {
@@ -28,9 +30,24 @@ const RSVP_NOTICE: Record<calendar.RsvpStatus, string> = {
   waitlist: 'THE EVENT IS FULL — you are on the waitlist and move up automatically.',
 };
 
-export async function showEventList(h: HandlerContext): Promise<void> {
+/** "RSVP RECORDED — GOING — Build Night." — the line above the list after an RSVP from it. */
+function listNotice(result: calendar.RsvpResult, title: string): string {
+  const name = userText(title, LIST_NOTICE_TITLE_MAX);
+  if (result.status === 'waitlist') {
+    const position = result.waitlistPosition === null ? '' : ` #${result.waitlistPosition}`;
+    return `WAITLIST${position} — ${name}. You move up automatically when a spot opens.`;
+  }
+  return `RSVP RECORDED — ${result.status.toUpperCase()} — ${name}.`;
+}
+
+export async function showEventList(
+  h: HandlerContext,
+  options: { update?: boolean; notice?: string } = {},
+): Promise<void> {
   const page = await calendar.listEvents(h.ctx, { scope: 'upcoming', limit: LIST_LIMIT });
-  await h.respond(eventListMessage(page));
+  const payload = eventListMessage(page, options.notice);
+  if (options.update) await h.interaction.update(payload);
+  else await h.respond(payload);
 }
 
 /** The personal event card. `update` replaces the message the clicked control sits on. */
@@ -51,22 +68,24 @@ export async function showEventCard(
 
 /**
  * RSVP as the clicking member. From the public announcement the answer is a
- * private confirmation (the announcement itself refreshes via its job); from a
- * personal card the card is updated in place.
+ * private confirmation (the announcement itself refreshes via its job); from
+ * a personal card or the /events list, that private message is updated in place.
  */
 export async function respondRsvp(
   h: HandlerContext,
   eventId: string,
   choice: RsvpChoice,
-  fromCard: boolean,
+  origin: RsvpOrigin,
 ): Promise<void> {
   const result = await calendar.rsvp(h.ctx, { eventId, status: choice });
   const notice =
     result.status === 'waitlist' && result.waitlistPosition !== null
       ? `${RSVP_NOTICE.waitlist} Position #${result.waitlistPosition}.`
       : RSVP_NOTICE[result.status];
-  if (fromCard) return showEventCard(h, eventId, { update: true, notice });
+  if (origin === 'card') return showEventCard(h, eventId, { update: true, notice });
   const view = await calendar.getEvent(h.ctx, { eventId });
+  if (origin === 'list')
+    return showEventList(h, { update: true, notice: listNotice(result, view.title) });
   await h.respond(rsvpConfirmation(result, view.title));
 }
 

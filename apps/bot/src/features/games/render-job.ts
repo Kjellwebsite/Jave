@@ -2,6 +2,7 @@ import { RESTJSONErrorCodes } from 'discord.js';
 import { eq } from 'drizzle-orm';
 import { users } from '@jave/database';
 import {
+  enqueueJob,
   games,
   type JobHandler,
   type JobHandlerMap,
@@ -16,6 +17,9 @@ import { RENDER_REASON } from './constants';
 import { gamePanel } from './render';
 
 type Render = games.GameRender;
+
+/** Dedupe-key suffix of renders queued by the bot itself (not by a state change). */
+const REPOST_KEY = 'repost';
 type ChannelVerdict = 'host_cannot_post' | 'bot_cannot_post';
 
 /** Discord errors that mean the bot lost the right to post in the channel. */
@@ -28,7 +32,8 @@ const LOST_ACCESS_CODES = [
 const ended = (render: Render) =>
   render.session.status === 'completed' || render.session.status === 'abandoned';
 
-const lostAccess = (error: unknown) => LOST_ACCESS_CODES.some((code) => isDiscordError(error, code));
+const lostAccess = (error: unknown) =>
+  LOST_ACCESS_CODES.some((code) => isDiscordError(error, code));
 
 /** The host's Discord id: from the players, or the user row when the host only runs the game. */
 async function hostDiscordId(ctx: ServiceContext, render: Render): Promise<string | null> {
@@ -118,7 +123,7 @@ function renderHandler(services: BotServices, lock: KeyedLock): JobHandler {
     const parsed = games.discordGamesRenderPayloadSchema.safeParse(payload);
     if (!parsed.success) throw new PermanentJobError('invalid discord.games.render payload');
     const { sessionId, version } = parsed.data;
-    return lock.run(sessionId, async () => {
+    const run = lock.run(sessionId, async () => {
       const render = await games.getGameRender(ctx, sessionId);
       if (render.session.version > version) return { skipped: 'superseded' };
       const channelId = render.discordChannelId;
@@ -142,6 +147,10 @@ function renderHandler(services: BotServices, lock: KeyedLock): JobHandler {
       if (ended(render)) return { skipped: 'ended' };
       return postPanel(ctx, gateway, render, channelId, message);
     });
+    // Permanent Discord failures (missing permission, unknown channel) dead-letter at once.
+    return run.catch((error: unknown) => {
+      throw jobFailure(error);
+    });
   };
 }
 
@@ -149,4 +158,23 @@ function renderHandler(services: BotServices, lock: KeyedLock): JobHandler {
 export function gameJobHandlers(services: BotServices): JobHandlerMap {
   const lock = new KeyedLock();
   return { [games.DISCORD_GAMES_RENDER_JOB]: renderHandler(services, lock) };
+}
+
+/**
+ * Queue a fresh render of a session's current state (after its panel was
+ * deleted, for example). Re-syncs from the database, so a render that is
+ * already running runs once more instead of this one being dropped.
+ */
+export async function enqueueRerender(
+  ctx: ServiceContext,
+  session: { id: string; version: number },
+): Promise<number | null> {
+  const payload: games.DiscordGamesRenderPayload = {
+    sessionId: session.id,
+    version: session.version,
+  };
+  return enqueueJob(ctx, games.DISCORD_GAMES_RENDER_JOB, payload, {
+    dedupeKey: `${games.DISCORD_GAMES_RENDER_JOB}:${session.id}:${REPOST_KEY}`,
+    rerunIfRunning: true,
+  });
 }

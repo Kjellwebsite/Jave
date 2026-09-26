@@ -26,8 +26,13 @@ export const EVENT_ACTION = {
 export const PICK_PURPOSE = { view: 'view', checkIn: 'checkin' } as const;
 export type PickPurpose = (typeof PICK_PURPOSE)[keyof typeof PICK_PURPOSE];
 
-/** Marks RSVP buttons on a personal (ephemeral) card, which is updated in place. */
-export const CARD_FLAG = 'card';
+/**
+ * Where an RSVP button sits, as the last custom-id argument. The public
+ * announcement has none (the answer is a private confirmation); a personal
+ * card or the /events list is private and is updated in place.
+ */
+export const RSVP_ORIGIN = { card: 'card', list: 'list' } as const;
+export type RsvpOrigin = 'announcement' | (typeof RSVP_ORIGIN)[keyof typeof RSVP_ORIGIN];
 
 export const RSVP_CHOICES = ['going', 'maybe', 'declined'] as const;
 export type RsvpChoice = (typeof RSVP_CHOICES)[number];
@@ -52,6 +57,10 @@ export const DEFAULT_DURATION_MINUTES = 120;
 
 /** Discord-facing limits of our own views. */
 export const LIST_LIMIT = 10;
+/** Events in /events list that get their own row of RSVP buttons (row five is the picker). */
+export const LIST_RSVP_ROWS = 4;
+/** Event titles quoted in a one-line notice are clipped to this length. */
+export const LIST_NOTICE_TITLE_MAX = 80;
 export const PICKER_LIMIT = 25;
 export const HISTORY_LIMIT = 10;
 export const DESCRIPTION_PREVIEW_MAX = 1500;

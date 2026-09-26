@@ -1,11 +1,12 @@
 import type { ComponentHandler, HandlerContext, ModalHandler } from '../../interactions/types';
 import {
-  CARD_FLAG,
   EVENT_ACTION,
   EVENTS_NS,
   PICK_PURPOSE,
   RSVP_CHOICES,
+  RSVP_ORIGIN,
   type RsvpChoice,
+  type RsvpOrigin,
 } from './constants';
 import { FIELD } from './modal-forms';
 import { openCheckIn, respondRsvp, showEventCard, submitCheckIn } from './member-flows';
@@ -30,6 +31,12 @@ import { requireId, respondExpired } from './support';
 
 function rsvpChoice(value: string | undefined): RsvpChoice | null {
   return RSVP_CHOICES.find((choice) => choice === value) ?? null;
+}
+
+/** The origin flag of an RSVP button; null for a value no button carries. */
+function rsvpOrigin(value: string | undefined): RsvpOrigin | null {
+  if (value === undefined) return 'announcement';
+  return Object.values(RSVP_ORIGIN).find((origin) => origin === value) ?? null;
 }
 
 /** Custom-id arguments are untrusted: anything but an id is an expired control. */
@@ -59,8 +66,9 @@ async function handleComponent(
   switch (action) {
     case EVENT_ACTION.rsvp: {
       const choice = rsvpChoice(args[1]);
-      if (!choice) return respondExpired(h);
-      return respondRsvp(h, eventId, choice, args[2] === CARD_FLAG);
+      const origin = rsvpOrigin(args[2]);
+      if (!choice || !origin) return respondExpired(h);
+      return respondRsvp(h, eventId, choice, origin);
     }
     case EVENT_ACTION.view:
       return showEventCard(h, eventId);

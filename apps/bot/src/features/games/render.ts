@@ -1,48 +1,23 @@
 import { games } from '@jave/core';
 import type { MessagePayload } from '../../discord/gateway';
 import { customId } from '../../interactions/custom-id';
-import type { ReplyPayload } from '../../interactions/types';
 import { button, field, panel, row } from '../../ui/components';
 import { discordTime, userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
 import {
   GAME_ACTION,
   GAMES_NS,
-  LEADERBOARD_ROWS,
-  type LeaderboardMetricChoice,
   LOBBY_ROWS,
-  METRIC_LABEL,
   OPTION_LETTERS,
   SCOREBOARD_ROWS,
   TAP,
 } from './constants';
+import { formatPoints, NAME_MAX, placementLabel } from './format';
+import { isReactionView, isTriviaView, type ReactionView, type TriviaView } from './views';
 
 type Render = games.GameRender;
-type TriviaView = games.trivia.TriviaPublicView;
-type ReactionView = games.reaction.ReactionPublicView;
-
-const NAME_MAX = 48;
-const NUMBER_FORMAT = new Intl.NumberFormat('en-US');
-const RANK_WIDTH = 2;
-
-function isTriviaView(view: unknown): view is TriviaView {
-  return (
-    typeof view === 'object' && view !== null && 'game' in view && view.game === games.trivia.TRIVIA_KEY
-  );
-}
-
-function isReactionView(view: unknown): view is ReactionView {
-  return (
-    typeof view === 'object' &&
-    view !== null &&
-    'game' in view &&
-    view.game === games.reaction.REACTION_KEY
-  );
-}
 
 const at = (epochMs: number) => new Date(epochMs);
-const points = (value: number) => NUMBER_FORMAT.format(value);
-const rank = (value: number) => String(value).padStart(RANK_WIDTH, '0');
 
 /** A player as a non-pinging mention (embeds never ping), or their name. */
 function playerName(render: Render, userId: string): string {
@@ -76,30 +51,40 @@ const moveId = (render: Render, round: number, choice: string | number) =>
 function lobbyPanel(render: Render): MessagePayload {
   const { session } = render;
   const count = session.players.length;
-  const names = session.players
-    .slice(0, LOBBY_ROWS)
-    .map((player) => {
-      const host = player.userId === session.hostUserId ? ` ${GLYPH.dot} host` : '';
-      return `${GLYPH.bullet} ${playerName(render, player.userId)}${host}`;
-    });
+  const names = session.players.slice(0, LOBBY_ROWS).map((player) => {
+    const host = player.userId === session.hostUserId ? ` ${GLYPH.dot} host` : '';
+    return `${GLYPH.bullet} ${playerName(render, player.userId)}${host}`;
+  });
   if (count > LOBBY_ROWS) names.push(`${GLYPH.dot} and ${count - LOBBY_ROWS} more`);
   const id = session.id;
   return {
     embeds: [
       panel({
         kicker: kicker(render, 'LOBBY'),
-        title: `${session.gameName} ${GLYPH.dot} lobby`,
+        title: 'Waiting for players',
         description: [configLine(session), 'JOIN to play. The host starts the game.']
           .filter(Boolean)
           .join('\n'),
-        fields: [field(`Players ${count} / ${session.maxPlayers}`, names.join('\n') || 'Nobody yet.')],
+        fields: [
+          field(`Players ${count} / ${session.maxPlayers}`, names.join('\n') || 'Nobody yet.'),
+        ],
       }),
     ],
     components: [
       row(
-        button('Join', customId(GAMES_NS, GAME_ACTION.join, id), 'primary', count >= session.maxPlayers),
+        button(
+          'Join',
+          customId(GAMES_NS, GAME_ACTION.join, id),
+          'primary',
+          count >= session.maxPlayers,
+        ),
         button('Leave', customId(GAMES_NS, GAME_ACTION.leave, id)),
-        button('Start', customId(GAMES_NS, GAME_ACTION.start, id), 'success', count < session.minPlayers),
+        button(
+          'Start',
+          customId(GAMES_NS, GAME_ACTION.start, id),
+          'success',
+          count < session.minPlayers,
+        ),
         button('Cancel', customId(GAMES_NS, GAME_ACTION.abandon, id), 'danger'),
       ),
     ],
@@ -115,7 +100,7 @@ function scoreboardLines(
     .slice(0, SCOREBOARD_ROWS)
     .map(
       (entry) =>
-        `\`${rank(entry.placement)}\` ${playerName(render, entry.playerId)} ${GLYPH.dot} ${points(entry.score)}${mark ? ` ${mark(entry.playerId)}` : ''}`,
+        `\`${placementLabel(entry.placement)}\` ${playerName(render, entry.playerId)} ${GLYPH.dot} ${formatPoints(entry.score)}${mark ? ` ${mark(entry.playerId)}` : ''}`,
     );
   if (entries.length > SCOREBOARD_ROWS) {
     lines.push(`${GLYPH.dot} and ${entries.length - SCOREBOARD_ROWS} more`);
@@ -161,7 +146,11 @@ function triviaPanel(render: Render, view: TriviaView): MessagePayload {
       components: [
         row(
           ...question.options.map((_, index) =>
-            button(OPTION_LETTERS[index] ?? String(index + 1), moveId(render, view.round, index), 'secondary'),
+            button(
+              OPTION_LETTERS[index] ?? String(index + 1),
+              moveId(render, view.round, index),
+              'secondary',
+            ),
           ),
         ),
       ],
@@ -206,7 +195,7 @@ function reactionResultLine(
   const who = playerName(render, result.playerId);
   if (result.falseStart) return `${who} ${GLYPH.dot} FALSE START`;
   if (result.reactionMs === null) return `${who} ${GLYPH.dot} no tap`;
-  return `${who} ${GLYPH.dot} ${points(result.reactionMs)} ms ${GLYPH.dot} +${points(result.points)}`;
+  return `${who} ${GLYPH.dot} ${formatPoints(result.reactionMs)} ms ${GLYPH.dot} +${formatPoints(result.points)}`;
 }
 
 function reactionPanel(render: Render, view: ReactionView): MessagePayload {
@@ -269,7 +258,7 @@ function standingsPanel(render: Render): MessagePayload {
     : winners.length === 0
       ? 'NO WINNER — nobody scored.'
       : winners.length === 1
-        ? `WINNER — ${playerName(render, winners[0]!.playerId)} ${GLYPH.dot} ${points(winners[0]!.score)}`
+        ? `WINNER — ${playerName(render, winners[0]!.playerId)} ${GLYPH.dot} ${formatPoints(winners[0]!.score)}`
         : `SHARED WIN — ${winners.map((entry) => playerName(render, entry.playerId)).join(', ')}`;
   return {
     embeds: [
@@ -317,34 +306,5 @@ export function gamePanel(render: Render): MessagePayload {
       }),
     ],
     components: [],
-  };
-}
-
-export function leaderboardPanel(
-  board: games.Leaderboard,
-  gameName: string,
-  ephemeral: boolean,
-): ReplyPayload {
-  const metric = board.metric as LeaderboardMetricChoice;
-  const lines = board.entries.slice(0, LEADERBOARD_ROWS).map((entry) => {
-    const stats = [
-      `${points(entry.wins)} ${entry.wins === 1 ? 'win' : 'wins'}`,
-      `best ${points(entry.bestScore)}`,
-      `${points(entry.sessions)} ${entry.sessions === 1 ? 'session' : 'sessions'}`,
-    ];
-    return `\`${rank(entry.rank)}\` **${userText(entry.displayName, NAME_MAX)}** ${GLYPH.dot} ${stats.join(` ${GLYPH.dot} `)}`;
-  });
-  return {
-    embeds: [
-      panel({
-        kicker: `LEADERBOARD ${GLYPH.dot} ${METRIC_LABEL[metric].toUpperCase()}`,
-        title: gameName,
-        description:
-          lines.join('\n') ||
-          'No ranked results yet. Sessions with two or more players count.',
-        footer: 'Ranked sessions only. Members who hide themselves from leaderboards are not listed.',
-      }),
-    ],
-    ephemeral,
   };
 }

@@ -1,32 +1,59 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { games, ValidationError } from '@jave/core';
 import type { CommandDefinition, HandlerContext } from '../../interactions/types';
-import { success } from '../../ui/components';
+import { failure, panel, success } from '../../ui/components';
+import { userText } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
-import { LEADERBOARD_METRICS, type LeaderboardMetricChoice, METRIC_LABEL } from './constants';
-import { leaderboardPanel } from './render';
+import { LEADERBOARD_METRICS, METRIC_LABEL } from './constants';
+import { promptStop } from './components';
+import { gameKeyOf, metricOf, showLeaderboard } from './leaderboard';
 
 const { trivia, reaction } = games;
 const DIFFICULTIES = ['mixed', ...trivia.TRIVIA_DIFFICULTIES] as const;
 
 const categoryLabel = (category: string) => category.replace(/_/g, ' ');
 
-/** Open a lobby in the invoking channel; the panel itself is posted by the render job. */
+/** The channel a game runs in: a guild channel, never a DM. */
+function gameChannel(h: HandlerContext): string {
+  const channelId = h.interaction.channelId;
+  if (!h.interaction.guildId || !channelId) {
+    throw new ValidationError('Games run in JAVELIN channels, not in direct messages.');
+  }
+  return channelId;
+}
+
+/**
+ * Open a lobby in the invoking channel. The panel is posted by the render
+ * job, which runs before the reply so the host learns right away when the
+ * channel was refused (the host or JAVE cannot post there).
+ */
 async function openLobby(
   h: HandlerContext,
   gameKey: string,
   config: Record<string, unknown>,
 ): Promise<void> {
-  const channelId = h.interaction.channelId;
-  if (!h.interaction.guildId || !channelId) {
-    throw new ValidationError('Games run in JAVELIN channels, not in direct messages.');
-  }
-  const session = await games.createSession(h.ctx, {
+  const channelId = gameChannel(h);
+  await h.interaction.defer({ ephemeral: true });
+  const created = await games.createSession(h.ctx, {
     gameKey,
     surface: 'discord',
     discordChannelId: channelId,
     config,
   });
+  await h.services.runJobsNow(h.ctx.effects.jobIds);
+  const session = await games.getSessionView(h.ctx, { sessionId: created.id });
+  if (session.status === 'abandoned') {
+    await h.respond({
+      embeds: [
+        failure(
+          'CHANNEL UNAVAILABLE',
+          `${userText(session.endReason ?? 'JAVE cannot post in this channel.')} Open the lobby in a channel where both of you can post.`,
+        ),
+      ],
+      ephemeral: true,
+    });
+    return;
+  }
   await h.respond({
     embeds: [
       success(
@@ -36,6 +63,21 @@ async function openLobby(
     ],
     ephemeral: true,
   });
+}
+
+/** /challenge stop: the live game in this channel, behind a confirmation. */
+async function stopHere(h: HandlerContext): Promise<void> {
+  const live = await games.findLiveSession(h.ctx, { discordChannelId: gameChannel(h) });
+  if (!live) {
+    await h.respond({
+      embeds: [
+        panel({ title: 'No game here', description: 'Nothing is running in this channel.' }),
+      ],
+      ephemeral: true,
+    });
+    return;
+  }
+  await promptStop(h, live.id);
 }
 
 function triviaConfig(h: HandlerContext): Record<string, unknown> {
@@ -50,13 +92,6 @@ function triviaConfig(h: HandlerContext): Record<string, unknown> {
   if (difficulty !== null) config.difficulty = difficulty;
   if (category !== null) config.categories = [category];
   return config;
-}
-
-function metricOf(value: string | null): LeaderboardMetricChoice {
-  if (value === null) return 'wins';
-  const metric = LEADERBOARD_METRICS.find((candidate) => candidate === value);
-  if (!metric) throw new ValidationError('Choose a leaderboard from the list.');
-  return metric;
 }
 
 export const challengeCommand: CommandDefinition = {
@@ -131,11 +166,14 @@ export const challengeCommand: CommandDefinition = {
           option.setName('share').setDescription('Post visibly in this channel'),
         ),
     )
+    .addSubcommand((sub) =>
+      sub.setName('stop').setDescription('Host or event staff: stop the game in this channel.'),
+    )
     .toJSON(),
   help: {
     category: 'community',
     summary: 'Trivia and reaction games in this channel, and their leaderboards.',
-    usage: '/challenge trivia | reaction | leaderboard',
+    usage: '/challenge trivia | reaction | leaderboard | stop',
   },
 
   async execute(h) {
@@ -147,12 +185,12 @@ export const challengeCommand: CommandDefinition = {
         const rounds = o.integer('rounds');
         return openLobby(h, reaction.REACTION_KEY, rounds === null ? {} : { rounds });
       }
-      case 'leaderboard': {
-        const gameKey = o.string('game') ?? trivia.TRIVIA_KEY;
-        const board = await games.getLeaderboard(h.ctx, { gameKey, metric: metricOf(o.string('metric')) });
-        const name = games.findGame(board.gameKey)?.name ?? board.gameKey;
-        return h.respond(leaderboardPanel(board, name, !(o.boolean('share') ?? false)));
-      }
+      case 'leaderboard':
+        return showLeaderboard(h, gameKeyOf(o.string('game')), metricOf(o.string('metric')), {
+          shared: o.boolean('share') ?? false,
+        });
+      case 'stop':
+        return stopHere(h);
       default:
         throw new ValidationError('Unknown subcommand.');
     }

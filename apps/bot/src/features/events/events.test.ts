@@ -254,7 +254,32 @@ describe('events feature', () => {
         user: member.user,
       });
       expect(list.interaction.lastPayload()!.ephemeral).toBe(true);
-      expect(list.interaction.lastText()).toContain('Build Night');
+      expect(list.interaction.lastText()).toContain('`01` **Build Night**');
+      const [rsvpRow, pickerRow] = list.interaction.lastPayload()!.components!;
+      expect(rsvpRow!.components.map((c) => ('label' in c ? c.label : ''))).toEqual([
+        '01 GOING',
+        '01 MAYBE',
+        '01 DECLINE',
+      ]);
+      expect(pickerRow!.components[0]!.type).toBe(3);
+
+      const rsvp = await bot.run({
+        kind: 'button',
+        name: customId('events', 'rsvp', id, 'going', 'list'),
+        user: member.user,
+      });
+      expect(rsvp.interaction.responses[0]?.type).toBe('update');
+      expect(rsvp.interaction.lastText()).toContain('RSVP RECORDED — GOING — Build Night.');
+      expect(rsvp.interaction.lastText()).toContain('YOU: GOING');
+      const going = rsvp.interaction.lastPayload()!.components![0]!.components[0]!;
+      expect('disabled' in going && going.disabled).toBe(true);
+      const forgedOrigin = await bot.run({
+        kind: 'button',
+        name: customId('events', 'rsvp', id, 'maybe', 'everyone'),
+        user: member.user,
+      });
+      expect(forgedOrigin.interaction.lastText()).toContain('EXPIRED');
+
       const pick = await bot.run({
         kind: 'select',
         name: customId('events', 'pick', 'view'),
@@ -264,7 +289,7 @@ describe('events feature', () => {
       expect(pick.interaction.responses[0]?.type).toBe('update');
       const card = pick.interaction.lastPayload()!;
       expect(card.embeds![0]!.fields!.find((f) => f.name === 'YOUR RSVP')!.value).toContain(
-        'No response',
+        'GOING',
       );
       // Members never see staff controls.
       expect(card.components).toHaveLength(1);

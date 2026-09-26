@@ -8,16 +8,18 @@ import { clip, discordTime, userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
 import {
   ANNOUNCEMENT_DESCRIPTION_MAX,
-  CARD_FLAG,
   DESCRIPTION_PREVIEW_MAX,
   EVENT_ACTION,
   EVENTS_NS,
+  LIST_RSVP_ROWS,
   LOCATION_TEXT_MAX,
   OPTION_DESCRIPTION_MAX,
   OPTION_LABEL_MAX,
   PICK_PURPOSE,
   type PickPurpose,
+  RSVP_ORIGIN,
   type RsvpChoice,
+  type RsvpOrigin,
 } from './constants';
 
 /** What the public announcement and the personal card have in common. */
@@ -143,22 +145,28 @@ function summaryFields(event: EventSummary): APIEmbedField[] {
 function rsvpButtons(
   eventId: string,
   event: Pick<EventSummary, 'rsvpOpen' | 'declineOpen'>,
-  options: { card: boolean; current: calendar.RsvpStatus | null },
+  options: { origin: RsvpOrigin; current: calendar.RsvpStatus | null; prefix?: string },
 ) {
   const id = (choice: RsvpChoice) =>
-    options.card
-      ? customId(EVENTS_NS, EVENT_ACTION.rsvp, eventId, choice, CARD_FLAG)
-      : customId(EVENTS_NS, EVENT_ACTION.rsvp, eventId, choice);
+    options.origin === 'announcement'
+      ? customId(EVENTS_NS, EVENT_ACTION.rsvp, eventId, choice)
+      : customId(EVENTS_NS, EVENT_ACTION.rsvp, eventId, choice, RSVP_ORIGIN[options.origin]);
+  const label = (text: string) => (options.prefix ? `${options.prefix} ${text}` : text);
   const current = options.current;
   return [
     button(
-      'Going',
+      label('Going'),
       id('going'),
       'primary',
       !event.rsvpOpen || current === 'going' || current === 'waitlist',
     ),
-    button('Maybe', id('maybe'), 'secondary', !event.rsvpOpen || current === 'maybe'),
-    button('Decline', id('declined'), 'secondary', !event.declineOpen || current === 'declined'),
+    button(label('Maybe'), id('maybe'), 'secondary', !event.rsvpOpen || current === 'maybe'),
+    button(
+      label('Decline'),
+      id('declined'),
+      'secondary',
+      !event.declineOpen || current === 'declined',
+    ),
   ];
 }
 
@@ -182,7 +190,7 @@ export function announcementMessage(publication: calendar.EventPublication): Mes
     ],
     components: [
       row(
-        ...rsvpButtons(publication.eventId, publication, { card: false, current: null }),
+        ...rsvpButtons(publication.eventId, publication, { origin: 'announcement', current: null }),
         button('Details', customId(EVENTS_NS, EVENT_ACTION.view, publication.eventId)),
       ),
     ],
@@ -281,7 +289,7 @@ export function eventCard(
     .join('\n\n');
 
   const memberButtons = rsvpButtons(event.id, event, {
-    card: true,
+    origin: 'card',
     current: event.myRsvp?.status ?? null,
   });
   if (checkInOpen(event, options.now) && event.checkInCodeIssued && !event.myRsvp?.checkedInAt) {
@@ -342,18 +350,24 @@ export function eventPicker(
   );
 }
 
-function listLine(event: calendar.EventView): string {
+/** "01", "02", … — list numbers that match the RSVP button labels. */
+const listNumber = (index: number) => String(index + 1).padStart(2, '0');
+
+function listLine(event: calendar.EventView, index: number): string {
   const going =
     event.capacity === null
       ? `${event.counts.going} going`
       : `${event.counts.going}/${event.capacity} going`;
   const live = event.status === 'live' ? ` ${GLYPH.dot} **LIVE**` : '';
   const mine = event.myRsvp ? ` ${GLYPH.dot} YOU: ${RSVP_LABEL[event.myRsvp.status]}` : '';
-  return `${GLYPH.bullet} **${userText(event.title, 80)}**${live}\n${kindLabel(event.kind)} ${GLYPH.dot} ${discordTime(event.startsAt, 'f')} ${GLYPH.dot} ${going}${mine}`;
+  return `\`${listNumber(index)}\` **${userText(event.title, 80)}**${live}\n${kindLabel(event.kind)} ${GLYPH.dot} ${discordTime(event.startsAt, 'f')} ${GLYPH.dot} ${going}${mine}`;
 }
 
-/** /events list: upcoming events and a picker to open one. */
-export function eventListMessage(page: Page<calendar.EventView>): ReplyPayload {
+/**
+ * /events list: upcoming events, one row of RSVP buttons for each of the
+ * first few (numbered to match the list), and a picker to open any of them.
+ */
+export function eventListMessage(page: Page<calendar.EventView>, notice?: string): ReplyPayload {
   if (page.items.length === 0) {
     return {
       embeds: [
@@ -364,20 +378,31 @@ export function eventListMessage(page: Page<calendar.EventView>): ReplyPayload {
             'Nothing is scheduled right now. New events are announced here when staff publish them.',
         }),
       ],
+      components: [],
       ephemeral: true,
     };
   }
   const more = page.total > page.items.length ? page.total - page.items.length : 0;
+  const lines = page.items.map(listLine).join('\n\n');
+  const rsvpRows = page.items.slice(0, LIST_RSVP_ROWS).map((event, index) =>
+    row(
+      ...rsvpButtons(event.id, event, {
+        origin: 'list',
+        current: event.myRsvp?.status ?? null,
+        prefix: listNumber(index),
+      }),
+    ),
+  );
   return {
     embeds: [
       panel({
         kicker: 'JAVELIN EVENTS',
         title: 'Upcoming',
-        description: page.items.map(listLine).join('\n\n'),
+        description: notice ? `${notice}\n\n${lines}` : lines,
         footer: more > 0 ? `${more} more on the dashboard.` : undefined,
       }),
     ],
-    components: [eventPicker(page.items, PICK_PURPOSE.view, 'Open an event')],
+    components: [...rsvpRows, eventPicker(page.items, PICK_PURPOSE.view, 'Open an event')],
     ephemeral: true,
   };
 }

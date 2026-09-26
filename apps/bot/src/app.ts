@@ -1,10 +1,12 @@
 import {
+  type ai,
   coreJobHandlers,
   coreRecurringJobs,
   createContext,
   enqueueRecurring,
   type HealthCheck,
   type JobHandlerMap,
+  research,
   runHealthChecks,
   systemActor,
   Worker,
@@ -34,6 +36,14 @@ export interface BotAppOptions {
   gateway: DiscordGateway;
   features: BotFeature[];
   worker: { concurrency: number; pollMs: number };
+  /** AI provider + daily ceiling, built from the environment (main.ts) or a mock (tests). */
+  ai: ai.AiDeps;
+  /**
+   * Research job dependencies: metadata resolvers and the Sidus client built
+   * from SIDUS_API_URL / SIDUS_API_KEY. Default: the core defaults (public
+   * resolvers, not-configured Sidus client — sync recorded as not_synced).
+   */
+  researchJobs?: research.ResearchJobDeps;
   extraHealthChecks?: HealthCheck[];
 }
 
@@ -83,6 +93,7 @@ export function createBotApp(options: BotAppOptions): BotApp {
     config: options.config,
     discord: options.discord,
     gateway: options.gateway,
+    ai: options.ai,
     runJobsNow: async (ids) => {
       if (worker) await worker.runNow(ids);
     },
@@ -94,6 +105,7 @@ export function createBotApp(options: BotAppOptions): BotApp {
           gateway: options.gateway,
           worker,
           pollMs: options.worker.pollMs,
+          ai: options.ai.provider,
           extra: options.extraHealthChecks,
         }),
       ),
@@ -110,8 +122,16 @@ export function createBotApp(options: BotAppOptions): BotApp {
       requestId,
     });
 
+  // The static core registry cannot read the environment, so its research
+  // handlers use the not-configured Sidus client. This is the one deliberate
+  // replacement: the same job types, built with this deployment's resolvers and
+  // Sidus credentials.
+  const coreHandlers: JobHandlerMap = {
+    ...coreJobHandlers(),
+    ...research.createJobHandlers(options.researchJobs ?? research.defaultResearchJobDeps()),
+  };
   const handlers = mergeHandlers(
-    coreJobHandlers(),
+    coreHandlers,
     ...options.features.map((f) => f.jobHandlers?.(services) ?? {}),
   );
   worker = new Worker({

@@ -10,6 +10,7 @@ export const AI_FEATURES = [
   'explain',
   'draft_announcement',
   'draft_task',
+  'ticket_summary',
 ] as const;
 export type AiFeature = (typeof AI_FEATURES)[number];
 
@@ -30,6 +31,7 @@ export const FEATURE_MAX_TOKENS: Readonly<Record<AiFeature, number>> = {
   explain: 6000,
   draft_announcement: 4000,
   draft_task: 4000,
+  ticket_summary: 4000,
 };
 
 /** Absolute input ceiling (the settings maximum); the live limit is settings.ai.maxInputChars. */
@@ -82,3 +84,7 @@ export const AI_MAINTENANCE_EVERY_MS = 5 * MINUTE;
 export const STALE_PENDING_REQUEST_MS = HOUR;
 
 export const MAX_USAGE_DAYS = 90;
+
+/** Shortest drafts an action kind accepts (the model's output is held to the same bar). */
+export const MIN_DRAFT_TITLE_LENGTH = 3;
+export const MIN_DRAFT_BODY_LENGTH = 10;

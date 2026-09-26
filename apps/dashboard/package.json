@@ -12,6 +12,7 @@
     "test:e2e": "next build && playwright test"
   },
   "dependencies": {
+    "@jave/ai": "workspace:*",
     "@jave/brand": "workspace:*",
     "@jave/config": "workspace:*",
     "@jave/core": "workspace:*",

@@ -58,7 +58,8 @@ export const brainstormSchema = z.object({
   surface: surfaceSchema,
 });
 
-const MAX_DRAFT_BRIEF_LENGTH = 4000;
+/** Longest brief a draft feature accepts (a Discord message fits). */
+export const MAX_DRAFT_BRIEF_LENGTH = 4000;
 
 export const draftAnnouncementInputSchema = z.object({
   brief: z.string().trim().min(1).max(MAX_DRAFT_BRIEF_LENGTH),

@@ -58,4 +58,27 @@ describe('parseEnv', () => {
       parseEnv(fullBotEnvSchema, { ...validBot, JAVE_ENCRYPTION_KEY: 'too-short' }),
     ).toThrow(/JAVE_ENCRYPTION_KEY/);
   });
+
+  it('accepts the MOCK / DEVELOPMENT ONLY AI provider outside production', () => {
+    for (const NODE_ENV of ['development', 'test']) {
+      expect(parseEnv(fullBotEnvSchema, { ...validBot, NODE_ENV, AI_PROVIDER: 'mock' })).toMatchObject(
+        { AI_PROVIDER: 'mock' },
+      );
+    }
+  });
+
+  it('BREAK: refuses AI_PROVIDER=mock in production for the bot and the dashboard', () => {
+    expect(() =>
+      parseEnv(fullBotEnvSchema, { ...validBot, NODE_ENV: 'production', AI_PROVIDER: 'mock' }),
+    ).toThrow(/AI_PROVIDER/);
+    expect(() =>
+      parseEnv(dashboardEnvSchema, {
+        ...validBot,
+        NODE_ENV: 'production',
+        JAVE_SESSION_SECRET: 's'.repeat(40),
+        DISCORD_CLIENT_SECRET: 'client-secret',
+        AI_PROVIDER: 'mock',
+      }),
+    ).toThrow(/AI_PROVIDER/);
+  });
 });

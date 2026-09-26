@@ -1,5 +1,6 @@
 import { createTestKit, type MemberOptions, type TestKit } from '@jave/core/testing';
-import { type CoreConfig, silentLogger, type UserActor } from '@jave/core';
+import { MockProvider } from '@jave/ai';
+import { type ai, type CoreConfig, research, silentLogger, type UserActor } from '@jave/core';
 import { createBotApp, type BotApp } from '../app';
 import { allFeatures } from '../features';
 import type { BotFeature } from '../features/types';
@@ -32,9 +33,16 @@ export function discordUser(id: string, username = `user${id.slice(-4)}`): Inter
   return { id, username, globalName: username, avatar: null, bot: false };
 }
 
-export async function createBotHarness(
-  options: { features?: BotFeature[]; config?: Partial<CoreConfig> } = {},
-): Promise<BotHarness> {
+export interface BotHarnessOptions {
+  features?: BotFeature[];
+  config?: Partial<CoreConfig>;
+  /** Default: the MOCK / DEVELOPMENT ONLY MockProvider (deterministic, offline). */
+  ai?: ai.AiDeps;
+  /** Default: no metadata resolvers (no network) and the not-configured Sidus client. */
+  researchJobs?: research.ResearchJobDeps;
+}
+
+export async function createBotHarness(options: BotHarnessOptions = {}): Promise<BotHarness> {
   const kit = await createTestKit(options.config);
   const gateway = new FakeDiscordGateway(TEST_GUILD_ID);
   const app = createBotApp({
@@ -52,6 +60,12 @@ export async function createBotHarness(
     gateway,
     features: options.features ?? allFeatures(),
     worker: { concurrency: 4, pollMs: 50 },
+    // MOCK / DEVELOPMENT ONLY: tests never reach a real AI provider.
+    ai: options.ai ?? { provider: new MockProvider() },
+    researchJobs: options.researchJobs ?? {
+      resolvers: [],
+      sidus: new research.NotConfiguredSidusClient(),
+    },
   });
 
   const pending: Promise<unknown>[] = [];

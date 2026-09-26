@@ -12,7 +12,13 @@ import {
   renderDebriefText,
   STOP_NOTICE,
 } from './briefing';
-import { assertSystemActor, AUDIT_TARGET_ROLE, loadRole, loadTrial } from './guards';
+import {
+  assertSystemActor,
+  AUDIT_TARGET_ROLE,
+  loadRole,
+  loadTrial,
+  operativeIneligibility,
+} from './guards';
 import { alertStaff, notifyStaffUser } from './notify';
 import {
   loadBriefingSchema,
@@ -58,8 +64,11 @@ export interface BriefingDelivery {
 }
 
 /**
- * discord.adversarial.brief — refuses unless the role is briefed or active,
- * and refuses revisions that do not exist (forged payloads).
+ * discord.adversarial.brief — refuses unless the role is briefed or active and
+ * the operative is still eligible (good standing, VERIFIED or staff, selected
+ * on the team: a quarantined account may be compromised), and refuses
+ * revisions that do not exist (forged payloads). Checked at send time, so a
+ * retried or late job never DMs an account that lost eligibility.
  */
 export async function loadBriefingDelivery(
   ctx: ServiceContext,
@@ -72,6 +81,13 @@ export async function loadBriefingDelivery(
     throw new InvalidStateError(`Role is ${role.status}; the briefing must not be sent.`);
   if (data.revision > role.briefingRevision)
     throw new InvalidStateError('Unknown briefing revision.');
+  const ineligible = await operativeIneligibility(ctx, {
+    trialId: role.trialId,
+    teamId: role.teamId,
+    memberId: role.operativeMemberId,
+  });
+  if (ineligible)
+    throw new InvalidStateError(`${ineligible} The briefing must not be sent.`);
   const briefing = await loadBriefingView(ctx, role);
   return {
     roleId: role.id,

@@ -10,7 +10,13 @@ import {
 } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
 import type { ServiceContext } from '../kernel/context';
-import { ConflictError, DisabledError, ForbiddenError, NotFoundError } from '../kernel/errors';
+import {
+  ConflictError,
+  DisabledError,
+  ForbiddenError,
+  InvalidStateError,
+  NotFoundError,
+} from '../kernel/errors';
 import { activeRoles } from '../identity/users.service';
 import { isStaffRole } from '../permissions/roles';
 import { settingsSchemas } from '../settings/schemas';
@@ -158,6 +164,23 @@ export async function operativeIneligibility(
   });
   if (!selected) return 'Operative must be a selected participant on the target team.';
   return null;
+}
+
+/** The trial still accepts the role and the operative is still eligible. */
+export async function assertRoleStillRunnable(
+  ctx: ServiceContext,
+  role: Pick<RoleRecord, 'trialId' | 'teamId' | 'operativeMemberId'>,
+): Promise<TrialContext> {
+  const trial = await loadTrial(ctx, role.trialId);
+  const blocker = trialBlocker(trial);
+  if (blocker) throw new InvalidStateError(blocker);
+  const ineligible = await operativeIneligibility(ctx, {
+    trialId: role.trialId,
+    teamId: role.teamId,
+    memberId: role.operativeMemberId,
+  });
+  if (ineligible) throw new InvalidStateError(ineligible);
+  return trial;
 }
 
 export async function findRole(ctx: ServiceContext, roleId: string): Promise<RoleRecord | null> {

@@ -35,11 +35,12 @@ export {
 } from './roles.service';
 export {
   addTrigger,
+  approveTrigger,
   fireTrigger,
-  recordObservation,
-  type ObservationRecord,
+  withdrawTrigger,
   type TriggerRecord,
-} from './observations.service';
+} from './triggers.service';
+export { recordObservation, type ObservationRecord } from './observations.service';
 export { evaluateRole, revealRole, type EvaluationResult } from './evaluation.service';
 
 // Reads
@@ -101,6 +102,7 @@ export {
   isAwaitingReveal,
   LIVE_STATUSES,
   OUTCOME_LABELS,
+  stoppedEarly,
   TECHNIQUE_LABELS,
   wasExposed,
   type Outcome,

@@ -22,10 +22,11 @@ import {
   inGoodStanding,
   loadManagedRole,
 } from './guards';
-import type { ObservationRecord, TriggerRecord } from './observations.service';
+import type { ObservationRecord } from './observations.service';
 import { listRolesSchema, roleIdSchema } from './schemas';
 import { countOutcomes, type OutcomeCounts, suggestScore } from './scoring';
 import type { RoleRecord, RoleStatus, Technique, TrialStatus } from './state';
+import type { TriggerRecord } from './triggers.service';
 import { type EvaluationRecord, loadBriefingView, loadEvaluation, loadTriggers } from './views';
 
 export interface RoleSummary {
@@ -59,8 +60,6 @@ function summarySelect() {
     operativeName: members.displayName,
     operativeHandle: members.handle,
     scenarioKey: adversarialScenarios.key,
-    scenarioTitle: adversarialScenarios.title,
-    technique: adversarialScenarios.technique,
   };
 }
 
@@ -73,8 +72,6 @@ type SummaryRow = {
   operativeName: string;
   operativeHandle: string;
   scenarioKey: string;
-  scenarioTitle: string;
-  technique: Technique;
 };
 
 function toSummary(row: SummaryRow): RoleSummary {
@@ -94,11 +91,12 @@ function toSummary(row: SummaryRow): RoleSummary {
       displayName: row.operativeName,
       handle: row.operativeHandle,
     },
+    // Title and technique as authorized (the role's snapshot), not the live library row.
     scenario: {
       id: role.scenarioId,
       key: row.scenarioKey,
-      title: row.scenarioTitle,
-      technique: row.technique,
+      title: role.scenarioTitle,
+      technique: role.technique,
     },
     authorized: role.authorizedAt !== null,
     createdAt: role.createdAt,

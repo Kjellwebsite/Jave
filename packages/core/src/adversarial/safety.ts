@@ -1,29 +1,46 @@
 import { ValidationError } from '../kernel/errors';
 import { REDACTED, redactString, truncate } from '../kernel/redact';
+import {
+  CREDENTIAL_NOUN,
+  EXTRA_SECRET_PATTERNS,
+  FILE_EXTENSIONS,
+  OUT_OF_SCOPE_PATTERNS,
+  PERSONAL_DATA_PATTERNS,
+} from './safety-patterns';
 
 /**
  * Safety validator for adversarial scenario content (pure, strict).
  *
  * Adversarial roles may only use fictional data, sandbox accounts and systems
  * inside an authorized trial. Every piece of text an operative acts on —
- * scenario, objective, trigger — passes through here before it is stored and
- * again before it is authorized or briefed. When in doubt it rejects: staff
- * can always reword; a leaked credential or an off-platform target cannot be
- * undone.
+ * scenario, objective, trigger, guardrails — passes through here before it is
+ * stored and again before it is authorized or briefed. When in doubt it
+ * rejects: staff can always reword; a leaked credential or an off-platform
+ * target cannot be undone.
  *
  * Text kinds apply different rule sets:
  * - `content`    what the operative does (scenario, objective, triggers):
  *                secrets, links, personal-data requests, out-of-scope targets.
  * - `guardrails` prohibitions for the operative: secrets, links, and the
- *                standard prohibitions must all be present. Prohibitions
- *                necessarily name forbidden things, so the content keyword
- *                rules do not apply.
+ *                standard prohibitions must all be present. The standard
+ *                prohibitions necessarily name forbidden things and are exempt
+ *                from the keyword rules; every other guardrail line is briefed
+ *                to the operative verbatim, so it gets the full content rules.
  * - `report`     staff write-ups (observations, evaluations, debriefs):
  *                secrets and links only.
  */
 
 /** The only credential format a scenario may mention. It unlocks nothing outside a trial. */
 export const SANDBOX_KEY_PREFIX = 'JVLN-SANDBOX-';
+
+/**
+ * The documented fictional key shape: the prefix, then one to four groups of
+ * four uppercase letters or digits (e.g. JVLN-SANDBOX-7Q4M-K2XD-93PA). The bare
+ * prefix is the placeholder (`JVLN-SANDBOX-…`). Anything else after the prefix
+ * is treated as a possible real secret.
+ */
+const SANDBOX_KEY_SHAPE = /^JVLN-SANDBOX-[A-Z0-9]{4}(?:-[A-Z0-9]{4}){0,3}$/;
+export const SANDBOX_KEY_EXAMPLE = 'JVLN-SANDBOX-XXXX-XXXX-XXXX';
 
 /** Hosts a scenario may reference (and their subdomains). Changing this list is a code review. */
 export const SANDBOX_DOMAINS: readonly string[] = [
@@ -55,6 +72,8 @@ export const MAX_SAFETY_TEXT_LENGTH = 10_000;
 
 const MAX_ECHO_LENGTH = 64;
 const MIN_SECRET_TOKEN_LENGTH = 32;
+/** Stands in for a removed standard prohibition, so words around it never join into a phrase. */
+const CLAUSE_SEPARATOR = ' | ';
 
 export type SafetyTextKind = 'content' | 'guardrails' | 'report';
 
@@ -141,67 +160,46 @@ export function canonicalize(raw: string): string {
 
 // ─── Secrets ─────────────────────────────────────────────────────────────────
 
-/** Credential shapes beyond the kernel redaction patterns. Built not to match sandbox keys. */
-const EXTRA_SECRET_PATTERNS: readonly RegExp[] = [
-  /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/, // AWS access key id
-  /\bxox[abprs]-[A-Za-z0-9-]{10,}/, // Slack
-  /\bAIza[0-9A-Za-z_-]{35}\b/, // Google API key
-  /\b[rsp]k_(?:live|test)_[0-9A-Za-z]{10,}/, // Stripe
-  /\b(?:glpat-|npm_|pypi-)[A-Za-z0-9_-]{20,}/, // GitLab / npm / PyPI
-  /\bhttps?:\/\/[^\s/:@]+:[^\s/@]+@/i, // credentials embedded in a URL
-  /\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|token)\s*[:=]\s*["']?(?!JVLN-SANDBOX-)[^\s"']{6,}/i,
-  /\bbearer\s+(?!JVLN-SANDBOX-)[A-Za-z0-9._~+/-]{16,}/i,
-];
+/** Runs of characters that can form a single credential. */
+const TOKEN_RUN = /[A-Za-z0-9_+=-]+/g;
 
 function looksLikeRandomToken(token: string): boolean {
   if (token.length < MIN_SECRET_TOKEN_LENGTH) return false;
-  if (/^[0-9a-f]+$/i.test(token)) return true;
-  return /\d/.test(token) && /[a-z]/.test(token) && /[A-Z]/.test(token);
+  if (/^[0-9a-f]+$/i.test(token)) return true; // hex
+  if (/^[A-Z2-7]+=*$/.test(token)) return true; // base32 (TOTP seeds)
+  const hasDigit = /\d/.test(token);
+  if (hasDigit && /^[A-Za-z0-9]+$/.test(token)) return true; // one unbroken alphanumeric run
+  return hasDigit && /[a-z]/.test(token) && /[A-Z]/.test(token);
+}
+
+/**
+ * A single token that may be a real secret: random-looking, or carrying the
+ * sandbox prefix without the documented sandbox key shape (the prefix never
+ * launders what follows it).
+ */
+function isSecretToken(token: string): boolean {
+  if (token.startsWith(SANDBOX_KEY_PREFIX))
+    return token !== SANDBOX_KEY_PREFIX && !SANDBOX_KEY_SHAPE.test(token);
+  return looksLikeRandomToken(token);
 }
 
 function containsSecret(canonical: string): boolean {
   if (redactString(canonical) !== canonical) return true;
   if (EXTRA_SECRET_PATTERNS.some((pattern) => pattern.test(canonical))) return true;
-  return canonical
-    .split(/[^A-Za-z0-9_+=-]+/)
-    .some((token) => !token.startsWith(SANDBOX_KEY_PREFIX) && looksLikeRandomToken(token));
+  return (canonical.match(TOKEN_RUN) ?? []).some(isSecretToken);
 }
 
 // ─── Links & hosts ───────────────────────────────────────────────────────────
 
-/** Tokens like `notes.md` look like domains; these extensions are not TLDs. */
-const FILE_EXTENSIONS = new Set([
-  'csv',
-  'css',
-  'docx',
-  'gif',
-  'html',
-  'jpeg',
-  'jpg',
-  'js',
-  'json',
-  'jsx',
-  'lock',
-  'log',
-  'pdf',
-  'png',
-  'pptx',
-  'sql',
-  'svg',
-  'toml',
-  'ts',
-  'tsx',
-  'txt',
-  'xlsx',
-  'yaml',
-  'yml',
-]);
+/** One DNS label, any script (internationalized domains are hosts too). */
+const LABEL = '[\\p{L}\\p{N}](?:[\\p{L}\\p{N}-]{0,61}[\\p{L}\\p{N}])?';
+const TOP_LABEL = '\\p{L}[\\p{L}\\p{N}-]{0,61}[\\p{L}\\p{N}]';
+const HOST = `(?:${LABEL}\\.)+${TOP_LABEL}`;
 
 const URL_WITH_SCHEME = /\b([a-z][a-z0-9+.-]{1,15}):\/\/([^\s<>"'`]+)/gi;
 const DANGEROUS_SCHEME = /\b(javascript|data|vbscript|file|blob):(?=\S)/gi;
-const EMAIL_DOMAIN = /@([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi;
-const BARE_DOMAIN =
-  /(?<![\w@.-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9])(?![\w-])/gi;
+const EMAIL_DOMAIN = new RegExp(`@(${HOST})`, 'giu');
+const BARE_DOMAIN = new RegExp(`(?<![\\p{L}\\p{N}_@.-])(${HOST})(?![\\p{L}\\p{N}_-])`, 'giu');
 
 /** True when `host` is a sandbox domain or a subdomain of one. */
 export function isSandboxHost(host: string): boolean {
@@ -217,6 +215,15 @@ function hostOf(scheme: string, rest: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * A host written in prose is allowed only if the name a browser would resolve
+ * (IDNA/punycode form) is a sandbox host.
+ */
+function isSandboxName(name: string): boolean {
+  const host = hostOf('http', name);
+  return host !== null && isSandboxHost(host);
 }
 
 /** Offending links/hosts, in order of appearance. Hosts are safe to echo. */
@@ -237,58 +244,19 @@ function findExternalLinks(canonical: string): string[] {
   }
   for (const match of remaining.matchAll(EMAIL_DOMAIN)) {
     const domain = match[1] ?? '';
-    if (!isSandboxHost(domain)) offending.push(domain.toLowerCase());
+    if (!isSandboxName(domain)) offending.push(domain.toLowerCase());
     remaining = remaining.replace(match[0], ' ');
   }
   for (const match of remaining.matchAll(BARE_DOMAIN)) {
     const domain = (match[1] ?? '').toLowerCase();
     const tld = domain.slice(domain.lastIndexOf('.') + 1);
-    if (FILE_EXTENSIONS.has(tld) || isSandboxHost(domain)) continue;
+    if (FILE_EXTENSIONS.has(tld) || isSandboxName(domain)) continue;
     offending.push(domain);
   }
   return [...new Set(offending)];
 }
 
-// ─── Content keyword rules ───────────────────────────────────────────────────
-
-/** Requests for real personal data. Applied to `content` only (matched on lowercase text). */
-const PERSONAL_DATA_PATTERNS: readonly RegExp[] = [
-  /\bpass(?:word|phrase|code)s?\b/,
-  /\bpasswd\b/,
-  /\b(?:2fa|mfa|two[- ]?factor|multi[- ]?factor|otp|totp)\b/,
-  /\bone[- ]time (?:pass(?:word|code)?s?|codes?|pins?)\b/,
-  /\b(?:verification|authentication|authenticator|auth|login|sign[- ]?in|security|backup|recovery) codes?\b/,
-  /\b(?:ssn|social security|national insurance|national id|passport|driver'?s licen[cs]e|tax id)\b/,
-  /\b(?:bank|banking|iban|swift code|routing number|sort code|credit card|debit card|card number|cvv|cvc|pin (?:code|number))s?\b/,
-  /\b(?:home|street|mailing|postal|billing|ip) address(?:es)?\b/,
-  /\b(?:real|personal|private|actual) (?:accounts?|e-?mails?|phones?|phone numbers?|names?|identit(?:y|ies)|address(?:es)?|credentials?|logins?|data|details|information|info|photos?|messages?)\b/,
-  /\b(?:full|legal|last) names?\b|\bsurnames?\b/,
-  /\b(?:date of birth|birth ?date|dob)\b/,
-  /\b(?:phone|mobile|cell) numbers?\b/,
-  /\b(?:medical|health) (?:records?|data|information|history)\b/,
-  /\b(?:seed|recovery|mnemonic) phrases?\b/,
-  /\b(?:private|wallet) keys?\b/,
-  /\bsession (?:cookies?|tokens?)\b/,
-];
-
-/** Targets outside the trial: real systems, real people, off-platform accounts, malware. */
-const OUT_OF_SCOPE_PATTERNS: readonly RegExp[] = [
-  /\b(?:production|prod)\b/,
-  /\b(?:real|actual|live) (?:systems?|servers?|databases?|db|environments?|infrastructure|networks?|repos?|repositories|services?|apps?|applications?|websites?|sites?|customers?|clients?|users?|compan(?:y|ies)|organi[sz]ations?|people|persons?|members?|staff|money|payments?|funds)\b/,
-  /\b(?:outside|beyond) (?:of )?(?:the |this )?(?:trial|sandbox|exercise|team|server|guild)\b/,
-  /\b(?:external|third[- ]party) (?:systems?|services?|servers?|sites?|websites?|platforms?|accounts?|apis?|tools?|drives?)\b/,
-  /\b(?:school|work|employer|university|college|company|corporate|office|government) (?:accounts?|e-?mails?|networks?|systems?|laptops?|devices?|logins?|servers?|drives?|data)\b/,
-  /\b(?:own|personal|home) (?:computers?|laptops?|phones?|devices?|machines?|networks?|routers?|wi-?fi)\b/,
-  /\b(?:malware|ransomware|keyloggers?|trojans?|spyware|rootkits?|botnets?|backdoors?|virus(?:es)?|cryptominers?)\b/,
-  /\b(?:ddos|dos attacks?|denial[- ]of[- ]service|port ?scan(?:s|ning)?|brute[- ]?forc(?:e|ing))\b/,
-  /\b(?:phishing (?:pages?|sites?|links?|kits?|e-?mails?)|credential harvest(?:ing|ers?)?)\b/,
-  /\b(?:discord|github|gitlab|google|gmail|apple|icloud|microsoft|outlook|steam|twitter|instagram|tiktok|facebook|meta|linkedin|reddit|twitch|paypal|venmo|revolut|coinbase|binance|slack|notion|dropbox|onedrive|aws|azure|gcp) (?:accounts?|logins?|passwords?|credentials?|tokens?|ids?|sessions?|2fa|cookies?|keys?|nitro|gifts?)\b/,
-  /\b(?:friends|family|parents|relatives|classmates|co-?workers|colleagues|teachers|employers?|neighbou?rs|strangers|non[- ]?participants?)\b/,
-  /\blocalhost\b/,
-  /(?:^|[^\w.])(?:\d{1,3}\.){3}\d{1,3}(?!\.?\d)(?!\w)/,
-  /<@[!&]?\d{15,22}>/,
-  /@(?:everyone|here)\b/,
-];
+// ─── Keyword rules ───────────────────────────────────────────────────────────
 
 function findPhrases(lower: string, patterns: readonly RegExp[]): string[] {
   const found: string[] = [];
@@ -296,7 +264,33 @@ function findPhrases(lower: string, patterns: readonly RegExp[]): string[] {
     const match = pattern.exec(lower);
     if (match) found.push(match[0].trim());
   }
-  return [...new Set(found)];
+  return found;
+}
+
+/** Credential nouns that are not explicitly fictional ("sandbox API key" is fine). */
+function findCredentialRequests(lower: string): string[] {
+  const found: string[] = [];
+  for (const match of lower.matchAll(CREDENTIAL_NOUN)) {
+    if (match[1] === undefined) found.push(match[0].trim());
+  }
+  return found;
+}
+
+interface KeywordHits {
+  personalData: string[];
+  outOfScope: string[];
+}
+
+function keywordHits(lower: string): KeywordHits {
+  return {
+    personalData: [
+      ...new Set([
+        ...findPhrases(lower, PERSONAL_DATA_PATTERNS),
+        ...findCredentialRequests(lower),
+      ]),
+    ],
+    outOfScope: [...new Set(findPhrases(lower, OUT_OF_SCOPE_PATTERNS))],
+  };
 }
 
 /** Drops trailing dots and spaces in linear time (a `[.\s]+$` regex is quadratic on long runs). */
@@ -315,10 +309,25 @@ function comparable(text: string): string {
   return trimTrailingDots(normalized).trim();
 }
 
+const COMPARABLE_PROHIBITIONS = STANDARD_PROHIBITIONS.map(comparable);
+
 /** Standard prohibitions missing from a guardrails text. */
 export function missingProhibitions(guardrails: string): string[] {
   const haystack = comparable(canonicalize(guardrails));
-  return STANDARD_PROHIBITIONS.filter((clause) => !haystack.includes(comparable(clause)));
+  return STANDARD_PROHIBITIONS.filter(
+    (_clause, index) => !haystack.includes(COMPARABLE_PROHIBITIONS[index] ?? ''),
+  );
+}
+
+/**
+ * Everything in a guardrails text except the standard prohibitions (lower
+ * case). This is operative-facing text like any objective: it gets the
+ * content keyword rules.
+ */
+export function additionalGuardrailText(guardrails: string): string {
+  let rest = comparable(canonicalize(guardrails));
+  for (const clause of COMPARABLE_PROHIBITIONS) rest = rest.split(clause).join(CLAUSE_SEPARATOR);
+  return rest;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -327,6 +336,32 @@ export function missingProhibitions(guardrails: string): string[] {
 function quote(value: string): string {
   const safe = containsSecret(value) ? REDACTED : value;
   return `“${truncate(safe, MAX_ECHO_LENGTH)}”`;
+}
+
+function keywordIssues(field: string, lower: string, kind: SafetyTextKind): SafetyIssue[] {
+  const hits = keywordHits(lower);
+  const guardrails = kind === 'guardrails';
+  const personalData = guardrails
+    ? 'Guardrail lines beyond the standard prohibitions are briefed verbatim and name real personal data or credentials'
+    : 'Requests real personal data or credentials';
+  const outOfScope = guardrails
+    ? 'Guardrail lines beyond the standard prohibitions are briefed verbatim and name something outside the trial'
+    : 'Targets something outside the trial';
+  const fix = guardrails
+    ? 'The standard prohibitions already cover it; remove or reword the line.'
+    : 'Use fictional sandbox assets inside the trial; prohibitions belong in the guardrails.';
+  return [
+    ...hits.personalData.map((phrase) => ({
+      field,
+      rule: 'personal_data' as const,
+      message: `${personalData} (${quote(phrase)}). ${fix}`,
+    })),
+    ...hits.outOfScope.map((phrase) => ({
+      field,
+      rule: 'out_of_scope' as const,
+      message: `${outOfScope} (${quote(phrase)}). ${fix}`,
+    })),
+  ];
 }
 
 /** Inspect one text. Returns every issue found (empty = safe). */
@@ -338,7 +373,6 @@ export function inspectText(field: string, raw: string, kind: SafetyTextKind): S
   }
   const issues: SafetyIssue[] = [];
   const canonical = canonicalize(raw);
-  const lower = canonical.toLowerCase();
 
   if (containsHiddenCharacters(raw)) {
     issues.push({
@@ -351,7 +385,7 @@ export function inspectText(field: string, raw: string, kind: SafetyTextKind): S
     issues.push({
       field,
       rule: 'secret',
-      message: `Looks like a real secret. Use only fictional sandbox keys (${SANDBOX_KEY_PREFIX}…).`,
+      message: `Looks like a real secret. Use only fictional sandbox keys shaped like ${SANDBOX_KEY_EXAMPLE}.`,
     });
   }
   for (const target of findExternalLinks(canonical)) {
@@ -361,23 +395,9 @@ export function inspectText(field: string, raw: string, kind: SafetyTextKind): S
       message: `Unapproved link or domain ${quote(target)}. Only sandbox domains are allowed: ${SANDBOX_DOMAINS.join(', ')}.`,
     });
   }
-  if (kind === 'content') {
-    for (const phrase of findPhrases(lower, PERSONAL_DATA_PATTERNS)) {
-      issues.push({
-        field,
-        rule: 'personal_data',
-        message: `Requests real personal data (${quote(phrase)}). Use fictional sandbox assets; put prohibitions in the guardrails.`,
-      });
-    }
-    for (const phrase of findPhrases(lower, OUT_OF_SCOPE_PATTERNS)) {
-      issues.push({
-        field,
-        rule: 'out_of_scope',
-        message: `Targets something outside the trial (${quote(phrase)}). Scenarios stay inside the trial sandbox.`,
-      });
-    }
-  }
+  if (kind === 'content') issues.push(...keywordIssues(field, canonical.toLowerCase(), kind));
   if (kind === 'guardrails') {
+    issues.push(...keywordIssues(field, additionalGuardrailText(raw), kind));
     for (const clause of missingProhibitions(raw)) {
       issues.push({
         field,
@@ -413,12 +433,7 @@ export function assertSafe(fields: readonly SafetyField[]): void {
 export function sanitizeStopText(raw: string, max: number): string {
   const canonical = canonicalize(raw);
   const redacted = containsSecret(canonical) ? redactString(canonical) : canonical;
-  const scrubbed = redacted
-    .split(/\s+/)
-    .map((token) =>
-      !token.startsWith(SANDBOX_KEY_PREFIX) && looksLikeRandomToken(token) ? REDACTED : token,
-    )
-    .join(' ');
+  const scrubbed = redacted.replace(TOKEN_RUN, (token) => (isSecretToken(token) ? REDACTED : token));
   const cleaned = EXTRA_SECRET_PATTERNS.reduce(
     (text, pattern) => text.replace(new RegExp(pattern.source, `${pattern.flags}g`), REDACTED),
     scrubbed,

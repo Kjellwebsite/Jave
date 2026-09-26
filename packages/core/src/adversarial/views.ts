@@ -1,8 +1,7 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import {
   adversarialEvaluations,
   adversarialObservations,
-  adversarialScenarios,
   adversarialTriggers,
   members,
   trials,
@@ -12,7 +11,7 @@ import { NotFoundError } from '../kernel/errors';
 import { buildBriefing, buildDebrief, type BriefingView, type DebriefView } from './briefing';
 import { countOutcomes } from './scoring';
 import { loadTeam } from './guards';
-import type { Outcome, RoleRecord, Technique } from './state';
+import { type Outcome, type RoleRecord, stoppedEarly, type Technique } from './state';
 
 export type EvaluationRecord = typeof adversarialEvaluations.$inferSelect;
 
@@ -23,18 +22,22 @@ interface RoleHeader {
   operative: { displayName: string };
 }
 
+/** The scenario as authorized: the role's planning-time snapshot, never the live library row. */
+export function scenarioSnapshot(
+  role: Pick<RoleRecord, 'scenarioTitle' | 'technique'>,
+): RoleHeader['scenario'] {
+  return { title: role.scenarioTitle, technique: role.technique };
+}
+
 /** Trial, team, scenario and operative labels for a role. */
 export async function loadRoleHeader(ctx: ServiceContext, role: RoleRecord): Promise<RoleHeader> {
   const [row] = await ctx.db
     .select({
       trialNumber: trials.number,
       trialTitle: trials.title,
-      scenarioTitle: adversarialScenarios.title,
-      technique: adversarialScenarios.technique,
       operativeName: members.displayName,
     })
     .from(trials)
-    .innerJoin(adversarialScenarios, eq(adversarialScenarios.id, role.scenarioId))
     .innerJoin(members, eq(members.id, role.operativeMemberId))
     .where(eq(trials.id, role.trialId));
   if (!row) throw new NotFoundError('Trial');
@@ -42,16 +45,29 @@ export async function loadRoleHeader(ctx: ServiceContext, role: RoleRecord): Pro
   return {
     trial: { number: row.trialNumber, title: row.trialTitle },
     team: team ? { name: team.name, discordChannelId: team.discordChannelId } : null,
-    scenario: { title: row.scenarioTitle, technique: row.technique },
+    scenario: scenarioSnapshot(role),
     operative: { displayName: row.operativeName },
   };
 }
 
-export async function loadTriggers(ctx: ServiceContext, roleId: string) {
+/**
+ * A role's triggers, oldest first. `approved` is what the operative may see:
+ * pending triggers never reach a briefing.
+ */
+export async function loadTriggers(
+  ctx: ServiceContext,
+  roleId: string,
+  which: 'all' | 'approved' = 'all',
+) {
   return ctx.db
     .select()
     .from(adversarialTriggers)
-    .where(eq(adversarialTriggers.roleId, roleId))
+    .where(
+      and(
+        eq(adversarialTriggers.roleId, roleId),
+        which === 'approved' ? isNotNull(adversarialTriggers.approvedAt) : undefined,
+      ),
+    )
     .orderBy(asc(adversarialTriggers.createdAt), asc(adversarialTriggers.id));
 }
 
@@ -81,7 +97,7 @@ export async function loadBriefingView(
 ): Promise<BriefingView> {
   const [header, triggers] = await Promise.all([
     loadRoleHeader(ctx, role),
-    loadTriggers(ctx, role.id),
+    loadTriggers(ctx, role.id, 'approved'),
   ]);
   return buildBriefing({
     roleId: role.id,
@@ -123,7 +139,7 @@ export async function loadDebriefView(
     securityCultureScore: evaluation.securityCultureScore,
     outcomes: countOutcomes(outcomes),
     debrief: evaluation.debrief,
-    stoppedEarly: role.abortedAt !== null,
+    stoppedEarly: stoppedEarly(role),
   });
   return { view, channelId: header.team?.discordChannelId ?? null };
 }

@@ -1,8 +1,12 @@
 CREATE TYPE "public"."adversarial_delivery" AS ENUM('pending', 'sent', 'undeliverable');--> statement-breakpoint
 ALTER TABLE "adversarial_evaluations" ADD COLUMN "suggested_score" smallint;--> statement-breakpoint
 ALTER TABLE "adversarial_evaluations" ADD COLUMN "override_justification" text;--> statement-breakpoint
+ALTER TABLE "adversarial_roles" ADD COLUMN "scenario_title" varchar(120) NOT NULL;--> statement-breakpoint
+ALTER TABLE "adversarial_roles" ADD COLUMN "technique" "adversarial_technique" NOT NULL;--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD COLUMN "guardrails" text NOT NULL;--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD COLUMN "sandbox_assets" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "adversarial_roles" ADD COLUMN "plan_revision" smallint DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "adversarial_roles" ADD COLUMN "authorization_note" text;--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD COLUMN "briefing_revision" smallint DEFAULT 1 NOT NULL;--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD COLUMN "briefing_delivery" "adversarial_delivery";--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD COLUMN "briefing_delivered_at" timestamp with time zone;--> statement-breakpoint
@@ -17,10 +21,13 @@ ALTER TABLE "adversarial_roles" ADD COLUMN "debrief_message_id" varchar(20);--> 
 ALTER TABLE "adversarial_roles" ADD COLUMN "debrief_posted_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "adversarial_triggers" ADD COLUMN "fired_by_user_id" uuid;--> statement-breakpoint
 ALTER TABLE "adversarial_triggers" ADD COLUMN "created_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "adversarial_triggers" ADD COLUMN "approved_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "adversarial_triggers" ADD COLUMN "approved_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD CONSTRAINT "adversarial_roles_aborted_by_user_id_users_id_fk" FOREIGN KEY ("aborted_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_roles" ADD CONSTRAINT "adversarial_roles_red_flag_raised_by_user_id_users_id_fk" FOREIGN KEY ("red_flag_raised_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_fired_by_user_id_users_id_fk" FOREIGN KEY ("fired_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_approved_by_user_id_users_id_fk" FOREIGN KEY ("approved_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "adversarial_roles_operative_idx" ON "adversarial_roles" USING btree ("operative_member_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "adversarial_roles_operative_uq" ON "adversarial_roles" USING btree ("trial_id","operative_member_id") WHERE "adversarial_roles"."aborted_at" is null;--> statement-breakpoint
 CREATE UNIQUE INDEX "adversarial_roles_team_uq" ON "adversarial_roles" USING btree ("team_id") WHERE "adversarial_roles"."aborted_at" is null;--> statement-breakpoint

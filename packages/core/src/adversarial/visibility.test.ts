@@ -13,7 +13,7 @@ import { anonymousActor, type UserActor } from '../permissions/actor';
 import { resolveUserActor } from '../identity/users.service';
 import { createTestKit, type TestKit } from '../testing';
 import { evaluateRole, revealRole } from './evaluation.service';
-import { addTrigger, recordObservation } from './observations.service';
+import { recordObservation } from './observations.service';
 import { getMyBriefing, getRole, listMyBriefings, listRoles } from './queries.service';
 import {
   abortRole,
@@ -24,7 +24,9 @@ import {
   planRole,
 } from './roles.service';
 import { getScenario, listScenarios, seedStarterScenarios } from './scenarios.service';
+import { addTrigger, approveTrigger, withdrawTrigger } from './triggers.service';
 import {
+  addApprovedTrigger,
   type AdversarialFixture,
   memberIdOf,
   planDefault,
@@ -64,7 +66,11 @@ describe('adversarial visibility', () => {
       scenarioId: fx.scenarioId,
       objective: SECOND_OBJECTIVE,
     });
-    await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+    await authorizeRole(kit.as(fx.authorizer), {
+      roleId: role.id,
+      planRevision: 1,
+      sandboxAttested: true,
+    });
     await briefRole(kit.as(fx.planner), { roleId: role.id });
     await activateRole(kit.as(fx.planner), { roleId: role.id });
     return { other, role };
@@ -100,6 +106,8 @@ describe('adversarial visibility', () => {
           label: 'Hijack',
           description: 'Add a trigger of my own.',
         }),
+        approveTrigger(ctx, { roleId: role.id, triggerId: RANDOM_ROLE_ID, sandboxAttested: true }),
+        withdrawTrigger(ctx, { roleId: role.id, triggerId: RANDOM_ROLE_ID }),
         evaluateRole(ctx, {
           roleId: role.id,
           score: 0,
@@ -178,7 +186,7 @@ describe('adversarial visibility', () => {
 
   it('BREAK: nothing observable reaches participants before the reveal', async () => {
     const role = await runToActive(fx);
-    await addTrigger(kit.as(fx.founder), {
+    await addApprovedTrigger(fx, {
       roleId: role.id,
       label: 'Ask',
       description: 'Ask for the sandbox key.',

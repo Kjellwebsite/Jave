@@ -6,6 +6,7 @@ import {
   FILE_EXTENSIONS,
   OUT_OF_SCOPE_PATTERNS,
   PERSONAL_DATA_PATTERNS,
+  SPELLED_DOT_TLDS,
 } from './safety-patterns';
 
 /**
@@ -73,7 +74,7 @@ export const MAX_SAFETY_TEXT_LENGTH = 10_000;
 const MAX_ECHO_LENGTH = 64;
 const MIN_SECRET_TOKEN_LENGTH = 32;
 /** Stands in for a removed standard prohibition, so words around it never join into a phrase. */
-const CLAUSE_SEPARATOR = ' | ';
+const CLAUSE_SEPARATOR = ' ; ';
 
 export type SafetyTextKind = 'content' | 'guardrails' | 'report';
 
@@ -136,6 +137,14 @@ function stripHiddenCharacters(raw: string): string {
 }
 
 const DEFANGED_DOT = /\s*(?:\[\s*(?:\.|dot)\s*\]|\(\s*(?:\.|dot)\s*\)|\{\s*(?:\.|dot)\s*\})\s*/gi;
+/**
+ * Spoken or spaced dots before a common TLD ("evil dot com", "evil . gg").
+ * Limited to a TLD list so ordinary sentences are never joined into hosts.
+ */
+const SPELLED_DOT = new RegExp(
+  `([\\p{L}\\p{N}]) (?:dot|\\.) (${SPELLED_DOT_TLDS.join('|')})\\b`,
+  'giu',
+);
 const IDEOGRAPHIC_DOTS = /[。．｡]/g;
 const DEFANGED_SCHEME = /\bhxxp(s?)/gi;
 
@@ -154,6 +163,7 @@ export function canonicalize(raw: string): string {
     .replace(WHITESPACE_RUN, ' ')
     .replace(IDEOGRAPHIC_DOTS, '.')
     .replace(DEFANGED_DOT, '.')
+    .replace(SPELLED_DOT, '$1.$2')
     .replace(DEFANGED_SCHEME, 'http$1')
     .trim();
 }
@@ -175,12 +185,14 @@ function looksLikeRandomToken(token: string): boolean {
 /**
  * A single token that may be a real secret: random-looking, or carrying the
  * sandbox prefix without the documented sandbox key shape (the prefix never
- * launders what follows it).
+ * launders what follows it — also inside a run like `token=JVLN-SANDBOX-…`).
  */
 function isSecretToken(token: string): boolean {
-  if (token.startsWith(SANDBOX_KEY_PREFIX))
-    return token !== SANDBOX_KEY_PREFIX && !SANDBOX_KEY_SHAPE.test(token);
-  return looksLikeRandomToken(token);
+  const at = token.indexOf(SANDBOX_KEY_PREFIX);
+  if (at === -1) return looksLikeRandomToken(token);
+  const key = token.slice(at);
+  if (key !== SANDBOX_KEY_PREFIX && !SANDBOX_KEY_SHAPE.test(key)) return true;
+  return looksLikeRandomToken(token.slice(0, at));
 }
 
 function containsSecret(canonical: string): boolean {
@@ -284,10 +296,7 @@ interface KeywordHits {
 function keywordHits(lower: string): KeywordHits {
   return {
     personalData: [
-      ...new Set([
-        ...findPhrases(lower, PERSONAL_DATA_PATTERNS),
-        ...findCredentialRequests(lower),
-      ]),
+      ...new Set([...findPhrases(lower, PERSONAL_DATA_PATTERNS), ...findCredentialRequests(lower)]),
     ],
     outOfScope: [...new Set(findPhrases(lower, OUT_OF_SCOPE_PATTERNS))],
   };
@@ -433,7 +442,9 @@ export function assertSafe(fields: readonly SafetyField[]): void {
 export function sanitizeStopText(raw: string, max: number): string {
   const canonical = canonicalize(raw);
   const redacted = containsSecret(canonical) ? redactString(canonical) : canonical;
-  const scrubbed = redacted.replace(TOKEN_RUN, (token) => (isSecretToken(token) ? REDACTED : token));
+  const scrubbed = redacted.replace(TOKEN_RUN, (token) =>
+    isSecretToken(token) ? REDACTED : token,
+  );
   const cleaned = EXTRA_SECRET_PATTERNS.reduce(
     (text, pattern) => text.replace(new RegExp(pattern.source, `${pattern.flags}g`), REDACTED),
     scrubbed,

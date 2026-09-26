@@ -21,6 +21,7 @@ import {
   findRole,
   inGoodStanding,
   loadManagedRole,
+  roleAuditContext,
 } from './guards';
 import type { ObservationRecord } from './observations.service';
 import { listRolesSchema, roleIdSchema } from './schemas';
@@ -180,10 +181,12 @@ export async function listRoles(
       .offset(q.offset),
     ctx.db.select({ value: count() }).from(adversarialRoles).where(where),
   ]);
+  // Neither the trial nor the result count: a staff member competing in a trial
+  // can read the audit log and must not learn from it whether the trial has roles.
   await recordAudit(ctx, {
     action: 'adversarial.roles_listed',
     targetType: AUDIT_TARGET_ROLE,
-    context: { trialId: q.trialId ?? null, status: q.status ?? null, returned: rows.length },
+    context: { filteredByTrial: q.trialId !== undefined, status: q.status ?? null },
   });
   return { items: rows.map(toSummary), total: total?.value ?? 0, limit: q.limit, offset: q.offset };
 }
@@ -211,9 +214,9 @@ export async function getMyBriefing(
     role.briefedAt === null ||
     !inGoodStanding(ctx)
   )
-    return denyAsNotFound(ctx, data.roleId, 'adversarial.get_briefing');
+    return denyAsNotFound(ctx, data.roleId, 'adversarial.get_briefing', role);
   const briefing = await loadBriefingView(ctx, role);
-  await recordAudit(ctx, {
+  await recordAudit(roleAuditContext(ctx, role.operativeMemberId), {
     action: 'adversarial.briefing_viewed',
     targetType: AUDIT_TARGET_ROLE,
     targetId: role.id,
@@ -242,7 +245,7 @@ export async function listMyBriefings(ctx: ServiceContext): Promise<MyBriefing[]
     .orderBy(desc(adversarialRoles.briefedAt));
   if (roles.length === 0) return [];
   const briefings = await Promise.all(roles.map((role) => loadBriefingView(ctx, role)));
-  await recordAudit(ctx, {
+  await recordAudit(roleAuditContext(ctx, actor.memberId), {
     action: 'adversarial.briefings_listed',
     targetType: AUDIT_TARGET_ROLE,
     context: { roleIds: roles.map((role) => role.id) },

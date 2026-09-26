@@ -28,6 +28,7 @@ import {
   loadTrial,
   lockRole,
   memberUserId,
+  roleAuditContext,
 } from './guards';
 import { notifyOperative, requestTriggerApproval } from './notify';
 import { assertSafe, type SafetyField } from './safety';
@@ -321,7 +322,7 @@ export async function fireTrigger(
     role !== null &&
     ((isOperative && role.briefedAt !== null && inGoodStanding(ctx)) ||
       (can(ctx, 'canManageAdversarial') && !(await actorParticipatesIn(ctx, role.trialId))));
-  if (!role || !visible) return denyAsNotFound(ctx, data.roleId, 'adversarial.fire_trigger');
+  if (!role || !visible) return denyAsNotFound(ctx, data.roleId, 'adversarial.fire_trigger', role);
   const trigger = await loadTrigger(ctx, role.id, data.triggerId);
   // A pending trigger does not exist for the operative; staff are told why it cannot fire.
   if (!trigger.approvedAt) {
@@ -346,7 +347,7 @@ export async function fireTrigger(
       .where(and(eq(adversarialTriggers.id, trigger.id), isNull(adversarialTriggers.firedAt)))
       .returning();
     if (!fired) throw new ConflictError('This trigger already fired.');
-    await recordAudit(tx, {
+    await recordAudit(roleAuditContext(tx, role.operativeMemberId), {
       action: 'adversarial.trigger_fired',
       targetType: AUDIT_TARGET_ROLE,
       targetId: role.id,

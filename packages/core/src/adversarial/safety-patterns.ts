@@ -16,6 +16,29 @@ export const EXTRA_SECRET_PATTERNS: readonly RegExp[] = [
   /\bbearer\s+(?!JVLN-SANDBOX-)[A-Za-z0-9._~+/-]{16,}/i,
 ];
 
+/** TLDs recognized when a dot is spelled out or spaced ("outside dot com"). */
+export const SPELLED_DOT_TLDS: readonly string[] = [
+  'app',
+  'biz',
+  'cn',
+  'co',
+  'com',
+  'dev',
+  'gg',
+  'info',
+  'io',
+  'link',
+  'ly',
+  'me',
+  'net',
+  'online',
+  'org',
+  'ru',
+  'site',
+  'tk',
+  'xyz',
+];
+
 /** Tokens like `notes.md` look like domains; these extensions are not TLDs. */
 export const FILE_EXTENSIONS: ReadonlySet<string> = new Set([
   'csv',
@@ -64,6 +87,20 @@ export const PERSONAL_DATA_PATTERNS: readonly RegExp[] = [
   /\b(?:seed|recovery|mnemonic) phrases?\b/,
   /\b(?:private|wallet) keys?\b/,
   /\bsession (?:cookies?|tokens?|ids?)\b/,
+  /\bcookies?\b/,
+  /\bpw\b/,
+  /\b(?:2|two)[- ]?step (?:verification|codes?|auth(?:entication)?|logins?)\b/,
+  /\bapprov(?:e|ing) (?:the |their |a )?(?:login|sign[- ]?in|push|prompt)s?\b/,
+  /\bmagic (?:links?|codes?)\b/,
+  /\b(?:verification|confirmation|login|sign[- ]?in|recovery|reset|password[- ]reset) (?:e-?mails?|links?|texts?|messages?)\b/,
+  /\b(?:the|their|his|her|your|a) pins?\b/,
+  /\bsecurity (?:questions?|answers?)\b|\bmaiden names?\b/,
+  /\b(?:their|his|her|your|personal|private|real|recovery) e-?mail(?: address(?:es)?| accounts?)?\b/,
+  /\b(?<!(?:sandbox|fictional|fake|dummy|test) )e-?mail address(?:es)?\b/,
+  /\b(?:social(?: media)?|instagram|tiktok|twitter|snapchat|discord|steam|reddit|twitch) (?:handles?|usernames?|profiles?|ids?)\b/,
+  /\bwhere (?:they|he|she|you) (?:lives?|works?|stud(?:y|ies)|goes to school|go to school)\b/,
+  /\b(?:their|his|her|your) (?:school|age|birthday|location|city|town|workplace|employer)\b/,
+  /\bselfies?\b|\b(?:id|identity|student|insurance) cards?\b|\bphotos? of (?:their|his|her|your)\b/,
 ];
 
 /**
@@ -90,8 +127,16 @@ export const OUT_OF_SCOPE_PATTERNS: readonly RegExp[] = [
   // Off-platform storage, mail and messaging. Sandbox hosts are links, checked separately.
   /\b(?:google ?drive|gdrive|google (?:docs?|sheets?|slides|forms?)|dropbox|one ?drive|icloud|wetransfer|pastebin|hastebin|github gists?|sharepoint|gmail|hotmail|yahoo|proton ?mail|telegram|whatsapp|imessage|snapchat|wechat|s3 buckets?|usb (?:sticks?|drives?|keys?)|thumb ?drives?|flash drives?|cloud (?:storage|drives?|accounts?|folders?)|file[- ]sharing (?:sites?|services?))\b/,
   /\b(?:friends|family|parents|relatives|classmates|co-?workers|colleagues|teachers|employers?|neighbou?rs|strangers|non[- ]?participants?)\b/,
+  // Real money and payment rails.
+  /\b(?:gift ?cards?|cash ?app|zelle|venmo|paypal|bitcoin|btc|eth|usdt|crypto(?:currency)?|wire transfers?|send (?:money|cash|funds)|pay (?:you|me|them))\b/,
+  // Anything installed or executed on a participant's machine.
+  /\b(?:install|sideload)(?:s|ed|ing)?\b|\b(?:browser extensions?|add-?ons?|executables?|installers?|macros?)\b/,
+  /\|\s*(?:ba|z)?sh\b|\bpowershell\b/,
+  /\bqr ?codes?\b/,
   /\blocalhost\b/,
   /(?:^|[^\w.])(?:\d{1,3}\.){3}\d{1,3}(?!\.?\d)(?!\w)/,
+  /\[[0-9a-f]*:[0-9a-f:.]*\]/,
+  /\b0x[0-9a-f]{8}\b/,
   /<@[!&]?\d{15,22}>/,
   /@(?:everyone|here)\b/,
 ];

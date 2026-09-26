@@ -13,6 +13,7 @@ import {
   STOP_NOTICE,
 } from './briefing';
 import {
+  adversarialEnabled,
   assertSystemActor,
   AUDIT_TARGET_ROLE,
   loadRole,
@@ -64,11 +65,12 @@ export interface BriefingDelivery {
 }
 
 /**
- * discord.adversarial.brief — refuses unless the role is briefed or active and
- * the operative is still eligible (good standing, VERIFIED or staff, selected
- * on the team: a quarantined account may be compromised), and refuses
- * revisions that do not exist (forged payloads). Checked at send time, so a
- * retried or late job never DMs an account that lost eligibility.
+ * discord.adversarial.brief — refuses unless the role is briefed or active,
+ * the global kill switch is on, and the operative is still eligible (good
+ * standing, VERIFIED or staff, selected on the team: a quarantined account may
+ * be compromised); refuses revisions that do not exist (forged payloads).
+ * Checked at send time, so a retried or late job never DMs a briefing the
+ * background sweep has yet to abort.
  */
 export async function loadBriefingDelivery(
   ctx: ServiceContext,
@@ -81,13 +83,17 @@ export async function loadBriefingDelivery(
     throw new InvalidStateError(`Role is ${role.status}; the briefing must not be sent.`);
   if (data.revision > role.briefingRevision)
     throw new InvalidStateError('Unknown briefing revision.');
+  // INVALID_STATE, not DISABLED: the job must dead-letter, not retry into a later re-enable.
+  if (!(await adversarialEnabled(ctx)))
+    throw new InvalidStateError(
+      'Adversarial exercises are disabled; the briefing must not be sent.',
+    );
   const ineligible = await operativeIneligibility(ctx, {
     trialId: role.trialId,
     teamId: role.teamId,
     memberId: role.operativeMemberId,
   });
-  if (ineligible)
-    throw new InvalidStateError(`${ineligible} The briefing must not be sent.`);
+  if (ineligible) throw new InvalidStateError(`${ineligible} The briefing must not be sent.`);
   const briefing = await loadBriefingView(ctx, role);
   return {
     roleId: role.id,

@@ -217,7 +217,12 @@ export function TrialForm({
         </Fieldset>
 
         <div className="grid gap-5 sm:grid-cols-3">
-          <FormField name="durationMinutes" label="Duration (minutes)" description="15 min – 14 days." required>
+          <FormField
+            name="durationMinutes"
+            label="Duration (minutes)"
+            description="15 min – 14 days."
+            required
+          >
             <Input
               name="durationMinutes"
               type="number"

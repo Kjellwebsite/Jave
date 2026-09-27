@@ -1,5 +1,8 @@
 import { adversarial, can, getSettings, trials } from '@jave/core';
-import { AdversarialPanel, type OperativeOption } from '@/components/trials/adversarial/adversarial-panel';
+import {
+  AdversarialPanel,
+  type OperativeOption,
+} from '@/components/trials/adversarial/adversarial-panel';
 import type { ScenarioRow } from '@/components/trials/adversarial/scenario-library';
 import type { UserContext } from '@/server/context';
 import type { Viewer } from '@/server/data/viewer';
@@ -7,26 +10,27 @@ import {
   abortRoleAction,
   activateRoleAction,
   addTriggerAction,
+  approveTriggerAction,
   authorizeRoleAction,
   briefRoleAction,
   concludeRoleAction,
   createScenarioAction,
   deleteScenarioAction,
   evaluateRoleAction,
+  fireTriggerAction,
   planRoleAction,
   recordObservationAction,
   revealRoleAction,
   seedScenariosAction,
   setTrialAdversarialAction,
   updateScenarioAction,
+  withdrawTriggerAction,
 } from './adversarial-actions';
 
 type StaffView = trials.StaffTrialView;
 
 const ROLE_PAGE = 50;
 const SCENARIO_PAGE = 100;
-/** Roles can be planned until the trial ends (the adversarial service enforces it). */
-const PLANNING_STATES: readonly trials.TrialStatus[] = [...trials.EDITABLE_STATUSES, 'active'];
 
 /**
  * Staff-only (canManageAdversarial). Reads are audited by the adversarial
@@ -51,6 +55,15 @@ export async function AdversarialTab({
     page.items.map((summary) => adversarial.getRole(ctx, { roleId: summary.id })),
   );
   const names = new Map(view.participants.map((p) => [p.memberId, p.displayName]));
+  const teamMembers = new Map(
+    view.teams.map((team) => [
+      team.id,
+      team.members.map((member) => ({
+        memberId: member.memberId,
+        displayName: member.displayName,
+      })),
+    ]),
+  );
   // Candidates only: the service checks role (VERIFIED/staff), standing and selection.
   const operatives: OperativeOption[] = view.teams.flatMap((team) =>
     team.members.map((member) => ({
@@ -81,7 +94,9 @@ export async function AdversarialTab({
       globalEnabled={settings.adversarialEnabled}
       trialEnabled={view.adversarialEnabled === true}
       toggleAllowed={trials.EDITABLE_STATUSES.includes(view.status)}
-      planningAllowed={PLANNING_STATES.includes(view.status)}
+      planningAllowed={adversarial.PLANNING_TRIAL_STATUSES.includes(view.status)}
+      trialOver={adversarial.REVEAL_TRIAL_STATUSES.includes(view.status)}
+      teamMembers={teamMembers}
       roles={roles}
       operatives={operatives}
       scenarios={scenarios}
@@ -102,6 +117,9 @@ export async function AdversarialTab({
         conclude: concludeRoleAction,
         abort: abortRoleAction,
         addTrigger: addTriggerAction,
+        approve: approveTriggerAction,
+        withdraw: withdrawTriggerAction,
+        fire: fireTriggerAction,
         observe: recordObservationAction,
         evaluate: evaluateRoleAction,
         reveal: revealRoleAction,

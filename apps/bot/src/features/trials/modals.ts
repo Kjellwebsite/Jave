@@ -48,7 +48,9 @@ function text(
 }
 
 function label(name: string, input: TextInputBuilder, description?: string): LabelBuilder {
-  const builder = new LabelBuilder().setLabel(clip(name, UI_LIMITS.modalTitle)).setTextInputComponent(input);
+  const builder = new LabelBuilder()
+    .setLabel(clip(name, UI_LIMITS.modalTitle))
+    .setTextInputComponent(input);
   if (description) builder.setDescription(clip(description, LABEL_DESCRIPTION_MAX));
   return builder;
 }
@@ -151,7 +153,11 @@ export function assignModal(trialId: string, teamSize: number): ModalPayload {
         ),
       label(
         'Team size',
-        text(FIELDS.teamSize, { max: TEAM_SIZE_INPUT_MAX, required: false, value: String(teamSize) }),
+        text(FIELDS.teamSize, {
+          max: TEAM_SIZE_INPUT_MAX,
+          required: false,
+          value: String(teamSize),
+        }),
         `Target members per team (${trials.MAX_TEAM_SIZE} at most).`,
       ),
       label(

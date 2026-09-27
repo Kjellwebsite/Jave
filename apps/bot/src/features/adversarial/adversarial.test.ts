@@ -78,17 +78,32 @@ async function exercise(
       label: 'Urgent request',
       description: 'Post the fictional urgent request from the scenario in the team channel.',
     });
-  await adversarial.authorizeRole(as(bot, authorizer!), { roleId: role.id, sandboxAttested: true });
+  const reviewed = await adversarial.getRole(as(bot, authorizer!), { roleId: role.id });
+  await adversarial.authorizeRole(as(bot, authorizer!), {
+    roleId: role.id,
+    planRevision: reviewed.role.planRevision,
+    sandboxAttested: true,
+  });
   await adversarial.briefRole(as(bot, planner!), { roleId: role.id });
   await adversarial.activateRole(as(bot, planner!), { roleId: role.id });
   await bot.drain();
   const staff = await trials.getTrialForStaff(as(bot, planner!), { trialId });
   const teamChannelId = staff.teams.find((t) => t.id === operativeTeam.id)!.discordChannelId!;
-  return { trialId, roleId: role.id, operative, teammate, otherTeam, teamChannelId, planner: planner!, authorizer: authorizer! };
+  return {
+    trialId,
+    roleId: role.id,
+    operative,
+    teammate,
+    otherTeam,
+    teamChannelId,
+    planner: planner!,
+    authorizer: authorizer!,
+  };
 }
 
 /** Words that would tell a participant their trial hosts a hidden role. */
-const ADVERSARIAL_TELLS = /adversar|operative|red[\s_-]?flag|sandbox|security.culture|two-person|stop word|exercise/i;
+const ADVERSARIAL_TELLS =
+  /adversar|operative|red[\s_-]?flag|sandbox|security.culture|two-person|stop word|exercise/i;
 
 /** The visible shape of a set of replies: titles (refs normalized), field names, control labels. */
 function shape(interaction: FakeInteraction): string {
@@ -101,9 +116,11 @@ function shape(interaction: FakeInteraction): string {
           title: (embed.title ?? '').replace(/TRIAL-\d+/g, 'TRIAL-N').replace(/USER\d+/g, 'USER'),
           fields: (embed.fields ?? []).map((f) => f.name.replace(/TRIAL-\d+/g, 'TRIAL-N')),
         })),
-        controls: ((payload.components ?? []) as {
-          components: { label?: string; custom_id?: string }[];
-        }[]).flatMap((row) =>
+        controls: (
+          (payload.components ?? []) as {
+            components: { label?: string; custom_id?: string }[];
+          }[]
+        ).flatMap((row) =>
           row.components.map((c) => c.label ?? c.custom_id?.split(':').slice(0, 2).join(':')),
         ),
       };
@@ -112,7 +129,10 @@ function shape(interaction: FakeInteraction): string {
 }
 
 async function roleRow(bot: BotHarness, roleId: string) {
-  const [row] = await bot.kit.db.select().from(adversarialRoles).where(eq(adversarialRoles.id, roleId));
+  const [row] = await bot.kit.db
+    .select()
+    .from(adversarialRoles)
+    .where(eq(adversarialRoles.id, roleId));
   return row!;
 }
 
@@ -129,7 +149,15 @@ describe('adversarial: Discord surface', SUITE, () => {
     const ex = await exercise(bot);
     const dms = bot.gateway.dms.filter((dm) => dm.userId === ex.operative.actor.discordId);
     const briefing = JSON.stringify(dms.map((dm) => dm.payload));
-    for (const section of ['OBJECTIVE', 'SANDBOX ASSETS', 'TRIGGERS', 'GUARDRAILS', 'OPERATING RULES', 'STOP PROTOCOL', 'RED FLAG'])
+    for (const section of [
+      'OBJECTIVE',
+      'SANDBOX ASSETS',
+      'TRIGGERS',
+      'GUARDRAILS',
+      'OPERATING RULES',
+      'STOP PROTOCOL',
+      'RED FLAG',
+    ])
       expect(briefing).toContain(section);
     expect(briefing).toContain('FICTIONAL DATA ONLY');
     // Nothing adversarial ever reaches a channel before the reveal.
@@ -156,13 +184,23 @@ describe('adversarial: Discord surface', SUITE, () => {
     const planner = await bot.kit.db
       .select()
       .from(notifications)
-      .where(and(eq(notifications.recipientUserId, ex.planner.actor.userId), eq(notifications.type, 'adversarial.staff')));
+      .where(
+        and(
+          eq(notifications.recipientUserId, ex.planner.actor.userId),
+          eq(notifications.type, 'adversarial.staff'),
+        ),
+      );
     expect(planner.some((n) => n.title.startsWith('BRIEFING NOT DELIVERED'))).toBe(true);
   });
 
   it('/trial briefing: the operative sees their briefing; everyone else gets the identical no-briefing answer', async () => {
     const ex = await exercise(bot);
-    const mine = await bot.run({ kind: 'slash', name: 'trial', subcommand: 'briefing', user: ex.operative.user });
+    const mine = await bot.run({
+      kind: 'slash',
+      name: 'trial',
+      subcommand: 'briefing',
+      user: ex.operative.user,
+    });
     const text = JSON.stringify(mine.interaction.responses);
     expect(text).toContain('GUARDRAILS');
     expect(text).toContain(customId('adversarial', 'redflag', ex.roleId));
@@ -172,7 +210,12 @@ describe('adversarial: Discord surface', SUITE, () => {
     const [outsider] = await people(bot, 1, ['verified']);
     const [staffer] = await people(bot, 1, ['founder']);
     for (const person of [ex.teammate, ex.otherTeam, outsider!, staffer!]) {
-      const { interaction } = await bot.run({ kind: 'slash', name: 'trial', subcommand: 'briefing', user: person.user });
+      const { interaction } = await bot.run({
+        kind: 'slash',
+        name: 'trial',
+        subcommand: 'briefing',
+        user: person.user,
+      });
       expect(JSON.stringify(interaction.lastPayload())).toBe(expected);
     }
     // A quarantined operative is indistinguishable from nobody.
@@ -278,7 +321,9 @@ describe('adversarial: Discord surface', SUITE, () => {
     const twins = await people(bot, 4, ['verified']);
     const plain = await activeTrial(bot, manager!, twins, { teamSize: 2 });
     await bot.drain();
-    const twin = twins.find((p) => plain.assignment.teams[0]!.memberIds.includes(p.actor.memberId!))!;
+    const twin = twins.find((p) =>
+      plain.assignment.teams[0]!.memberIds.includes(p.actor.memberId!),
+    )!;
 
     async function battery(person: Person, trialId: string) {
       const runs = [
@@ -315,7 +360,9 @@ describe('adversarial: Discord surface', SUITE, () => {
     for (const person of [ex.teammate, ex.otherTeam]) {
       const interactions = await battery(person, ex.trialId);
       for (const interaction of interactions)
-        expect(JSON.stringify(interaction.responses), interaction.name).not.toMatch(ADVERSARIAL_TELLS);
+        expect(JSON.stringify(interaction.responses), interaction.name).not.toMatch(
+          ADVERSARIAL_TELLS,
+        );
       const briefing = await bot.run({
         kind: 'slash',
         name: 'trial',
@@ -357,7 +404,13 @@ describe('adversarial: Discord surface', SUITE, () => {
       guildId: bot.gateway.guildId,
       parentChannelId: null,
       isThread: false,
-      author: { id: author.user.id, username: author.user.username, globalName: null, avatar: null, bot: false },
+      author: {
+        id: author.user.id,
+        username: author.user.username,
+        globalName: null,
+        avatar: null,
+        bot: false,
+      },
       authorRoleIds: [],
       content,
       mentionCount: 0,
@@ -373,20 +426,34 @@ describe('adversarial: Discord surface', SUITE, () => {
     await bot.settle();
     expect((await roleRow(bot, ex.roleId)).status).toBe('aborted');
     expect(bot.gateway.callsTo('sendMessage')).toHaveLength(posted);
-    expect(bot.gateway.dms.some((dm) => dm.userId === ex.operative.actor.discordId && JSON.stringify(dm.payload).includes('STOP'))).toBe(true);
+    expect(
+      bot.gateway.dms.some(
+        (dm) =>
+          dm.userId === ex.operative.actor.discordId && JSON.stringify(dm.payload).includes('STOP'),
+      ),
+    ).toBe(true);
   });
 
   it('BREAK: an undeliverable STOP on the last attempt raises a critical alert', async () => {
     const ex = await exercise(bot);
-    await adversarial.abortRole(as(bot, ex.planner), { roleId: ex.roleId, reason: 'Scenario leaked.' });
+    await adversarial.abortRole(as(bot, ex.planner), {
+      roleId: ex.roleId,
+      reason: 'Scenario leaked.',
+    });
     await bot.kit.db
       .update(jobs)
       .set({ attempts: adversarial.ABORT_MAX_ATTEMPTS - 1 })
       .where(eq(jobs.type, adversarial.ADVERSARIAL_ABORT_JOB));
-    bot.gateway.failures.set('sendDirectMessage', new DiscordActionError('gateway down', 503, false));
+    bot.gateway.failures.set(
+      'sendDirectMessage',
+      new DiscordActionError('gateway down', 503, false),
+    );
     await bot.drain();
     expect((await roleRow(bot, ex.roleId)).stopNoticeDelivery).toBe('undeliverable');
-    const alerts = await bot.kit.db.select().from(notifications).where(eq(notifications.type, 'adversarial.alert'));
+    const alerts = await bot.kit.db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.type, 'adversarial.alert'));
     expect(alerts.some((a) => a.title.startsWith('STOP NOT DELIVERED'))).toBe(true);
   });
 

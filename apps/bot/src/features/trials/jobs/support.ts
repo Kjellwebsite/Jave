@@ -22,7 +22,9 @@ export function parsePayload<S extends z.ZodType>(schema: S, payload: unknown): 
 /** True when a Discord action failed because the entity does not exist (any of `codes`). */
 export function isUnknownEntity(error: unknown, ...codes: number[]): boolean {
   return (
-    error instanceof DiscordActionError && typeof error.code === 'number' && codes.includes(error.code)
+    error instanceof DiscordActionError &&
+    typeof error.code === 'number' &&
+    codes.includes(error.code)
   );
 }
 

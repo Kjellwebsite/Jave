@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { adversarial, isUuid, trials, ValidationError } from '@jave/core';
 import type { ActionState } from '@/lib/action-state';
 import { formBoolean, formEnum, formOptional, formString } from '@/lib/form-data';
-import { formInteger, formZonedDate } from '@/lib/trial-form';
+import { formInteger, formZonedDate, requiredInteger } from '@/lib/trial-form';
 import { runAction } from '@/server/actions';
 import type { UserContext } from '@/server/context';
 import { loadViewer } from '@/server/data/viewer';
@@ -19,14 +19,8 @@ import { loadViewer } from '@/server/data/viewer';
 const ATTESTATION_REQUIRED =
   'Attest that the scenario uses only fictional data and sandbox accounts.';
 
-const OUTCOMES = ['resisted', 'detected', 'reported', 'partial', 'failure'] as const;
-const TECHNIQUES = [
-  'social_engineering',
-  'instruction_integrity',
-  'permission_hygiene',
-  'data_handling',
-  'verification_discipline',
-] as const;
+const OUTCOMES = Object.keys(adversarial.OUTCOME_LABELS) as adversarial.Outcome[];
+const TECHNIQUES = Object.keys(adversarial.TECHNIQUE_LABELS) as adversarial.Technique[];
 
 function uuidField(data: FormData, name: string, what: string): string {
   const value = formString(data, name);
@@ -38,6 +32,14 @@ function uuidField(data: FormData, name: string, what: string): string {
 function optionalUuid(data: FormData, name: string): string | undefined {
   const value = formOptional(data, name);
   return value && isUuid(value) ? value : undefined;
+}
+
+/** The sandbox attestation checkbox; the service requires it too. */
+function requireAttestation(data: FormData): void {
+  if (!formBoolean(data, 'sandboxAttested'))
+    throw new ValidationError(ATTESTATION_REQUIRED, [
+      { path: 'sandboxAttested', message: ATTESTATION_REQUIRED },
+    ]);
 }
 
 function refresh(data: FormData): void {
@@ -108,18 +110,17 @@ export async function authorizeRoleAction(_: ActionState, data: FormData): Promi
   return roleAction(
     'adversarial.authorize',
     async (ctx, roleId) => {
-      if (!formBoolean(data, 'sandboxAttested'))
-        throw new ValidationError(ATTESTATION_REQUIRED, [
-          { path: 'sandboxAttested', message: ATTESTATION_REQUIRED },
-        ]);
+      requireAttestation(data);
       await adversarial.authorizeRole(ctx, {
         roleId,
+        // The revision the authorizer reviewed: a plan changed since is refused.
+        planRevision: requiredInteger(data, 'planRevision'),
         sandboxAttested: true,
         note: formOptional(data, 'note'),
       });
       return 'ROLE AUTHORIZED — second person recorded. Ready to brief.';
     },
-    ['sandboxAttested', 'note'],
+    ['sandboxAttested', 'planRevision', 'note'],
   )(data);
 }
 
@@ -166,10 +167,46 @@ export async function addTriggerAction(_: ActionState, data: FormData): Promise<
         description: formString(data, 'description'),
         plannedFor: formZonedDate(data, 'plannedFor', timeZone) ?? undefined,
       });
-      return 'TRIGGER ADDED.';
+      return 'TRIGGER ADDED — it reaches the operative only once a second person approves it.';
     },
     ['label', 'description', 'plannedFor'],
   )(data);
+}
+
+export async function approveTriggerAction(_: ActionState, data: FormData): Promise<ActionState> {
+  return roleAction(
+    'adversarial.approve_trigger',
+    async (ctx, roleId) => {
+      requireAttestation(data);
+      const trigger = await adversarial.approveTrigger(ctx, {
+        roleId,
+        triggerId: uuidField(data, 'triggerId', 'a trigger'),
+        sandboxAttested: true,
+      });
+      return `TRIGGER APPROVED — ${trigger.label}. A briefed operative receives the updated briefing.`;
+    },
+    ['sandboxAttested'],
+  )(data);
+}
+
+export async function withdrawTriggerAction(_: ActionState, data: FormData): Promise<ActionState> {
+  return roleAction('adversarial.withdraw_trigger', async (ctx, roleId) => {
+    await adversarial.withdrawTrigger(ctx, {
+      roleId,
+      triggerId: uuidField(data, 'triggerId', 'a trigger'),
+    });
+    return 'TRIGGER WITHDRAWN — it never reached the operative.';
+  })(data);
+}
+
+export async function fireTriggerAction(_: ActionState, data: FormData): Promise<ActionState> {
+  return roleAction('adversarial.fire_trigger', async (ctx, roleId) => {
+    const trigger = await adversarial.fireTrigger(ctx, {
+      roleId,
+      triggerId: uuidField(data, 'triggerId', 'a trigger'),
+    });
+    return `TRIGGER MARKED FIRED — ${trigger.label}.`;
+  })(data);
 }
 
 export async function recordObservationAction(
@@ -189,10 +226,11 @@ export async function recordObservationAction(
         outcome,
         description: formString(data, 'description'),
         triggerId: optionalUuid(data, 'triggerId'),
+        subjectMemberId: optionalUuid(data, 'subjectMemberId'),
       });
       return `OBSERVATION RECORDED — ${adversarial.OUTCOME_LABELS[outcome].toUpperCase()}.`;
     },
-    ['outcome', 'description', 'triggerId'],
+    ['outcome', 'description', 'triggerId', 'subjectMemberId'],
   )(data);
 }
 

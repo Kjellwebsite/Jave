@@ -33,6 +33,10 @@ export interface AdversarialPanelProps {
   toggleAllowed: boolean;
   /** Roles can still be planned (draft … active). */
   planningAllowed: boolean;
+  /** The trial has ended: exercises that ran can be revealed. */
+  trialOver: boolean;
+  /** Members per team id, for attributing observations. */
+  teamMembers: ReadonlyMap<string, readonly { memberId: string; displayName: string }[]>;
   roles: readonly adversarial.RoleDetail[];
   operatives: readonly OperativeOption[];
   scenarios: readonly ScenarioRow[];
@@ -217,10 +221,14 @@ export function AdversarialPanel(props: AdversarialPanelProps) {
               trialId={trialId}
               role={role}
               names={props.names}
+              subjects={role.team ? (props.teamMembers.get(role.team.id) ?? []) : []}
+              trialOver={props.trialOver}
               viewerUserId={props.viewerUserId}
               canAuthorize={props.canAuthorize}
               outcomeLabels={props.outcomeLabels}
-              techniqueLabel={props.techniqueLabels[role.scenario.technique] ?? role.scenario.technique}
+              techniqueLabel={
+                props.techniqueLabels[role.scenario.technique] ?? role.scenario.technique
+              }
               timeZone={props.timeZone}
               actions={actions}
             />

@@ -43,16 +43,16 @@ function teamField(view: StaffView): APIEmbedField | null {
   if (view.teams.length === 0) return null;
   const channels = view.teams.filter((team) => team.discordChannelId).length;
   const briefed = view.teams.filter((team) => team.briefedAt).length;
-  const lines = view.teams
-    .slice(0, TEAMS_LISTED)
-    .map((team) => {
-      const channel = team.discordChannelId ? `<#${team.discordChannelId}>` : 'no channel yet';
-      const latest = team.submissions[0];
-      const work = latest ? ` ${GLYPH.dot} v${latest.version}${latest.isLate ? ' LATE' : ''}` : '';
-      return `${GLYPH.bullet} **${userText(team.name, NAME_MAX)}** (${team.members.length}) ${channel}${work}`;
-    });
+  const lines = view.teams.slice(0, TEAMS_LISTED).map((team) => {
+    const channel = team.discordChannelId ? `<#${team.discordChannelId}>` : 'no channel yet';
+    const latest = team.submissions[0];
+    const work = latest ? ` ${GLYPH.dot} v${latest.version}${latest.isLate ? ' LATE' : ''}` : '';
+    return `${GLYPH.bullet} **${userText(team.name, NAME_MAX)}** (${team.members.length}) ${channel}${work}`;
+  });
   const summary = `${view.teams.length} teams ${GLYPH.dot} channels ${channels}/${view.teams.length}${
-    view.status === 'active' || briefed > 0 ? ` ${GLYPH.dot} briefed ${briefed}/${view.teams.length}` : ''
+    view.status === 'active' || briefed > 0
+      ? ` ${GLYPH.dot} briefed ${briefed}/${view.teams.length}`
+      : ''
   }`;
   return field('Teams', [summary, ...lines].join('\n'));
 }
@@ -90,7 +90,10 @@ export function controlPanel(
     progressField(view),
     resultsField(view),
     view.assignmentSeed
-      ? field('Assignment', `${view.assignmentStrategy ?? '—'} ${GLYPH.dot} seed \`${view.assignmentSeed}\``)
+      ? field(
+          'Assignment',
+          `${view.assignmentStrategy ?? '—'} ${GLYPH.dot} seed \`${view.assignmentSeed}\``,
+        )
       : null,
     view.scheduledStartAt && ['recruiting', 'teams_assigned'].includes(view.status)
       ? field('Scheduled start', deadlineLine(view.scheduledStartAt))
@@ -217,7 +220,8 @@ export function confirmCopy(
       };
     case 'publish':
     case 'publish-incomplete': {
-      const unevaluated = preview?.results.filter((r) => r.incompleteReason === 'not_evaluated') ?? [];
+      const unevaluated =
+        preview?.results.filter((r) => r.incompleteReason === 'not_evaluated') ?? [];
       const counts = preview?.counts;
       const tally = counts
         ? (['distinction', 'pass', 'fail', 'incomplete'] as const)
@@ -259,7 +263,9 @@ export function assignmentNotice(result: AssignmentResult, view: StaffView): API
       '',
       `Seed \`${result.seed}\` — the assignment is reproducible from it.`,
       result.waitlisted > 0 ? `${result.waitlisted} applicant(s) waitlisted.` : null,
-      result.removed > 0 ? `${result.removed} selected member(s) removed — no longer eligible.` : null,
+      result.removed > 0
+        ? `${result.removed} selected member(s) removed — no longer eligible.`
+        : null,
       '',
       start,
     ]

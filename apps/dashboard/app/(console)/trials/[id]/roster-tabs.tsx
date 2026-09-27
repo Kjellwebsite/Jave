@@ -68,7 +68,9 @@ export async function TeamsTab({
 }) {
   const names = new Map(view.participants.map((p) => [p.memberId, p.displayName]));
   const canAssign = ASSIGNABLE.includes(view.status) && can(ctx, 'canManageTrials');
-  const strategy = strategyParam(firstParam(params.strategy) ?? view.assignmentStrategy ?? undefined);
+  const strategy = strategyParam(
+    firstParam(params.strategy) ?? view.assignmentStrategy ?? undefined,
+  );
   const sizeParam = firstParam(params.size);
   const teamSize = sizeParam && WHOLE.test(sizeParam) ? Number(sizeParam) : view.teamSize;
   const seedParam = firstParam(params.seed)?.trim() ?? '';
@@ -102,7 +104,9 @@ export async function TeamsTab({
     } catch (error) {
       if (!isJaveError(error)) throw error;
       previewError =
-        error instanceof InvalidStateError ? error.userMessage : `Preview refused: ${error.userMessage}`;
+        error instanceof InvalidStateError
+          ? error.userMessage
+          : `Preview refused: ${error.userMessage}`;
     }
   }
 

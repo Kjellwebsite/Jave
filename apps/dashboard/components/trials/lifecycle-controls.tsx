@@ -182,10 +182,7 @@ export function LifecycleControls({
         ) : null}
 
         {editable ? (
-          <Link
-            href={`/trials/${trialId}/edit`}
-            className={buttonStyles({ variant: 'secondary' })}
-          >
+          <Link href={`/trials/${trialId}/edit`} className={buttonStyles({ variant: 'secondary' })}>
             <Icon icon={Pencil} size="sm" />
             Edit
           </Link>

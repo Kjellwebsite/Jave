@@ -55,7 +55,11 @@ export function dashboardUrl(h: HandlerContext, trialId: string): string | null 
   return base ? safeLink(`${base.replace(/\/+$/, '')}/trials/${trialId}`) : null;
 }
 
-async function panelPayload(h: HandlerContext, trialId: string, notice?: APIEmbed): Promise<ReplyPayload> {
+async function panelPayload(
+  h: HandlerContext,
+  trialId: string,
+  notice?: APIEmbed,
+): Promise<ReplyPayload> {
   const view = await trials.getTrialForStaff(h.ctx, { trialId });
   return controlPanel(view, abilities(h), { dashboardUrl: dashboardUrl(h, trialId), notice });
 }
@@ -161,12 +165,18 @@ export async function runOperation(
   switch (operation) {
     case 'open': {
       const view = await trials.openRecruitment(h.ctx, { trialId });
-      notice = success('Recruitment open', `${view.ref} — the card is on its way to the announcements channel.`);
+      notice = success(
+        'Recruitment open',
+        `${view.ref} — the card is on its way to the announcements channel.`,
+      );
       break;
     }
     case 'start': {
       const view = await trials.startTrial(h.ctx, { trialId });
-      notice = success('Trial live', `${view.ref} — the clock is running. Teams are being briefed.`);
+      notice = success(
+        'Trial live',
+        `${view.ref} — the clock is running. Teams are being briefed.`,
+      );
       break;
     }
     case 'close': {
@@ -295,7 +305,10 @@ export async function submitCancellation(h: HandlerContext, trialId: string): Pr
     await panelPayload(
       h,
       trialId,
-      success('Trial cancelled', `${view.ref} — stakeholders are notified; team channels become read-only.`),
+      success(
+        'Trial cancelled',
+        `${view.ref} — stakeholders are notified; team channels become read-only.`,
+      ),
     ),
   );
 }
@@ -352,7 +365,10 @@ export async function applyManualSelection(h: HandlerContext, trialId: string): 
   await showPanel(
     h,
     trialId,
-    success('Participants selected', `${result.selectedMemberIds.length} selected of ${result.poolSize} eligible.`),
+    success(
+      'Participants selected',
+      `${result.selectedMemberIds.length} selected of ${result.poolSize} eligible.`,
+    ),
   );
 }
 
@@ -368,7 +384,14 @@ export async function offerEvaluation(h: HandlerContext, trialId: string): Promi
   const teams = submittedTeams(view);
   if (teams.length === 0) {
     await h.respond({
-      embeds: [panel({ kicker: view.ref, title: 'Nothing to evaluate', description: 'No team submitted.', color: COLORS.steel })],
+      embeds: [
+        panel({
+          kicker: view.ref,
+          title: 'Nothing to evaluate',
+          description: 'No team submitted.',
+          color: COLORS.steel,
+        }),
+      ],
       ephemeral: true,
     });
     return;
@@ -406,11 +429,14 @@ export async function offerEvaluation(h: HandlerContext, trialId: string): Promi
       panel({
         kicker: `EVALUATION ${GLYPH.dot} ${view.ref}`,
         title: 'Choose a team',
-        description: 'Score every criterion 0–10. Late work is flagged; judge it — there is no automatic penalty.',
+        description:
+          'Score every criterion 0–10. Late work is flagged; judge it — there is no automatic penalty.',
         color: COLORS.base,
       }),
     ],
-    components: [row(stringSelect(trialsId(STAFF_ACTIONS.evaluateTeam, trialId), 'Team to score', options))],
+    components: [
+      row(stringSelect(trialsId(STAFF_ACTIONS.evaluateTeam, trialId), 'Team to score', options)),
+    ],
     ephemeral: true,
   });
 }
@@ -436,7 +462,11 @@ export async function openEvaluationModal(h: HandlerContext, trialId: string): P
   );
 }
 
-export async function submitEvaluation(h: HandlerContext, trialId: string, teamId: string): Promise<void> {
+export async function submitEvaluation(
+  h: HandlerContext,
+  trialId: string,
+  teamId: string,
+): Promise<void> {
   const view = await trials.getTrialForStaff(h.ctx, { trialId });
   if (view.rubric.length > QUICK_EVALUATION_MAX_CRITERIA)
     throw new ValidationError('This rubric is scored in the dashboard.');
@@ -448,7 +478,12 @@ export async function submitEvaluation(h: HandlerContext, trialId: string, teamI
     );
   });
   const notes = h.interaction.modal.text(FIELDS.notes).trim();
-  const receipt = await trials.evaluate(h.ctx, { trialId, teamId, scores, notes: notes || undefined });
+  const receipt = await trials.evaluate(h.ctx, {
+    trialId,
+    teamId,
+    scores,
+    notes: notes || undefined,
+  });
   const team = view.teams.find((candidate) => candidate.id === teamId);
   await h.respond({
     embeds: [

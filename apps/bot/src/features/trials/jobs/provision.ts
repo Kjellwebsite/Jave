@@ -19,7 +19,11 @@ export const MEMBER_ALLOW: PermissionName[] = [
   'AddReactions',
 ];
 /** Evaluator roles: follow and ask questions. */
-export const EVALUATOR_ALLOW: PermissionName[] = ['ViewChannel', 'ReadMessageHistory', 'SendMessages'];
+export const EVALUATOR_ALLOW: PermissionName[] = [
+  'ViewChannel',
+  'ReadMessageHistory',
+  'SendMessages',
+];
 /**
  * The bot itself. Without Administrator (JAVE never asks for it) the
  * @everyone deny would lock the bot out of the channel it manages, so it
@@ -43,10 +47,16 @@ export function teamOverwrites(
   return [
     { type: 'role', id: ids.guildId, deny: ['ViewChannel'] },
     { type: 'member', id: ids.botUserId, allow: BOT_ALLOW },
-    ...[...members].map((id): PermissionOverwriteSpec => ({ type: 'member', id, allow: MEMBER_ALLOW })),
-    ...spec.evaluatorRoleIds.map(
-      (id): PermissionOverwriteSpec => ({ type: 'role', id, allow: EVALUATOR_ALLOW }),
-    ),
+    ...[...members].map((id): PermissionOverwriteSpec => ({
+      type: 'member',
+      id,
+      allow: MEMBER_ALLOW,
+    })),
+    ...spec.evaluatorRoleIds.map((id): PermissionOverwriteSpec => ({
+      type: 'role',
+      id,
+      allow: EVALUATOR_ALLOW,
+    })),
     // A member deny beats a role allow: stakeholding staff never see other teams.
     ...spec.denyDiscordIds
       .filter((id) => !members.has(id))
@@ -173,7 +183,10 @@ export function provisionHandler(services: BotServices): JobHandler {
     } catch (error) {
       // Unreported resources would be duplicated by the retry: remove them first (best effort).
       await discardCreated(gateway, created).catch((cleanupError: unknown) =>
-        ctx.logger.warn({ err: cleanupError, teamId }, 'could not remove unreported team resources'),
+        ctx.logger.warn(
+          { err: cleanupError, teamId },
+          'could not remove unreported team resources',
+        ),
       );
       throw toJobError(error);
     }

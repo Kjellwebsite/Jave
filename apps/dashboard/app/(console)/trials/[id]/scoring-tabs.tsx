@@ -11,7 +11,12 @@ import { applyRankAction, evaluateAction, publishResultsAction } from './actions
 type StaffView = trials.StaffTrialView;
 type Catalog = Awaited<ReturnType<typeof loadCatalog>>;
 
-const EMPTY_COUNTS: Record<OutcomeKey, number> = { distinction: 0, pass: 0, fail: 0, incomplete: 0 };
+const EMPTY_COUNTS: Record<OutcomeKey, number> = {
+  distinction: 0,
+  pass: 0,
+  fail: 0,
+  incomplete: 0,
+};
 
 function scoringClosedReason(status: trials.TrialStatus): string | null {
   if (status === 'evaluating') return null;
@@ -37,7 +42,8 @@ export function EvaluationTab({
   const teams: EvaluationTeam[] = view.teams.map((team) => {
     const mineFor = (memberId: string | null) =>
       team.evaluations.find(
-        (evaluation) => evaluation.evaluatorUserId === viewer.userId && evaluation.memberId === memberId,
+        (evaluation) =>
+          evaluation.evaluatorUserId === viewer.userId && evaluation.memberId === memberId,
       );
     const previous = (memberId: string | null) => {
       const mine = mineFor(memberId);
@@ -53,7 +59,9 @@ export function EvaluationTab({
         id: evaluation.id,
         evaluatorName: evaluation.evaluatorName ?? 'evaluator',
         mine: evaluation.evaluatorUserId === viewer.userId,
-        targetLabel: evaluation.memberId ? (names.get(evaluation.memberId) ?? 'participant') : 'Team',
+        targetLabel: evaluation.memberId
+          ? (names.get(evaluation.memberId) ?? 'participant')
+          : 'Team',
         individual: evaluation.memberId !== null,
         scores: evaluation.scores,
         overallScore: evaluation.overallScore,

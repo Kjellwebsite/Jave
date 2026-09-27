@@ -22,10 +22,22 @@ export default async function EditTrialPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!isUuid(id)) notFound();
   if (!can(ctx, 'canManageTrials'))
-    return <RestrictedPage eyebrow="OPERATIONS / TRIALS" title="Edit trial" capability="canManageTrials" />;
+    return (
+      <RestrictedPage
+        eyebrow="OPERATIONS / TRIALS"
+        title="Edit trial"
+        capability="canManageTrials"
+      />
+    );
   const loaded = await guarded(() => trials.getTrialForStaff(ctx, { trialId: id }));
   if (!loaded.ok)
-    return <RestrictedPage eyebrow="OPERATIONS / TRIALS" title="Edit trial" capability="canManageTrials" />;
+    return (
+      <RestrictedPage
+        eyebrow="OPERATIONS / TRIALS"
+        title="Edit trial"
+        capability="canManageTrials"
+      />
+    );
   const view = loaded.value;
   const [viewer, options] = await Promise.all([loadViewer(ctx), loadTrialFormOptions(ctx)]);
   const back = (
@@ -38,7 +50,11 @@ export default async function EditTrialPage({ params }: { params: Promise<{ id: 
   if (!trials.EDITABLE_STATUSES.includes(view.status))
     return (
       <div className="space-y-8">
-        <PageHeader eyebrow={`OPERATIONS / TRIALS / ${view.ref}`} title="Edit trial" actions={back} />
+        <PageHeader
+          eyebrow={`OPERATIONS / TRIALS / ${view.ref}`}
+          title="Edit trial"
+          actions={back}
+        />
         <Callout tone="neutral" title="LOCKED">
           A trial’s content is fixed once it starts. Extend the deadline or cancel from the
           overview.

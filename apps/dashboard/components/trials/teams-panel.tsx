@@ -81,8 +81,7 @@ function Roster({ members }: { members: readonly TeamMemberRow[] }) {
 }
 
 function ChannelState({ team, guildId }: { team: TeamCardData; guildId: string | null }) {
-  if (!team.channelId)
-    return <StatusBadge tone="warning" label="CHANNEL PENDING" />;
+  if (!team.channelId) return <StatusBadge tone="warning" label="CHANNEL PENDING" />;
   const url = discordChannelUrl(guildId, team.channelId);
   return (
     <span className="flex flex-wrap items-center gap-2">
@@ -229,7 +228,10 @@ export function TeamsPanel({
               ) : null}
               <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {preview.teams.map((team) => (
-                  <li key={team.name} className="rounded-md border border-dashed border-line-strong p-4">
+                  <li
+                    key={team.name}
+                    className="rounded-md border border-dashed border-line-strong p-4"
+                  >
                     <p className="type-eyebrow text-fg-muted">{team.name}</p>
                     <div className="mt-3">
                       <Roster members={team.members} />

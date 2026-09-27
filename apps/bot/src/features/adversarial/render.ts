@@ -44,7 +44,9 @@ function triggerLines(view: BriefingView): string {
   if (view.triggers.length === 0) return 'None scheduled. Staff will tell you when to act.';
   return view.triggers
     .map((trigger) => {
-      const when = trigger.plannedFor ? ` ${GLYPH.dot} planned ${discordTime(trigger.plannedFor, 'f')}` : '';
+      const when = trigger.plannedFor
+        ? ` ${GLYPH.dot} planned ${discordTime(trigger.plannedFor, 'f')}`
+        : '';
       const fired = trigger.firedAt ? ` ${GLYPH.dot} FIRED` : '';
       return `${GLYPH.bullet} **${userText(trigger.label, NAME_MAX)}**${when}${fired}\n${userText(trigger.description, 1000)}`;
     })
@@ -80,7 +82,8 @@ export function briefingEmbeds(view: BriefingView): APIEmbed[] {
     ...section('SANDBOX ASSETS', 'Sandbox assets', view.sandboxAssets),
     ...triggerChunks.map((chunk, index) =>
       panel({
-        kicker: triggerChunks.length > 1 ? `TRIGGERS ${index + 1}/${triggerChunks.length}` : 'TRIGGERS',
+        kicker:
+          triggerChunks.length > 1 ? `TRIGGERS ${index + 1}/${triggerChunks.length}` : 'TRIGGERS',
         title: index === 0 ? 'Planned beats' : 'Planned beats (continued)',
         description: chunk,
         color: COLORS.base,
@@ -111,7 +114,12 @@ export function briefingMessages(view: BriefingView): MessagePayload[] {
 export function stopMessage(notice: { title: string; body: string }): MessagePayload {
   return {
     embeds: [
-      panel({ kicker: SANDBOX_MARK, title: notice.title, description: notice.body, color: COLORS.danger }),
+      panel({
+        kicker: SANDBOX_MARK,
+        title: notice.title,
+        description: notice.body,
+        color: COLORS.danger,
+      }),
     ],
   };
 }

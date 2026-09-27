@@ -14,7 +14,11 @@ import { setTemplateActiveAction, updateTemplateAction } from '../../actions';
 
 export const metadata: Metadata = { title: 'Template' };
 
-export default async function TemplatePage({ params }: { params: Promise<{ templateId: string }> }) {
+export default async function TemplatePage({
+  params,
+}: {
+  params: Promise<{ templateId: string }>;
+}) {
   const { ctx } = await requireConsoleContext();
   const { templateId } = await params;
   if (!isUuid(templateId)) notFound();

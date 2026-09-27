@@ -4,10 +4,14 @@ import { jobs, trials as trialsTable, trialTeams } from '@jave/database';
 import { enqueueJob, MINUTE, trials, updateSettings } from '@jave/core';
 import type { APIEmbed } from 'discord.js';
 import { DiscordActionError, type PermissionOverwriteSpec } from '../../discord/gateway';
-import { createBotHarness, TEST_CLIENT_ID, TEST_GUILD_ID, type BotHarness } from '../../testing/harness';
+import {
+  createBotHarness,
+  TEST_CLIENT_ID,
+  TEST_GUILD_ID,
+  type BotHarness,
+} from '../../testing/harness';
 import { embedTextLength, MESSAGE_EMBED_TEXT_LIMIT } from './render/text';
 import {
-  activeTrial,
   ANNOUNCEMENTS_CHANNEL,
   as,
   assignedTrial,
@@ -51,11 +55,18 @@ describe('trials: Discord job handlers', SUITE, () => {
 
     const posted = sentTo(ANNOUNCEMENTS_CHANNEL);
     expect(posted).toHaveLength(1);
-    const card = posted[0]!.args[1] as { embeds: APIEmbed[]; components: { components: { custom_id?: string; disabled?: boolean; label?: string }[] }[] };
+    const card = posted[0]!.args[1] as {
+      embeds: APIEmbed[];
+      components: { components: { custom_id?: string; disabled?: boolean; label?: string }[] }[];
+    };
     expect(card.embeds[0]!.title).toContain('NIGHT BUILD');
     expect(card.embeds[0]!.description).toContain('Outcomes count');
     const apply = card.components[0]!.components[0]!;
-    expect(apply).toMatchObject({ custom_id: `trials:apply:${trialId}`, disabled: false, label: 'APPLY' });
+    expect(apply).toMatchObject({
+      custom_id: `trials:apply:${trialId}`,
+      disabled: false,
+      label: 'APPLY',
+    });
     const [row] = await bot.kit.db.select().from(trialsTable).where(eq(trialsTable.id, trialId));
     expect(row!.announcementChannelId).toBe(ANNOUNCEMENTS_CHANNEL);
     const messageId = row!.announcementMessageId!;
@@ -70,7 +81,10 @@ describe('trials: Discord job handlers', SUITE, () => {
     const edit = bot.gateway.callsTo('editMessage').at(-1)!;
     expect(edit.args[1]).toBe(messageId);
     const edited = edit.args[2] as typeof card;
-    expect(edited.components[0]!.components[0]).toMatchObject({ disabled: true, label: 'RECRUITMENT CLOSED' });
+    expect(edited.components[0]!.components[0]).toMatchObject({
+      disabled: true,
+      label: 'RECRUITMENT CLOSED',
+    });
 
     // Someone deletes the card by hand: the next refresh posts a new one and records it.
     bot.gateway.messages.delete(messageId);
@@ -80,7 +94,10 @@ describe('trials: Discord job handlers', SUITE, () => {
     expect(after!.announcementMessageId).not.toBe(messageId);
     expect(bot.gateway.messages.get(after!.announcementMessageId!)).toBeDefined();
     const final = bot.gateway.messages.get(after!.announcementMessageId!)!.payload as typeof card;
-    expect(final.components[0]!.components[0]).toMatchObject({ disabled: true, label: 'CANCELLED' });
+    expect(final.components[0]!.components[0]).toMatchObject({
+      disabled: true,
+      label: 'CANCELLED',
+    });
   });
 
   it('announce: skips quietly without an announcements channel', async () => {
@@ -106,7 +123,9 @@ describe('trials: Discord job handlers', SUITE, () => {
     const teams = await teamsOf(trialId);
     expect(teams.every((team) => team.discordChannelId)).toBe(true);
 
-    const staffTeam = assignment.teams.find((t) => t.memberIds.includes(staffPlayer!.actor.memberId!))!;
+    const staffTeam = assignment.teams.find((t) =>
+      t.memberIds.includes(staffPlayer!.actor.memberId!),
+    )!;
     const otherTeam = assignment.teams.find((t) => t.id !== staffTeam.id)!;
     const otherRow = teams.find((t) => t.id === otherTeam.id)!;
     const channel = bot.gateway.channels.get(otherRow.discordChannelId!)!;
@@ -120,7 +139,10 @@ describe('trials: Discord job handlers', SUITE, () => {
     expect(byId.get(OPERATIONS_ROLE)).toMatchObject({ type: 'role' });
     expect(byId.get(OPERATIONS_ROLE)!.allow).toContain('ViewChannel');
     // The operations member competes on the other team: explicitly denied here.
-    expect(byId.get(staffPlayer!.actor.discordId)).toMatchObject({ type: 'member', deny: ['ViewChannel'] });
+    expect(byId.get(staffPlayer!.actor.discordId)).toMatchObject({
+      type: 'member',
+      deny: ['ViewChannel'],
+    });
     const memberDiscordIds = everyone
       .filter((p) => otherTeam.memberIds.includes(p.actor.memberId!))
       .map((p) => p.actor.discordId);
@@ -136,7 +158,10 @@ describe('trials: Discord job handlers', SUITE, () => {
     expect(ids).not.toContain(leaver.actor.discordId);
 
     // The channel was deleted by hand: re-sync recreates it and records the new id.
-    bot.gateway.failures.set('setChannelOverwrites', new DiscordActionError('Unknown Channel', 10003, true));
+    bot.gateway.failures.set(
+      'setChannelOverwrites',
+      new DiscordActionError('Unknown Channel', 10003, true),
+    );
     await trials.reprovisionTeams(as(bot, manager!), { trialId });
     await bot.drain();
     const recreatedRows = await teamsOf(trialId);
@@ -158,8 +183,12 @@ describe('trials: Discord job handlers', SUITE, () => {
       expect(bot.gateway.members.get(p.actor.discordId)!.roleIds).toContain(team!.discordRoleId);
     await trials.withdraw(as(bot, players[0]!), { trialId });
     await bot.drain();
-    expect(bot.gateway.members.get(players[0]!.actor.discordId)!.roleIds).not.toContain(team!.discordRoleId);
-    expect(bot.gateway.members.get(players[1]!.actor.discordId)!.roleIds).toContain(team!.discordRoleId);
+    expect(bot.gateway.members.get(players[0]!.actor.discordId)!.roleIds).not.toContain(
+      team!.discordRoleId,
+    );
+    expect(bot.gateway.members.get(players[1]!.actor.discordId)!.roleIds).toContain(
+      team!.discordRoleId,
+    );
   });
 
   it('BREAK: missing category dead-letters; a Discord permission error is permanent; unreported channels are removed', async () => {
@@ -168,7 +197,9 @@ describe('trials: Discord job handlers', SUITE, () => {
     const { trialId } = await assignedTrial(bot, manager!, players);
     await bot.drain();
     expect(bot.gateway.callsTo('createTextChannel')).toHaveLength(0);
-    const dead = (await jobsOf(trials.DISCORD_TRIALS_PROVISION_JOB)).filter((j) => j.status === 'dead');
+    const dead = (await jobsOf(trials.DISCORD_TRIALS_PROVISION_JOB)).filter(
+      (j) => j.status === 'dead',
+    );
     expect(dead).toHaveLength(1);
     expect(dead[0]!.lastError).toContain('trialsCategory');
 
@@ -179,7 +210,9 @@ describe('trials: Discord job handlers', SUITE, () => {
     );
     await trials.reprovisionTeams(as(bot, manager!), { trialId });
     await bot.drain();
-    expect((await jobsOf(trials.DISCORD_TRIALS_PROVISION_JOB)).filter((j) => j.status === 'dead')).toHaveLength(2);
+    expect(
+      (await jobsOf(trials.DISCORD_TRIALS_PROVISION_JOB)).filter((j) => j.status === 'dead'),
+    ).toHaveLength(2);
     // One refused attempt, nothing created, nothing recorded.
     expect(bot.gateway.callsTo('createTextChannel')).toHaveLength(1);
     expect(bot.gateway.channels.size).toBe(0);
@@ -237,7 +270,10 @@ describe('trials: Discord job handlers', SUITE, () => {
     await configureDiscord(bot);
     const [manager] = await people(bot, 1, ['operations']);
     const players = await people(bot, 4);
-    const longBrief = Array.from({ length: 120 }, (_, i) => `- Step ${i}: ship [it] (fast) #${i} @everyone`).join('\n');
+    const longBrief = Array.from(
+      { length: 120 },
+      (_, i) => `- Step ${i}: ship [it] (fast) #${i} @everyone`,
+    ).join('\n');
     const { trialId } = await assignedTrial(bot, manager!, players, { brief: longBrief });
     await bot.drain();
     await trials.startTrial(as(bot, manager!), { trialId });
@@ -255,8 +291,10 @@ describe('trials: Discord job handlers', SUITE, () => {
       const text = posts.map((p) => JSON.stringify(embedsOf(p))).join('');
       expect(text).toContain('Step 119');
       expect(text).toContain('WORKING PRODUCT · 75%');
-      expect(text).not.toMatch(/(?<!​)@everyone/);
-      const last = posts.at(-1)!.args[1] as { components: { components: { custom_id: string }[] }[] };
+      expect(text).not.toMatch(/(?<!\u200b)@everyone/);
+      const last = posts.at(-1)!.args[1] as {
+        components: { components: { custom_id: string }[] }[];
+      };
       expect(last.components[0]!.components[0]!.custom_id).toBe(`trials:submit:${trialId}`);
     }
 
@@ -286,9 +324,13 @@ describe('trials: Discord job handlers', SUITE, () => {
       );
       expect(closings).toHaveLength(1);
       // Members read, never write; evaluator access is untouched.
-      for (const overwrite of channel.overwrites.filter((o) => o.type === 'member' && o.id !== TEST_CLIENT_ID && !o.deny?.includes('ViewChannel')))
+      for (const overwrite of channel.overwrites.filter(
+        (o) => o.type === 'member' && o.id !== TEST_CLIENT_ID && !o.deny?.includes('ViewChannel'),
+      ))
         expect(overwrite.deny).toEqual(expect.arrayContaining(['SendMessages', 'AddReactions']));
-      expect(channel.overwrites.find((o) => o.id === OPERATIONS_ROLE)?.allow).toContain('ViewChannel');
+      expect(channel.overwrites.find((o) => o.id === OPERATIONS_ROLE)?.allow).toContain(
+        'ViewChannel',
+      );
     }
   });
 
@@ -320,7 +362,11 @@ describe('trials: Discord job handlers', SUITE, () => {
     await bot.drain();
     const before = (await teamsOf(trialId)).map((t) => t.discordChannelId!);
     expect(before.every(Boolean)).toBe(true);
-    await trials.assignTeams(as(bot, manager!), { trialId, strategy: 'balanced', seed: 'reshuffle' });
+    await trials.assignTeams(as(bot, manager!), {
+      trialId,
+      strategy: 'balanced',
+      seed: 'reshuffle',
+    });
     await bot.drain();
     const deleted = bot.gateway.callsTo('deleteChannel').map((c) => c.args[0] as string);
     expect(deleted.sort()).toEqual([...before].sort());

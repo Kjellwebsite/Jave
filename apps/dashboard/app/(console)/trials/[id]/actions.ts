@@ -20,7 +20,8 @@ const STRATEGIES = ['balanced', 'random'] as const;
 
 function uuidField(data: FormData, name: string, what: string): string {
   const value = formString(data, name);
-  if (!isUuid(value)) throw new ValidationError(`Unknown ${what}.`, [{ path: name, message: 'unknown' }]);
+  if (!isUuid(value))
+    throw new ValidationError(`Unknown ${what}.`, [{ path: name, message: 'unknown' }]);
   return value;
 }
 
@@ -52,7 +53,8 @@ function trialAction(
 
 // ─── Edit ────────────────────────────────────────────────────────────────────
 
-const sameInstant = (a: Date | null, b: Date | null) => (a?.getTime() ?? null) === (b?.getTime() ?? null);
+const sameInstant = (a: Date | null, b: Date | null) =>
+  (a?.getTime() ?? null) === (b?.getTime() ?? null);
 
 export async function updateTrialAction(_: ActionState, data: FormData): Promise<ActionState> {
   return trialAction(
@@ -75,7 +77,9 @@ export async function updateTrialAction(_: ActionState, data: FormData): Promise
         durationMinutes: formInteger(data, 'durationMinutes'),
         teamSize: formInteger(data, 'teamSize'),
         maxParticipants: formInteger(data, 'maxParticipants') ?? null,
-        ...(sameInstant(closes, current.recruitmentClosesAt) ? {} : { recruitmentClosesAt: closes }),
+        ...(sameInstant(closes, current.recruitmentClosesAt)
+          ? {}
+          : { recruitmentClosesAt: closes }),
         ...(sameInstant(start, current.scheduledStartAt) ? {} : { scheduledStartAt: start }),
       });
       return `TRIAL SAVED — ${updated.ref}.`;

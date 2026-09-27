@@ -2,23 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import {
-  can,
-  ForbiddenError,
-  isUuid,
-  loadCatalog,
-  NotFoundError,
-  trials,
-} from '@jave/core';
-import {
-  Badge,
-  buttonStyles,
-  Card,
-  Icon,
-  LinkTabs,
-  Mono,
-  RestrictedState,
-} from '@jave/ui';
+import { can, ForbiddenError, isUuid, loadCatalog, NotFoundError, trials } from '@jave/core';
+import { Badge, buttonStyles, Card, Icon, LinkTabs, Mono, RestrictedState } from '@jave/ui';
 import { NextLink } from '@/components/next-link';
 import { TrialClock } from '@/components/trials/trial-clock';
 import { TrialStatusBadge } from '@/components/trials/trial-status-badge';
@@ -98,8 +83,7 @@ export default async function TrialPage({
   const { ctx } = await requireConsoleContext();
   const { id } = await params;
   if (!isUuid(id)) notFound();
-  if (!isTrialStaff(ctx))
-    return <RefusedPage reason="Trial records are for trial staff." />;
+  if (!isTrialStaff(ctx)) return <RefusedPage reason="Trial records are for trial staff." />;
   const loaded = await loadStaffView(ctx, id);
   if ('refused' in loaded) return <RefusedPage reason={loaded.refused} />;
   const { view } = loaded;
@@ -137,7 +121,9 @@ export default async function TrialPage({
               teams of {view.teamSize} · {trials.formatDuration(view.durationMinutes)}
             </Mono>
           </div>
-          <p className="max-w-2xl text-body text-fg-subtle">{view.summary || 'No public summary yet.'}</p>
+          <p className="max-w-2xl text-body text-fg-subtle">
+            {view.summary || 'No public summary yet.'}
+          </p>
         </div>
         <div className="shrink-0 md:text-right">
           <TrialClock trial={view} now={ctx.clock.now()} timeZone={viewer.timeZone} stacked />
@@ -152,8 +138,7 @@ export default async function TrialPage({
             href: key === 'overview' ? `/trials/${view.id}` : `/trials/${view.id}?tab=${key}`,
             label: TAB_LABELS[key],
             active: key === tab,
-            meta:
-              counts[key] !== undefined ? <Mono dim>{counts[key]}</Mono> : undefined,
+            meta: counts[key] !== undefined ? <Mono dim>{counts[key]}</Mono> : undefined,
           }))}
         />
         {tab === 'overview' ? (

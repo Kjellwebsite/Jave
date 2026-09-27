@@ -98,7 +98,7 @@ function SelectionForm({
   const [state, dispatch, pending] = useActionState(action, IDLE_STATE);
   const toast = useToast();
   useEffect(() => {
-    if (state.status === 'success') toast(state.message);
+    if (state.status === 'success') toast({ text: state.message, tone: 'success' });
   }, [state, toast]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -108,7 +108,12 @@ function SelectionForm({
   }
 
   return (
-    <form action={dispatch} onSubmit={handleSubmit} aria-label="Manual selection" aria-busy={pending || undefined}>
+    <form
+      action={dispatch}
+      onSubmit={handleSubmit}
+      aria-label="Manual selection"
+      aria-busy={pending || undefined}
+    >
       <input type="hidden" name="trialId" value={trialId} />
       <fieldset disabled={pending} className="min-w-0">
         {children}

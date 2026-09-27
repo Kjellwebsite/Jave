@@ -136,7 +136,9 @@ export async function activeTrial(
 }
 
 /** Every text of every embed a message or reply carried — for leak assertions. */
-export function allText(payloads: readonly { embeds?: unknown; components?: unknown; content?: string }[]) {
+export function allText(
+  payloads: readonly { embeds?: unknown; components?: unknown; content?: string }[],
+) {
   return JSON.stringify(payloads);
 }
 

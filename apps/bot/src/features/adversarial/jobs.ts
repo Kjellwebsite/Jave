@@ -104,7 +104,10 @@ export function debriefHandler(services: BotServices): JobHandler {
     if (debrief.alreadyPosted) return { skipped: 'already posted' };
     const channelId = debrief.channelId;
     if (!channelId) {
-      await adversarial.markDebriefPosted(ctx, { roleId: debrief.roleId, outcome: 'undeliverable' });
+      await adversarial.markDebriefPosted(ctx, {
+        roleId: debrief.roleId,
+        outcome: 'undeliverable',
+      });
       return { outcome: 'undeliverable' };
     }
     let first: SentMessage | null = null;
@@ -115,7 +118,10 @@ export function debriefHandler(services: BotServices): JobHandler {
       }
     } catch (error) {
       if (!isPermanentDiscordError(error)) throw error;
-      await adversarial.markDebriefPosted(ctx, { roleId: debrief.roleId, outcome: 'undeliverable' });
+      await adversarial.markDebriefPosted(ctx, {
+        roleId: debrief.roleId,
+        outcome: 'undeliverable',
+      });
       return { outcome: 'undeliverable' };
     }
     if (!first) throw new PermanentJobError('the debrief rendered no message');

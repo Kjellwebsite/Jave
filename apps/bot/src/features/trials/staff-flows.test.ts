@@ -107,9 +107,9 @@ describe('trials: staff control panel', SUITE, () => {
     expect(open.interaction.lastText()).toContain('RECRUITMENT OPEN');
     expect(await statusOf(bot, trialId)).toBe('recruiting');
     await bot.drain();
-    expect(bot.gateway.callsTo('sendMessage').some((c) => c.args[0] === ANNOUNCEMENTS_CHANNEL)).toBe(
-      true,
-    );
+    expect(
+      bot.gateway.callsTo('sendMessage').some((c) => c.args[0] === ANNOUNCEMENTS_CHANNEL),
+    ).toBe(true);
     expect(labels(open.interaction)).toEqual(
       expect.arrayContaining(['SELECT — RANDOM', 'SELECT — MANUAL', 'ASSIGN TEAMS']),
     );
@@ -328,7 +328,12 @@ describe('trials: staff control panel', SUITE, () => {
     );
     const forced = await bot.run({
       kind: 'modal',
-      name: customId('trials', 'eval', trialId, (await trials.getTrialForStaff(as(bot, manager!), { trialId })).teams[0]!.id),
+      name: customId(
+        'trials',
+        'eval',
+        trialId,
+        (await trials.getTrialForStaff(as(bot, manager!), { trialId })).teams[0]!.id,
+      ),
       user: manager!.user,
       modalText: { 'score-0': '5' },
     });

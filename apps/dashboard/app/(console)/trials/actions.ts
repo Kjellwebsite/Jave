@@ -48,7 +48,8 @@ const TEMPLATE_FIELDS = [
 function optionalUuid(data: FormData, name: string): string | undefined {
   const value = formOptional(data, name);
   if (value === undefined) return undefined;
-  if (!isUuid(value)) throw new ValidationError('Unknown item.', [{ path: name, message: 'unknown' }]);
+  if (!isUuid(value))
+    throw new ValidationError('Unknown item.', [{ path: name, message: 'unknown' }]);
   return value;
 }
 

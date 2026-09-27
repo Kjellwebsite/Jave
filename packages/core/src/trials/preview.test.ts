@@ -59,7 +59,11 @@ describe('trials: team preview (dry run of assignTeams)', () => {
       seed: preview.seed,
     });
     expect(
-      assigned.teams.map(({ name, leadMemberId, memberIds }) => ({ name, leadMemberId, memberIds })),
+      assigned.teams.map(({ name, leadMemberId, memberIds }) => ({
+        name,
+        leadMemberId,
+        memberIds,
+      })),
     ).toEqual(
       preview.teams.map(({ name, leadMemberId, memberIds }) => ({ name, leadMemberId, memberIds })),
     );

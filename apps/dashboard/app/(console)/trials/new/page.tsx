@@ -18,10 +18,22 @@ const DEFAULT_DURATION_MINUTES = 6 * 60;
 export default async function NewTrialPage() {
   const { ctx } = await requireConsoleContext();
   if (!can(ctx, 'canManageTrials'))
-    return <RestrictedPage eyebrow="OPERATIONS / TRIALS" title="New trial" capability="canManageTrials" />;
+    return (
+      <RestrictedPage
+        eyebrow="OPERATIONS / TRIALS"
+        title="New trial"
+        capability="canManageTrials"
+      />
+    );
   const loaded = await guarded(() => trials.listTemplates(ctx));
   if (!loaded.ok)
-    return <RestrictedPage eyebrow="OPERATIONS / TRIALS" title="New trial" capability="canManageTrials" />;
+    return (
+      <RestrictedPage
+        eyebrow="OPERATIONS / TRIALS"
+        title="New trial"
+        capability="canManageTrials"
+      />
+    );
   const [viewer, options] = await Promise.all([loadViewer(ctx), loadTrialFormOptions(ctx)]);
   const templates: TemplateOption[] = loaded.value.map((template) => ({
     id: template.id,
@@ -75,9 +87,7 @@ export default async function NewTrialPage() {
             category: '',
             summary: '',
             brief: '',
-            rubric: [
-              { key: 'outcome', label: 'Outcome', description: '', weight: 1 },
-            ],
+            rubric: [{ key: 'outcome', label: 'Outcome', description: '', weight: 1 }],
             facetKeys: [],
             durationMinutes: DEFAULT_DURATION_MINUTES,
             teamSize: options.defaultTeamSize,

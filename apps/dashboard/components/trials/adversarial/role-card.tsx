@@ -24,8 +24,9 @@ import { formatTimestamp } from '@/lib/time';
 import type { FormAction } from '../../forms/action-form';
 import { ConfirmActionDialog } from '../../forms/confirm-action-dialog';
 import { FormField } from '../../forms/form-field';
+import { type TriggerActions, TriggerList } from './trigger-list';
 
-export interface RoleActions {
+export interface RoleActions extends TriggerActions {
   authorize: FormAction;
   brief: FormAction;
   activate: FormAction;
@@ -42,6 +43,10 @@ export interface RoleCardProps {
   role: adversarial.RoleDetail;
   /** Participant names by member id (observation subjects). */
   names: ReadonlyMap<string, string>;
+  /** Members of the role's team, for attributing an observation (staff-only). */
+  subjects: readonly { memberId: string; displayName: string }[];
+  /** The trial has ended (evaluating, completed or cancelled): reveals are possible. */
+  trialOver: boolean;
   viewerUserId: string;
   canAuthorize: boolean;
   outcomeLabels: Readonly<Record<ObservationOutcomeKey, string>>;
@@ -75,6 +80,8 @@ export function RoleCard({
   trialId,
   role,
   names,
+  subjects,
+  trialOver,
   viewerUserId,
   canAuthorize,
   outcomeLabels,
@@ -85,9 +92,11 @@ export function RoleCard({
   const record = role.role;
   const hidden = { trialId, roleId: role.id };
   const planner = record.createdByUserId === viewerUserId;
+  // The authorizer must not have written any trigger of the plan they sign.
+  const wroteTrigger = role.triggers.some((trigger) => trigger.createdByUserId === viewerUserId);
+  const triggersEditable = adversarial.TRIGGER_EDITABLE_STATUSES.includes(record.status);
   const triggerLabel = new Map(role.triggers.map((trigger) => [trigger.id, trigger.label]));
   const awaitingReveal = adversarial.isAwaitingReveal(record);
-  const live = adversarial.LIVE_STATUSES.includes(record.status);
   const observing = adversarial.acceptsObservations(record);
   const abortable = adversarial.ABORTABLE_STATUSES.includes(record.status);
 
@@ -107,11 +116,18 @@ export function RoleCard({
       </span>
     ),
     description: <span className="whitespace-pre-wrap break-words">{observation.description}</span>,
-    meta: observation.triggerId ? `Trigger: ${triggerLabel.get(observation.triggerId) ?? '—'}` : undefined,
+    meta: observation.triggerId
+      ? `Trigger: ${triggerLabel.get(observation.triggerId) ?? '—'}`
+      : undefined,
   }));
 
   return (
-    <Card as="article" padding="none" data-role={record.status} aria-label={`Role on ${role.team?.name ?? 'team'}`}>
+    <Card
+      as="article"
+      padding="none"
+      data-role={record.status}
+      aria-label={`Role on ${role.team?.name ?? 'team'}`}
+    >
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line-subtle px-5 py-4">
         <div className="min-w-0 space-y-1">
           <p className="type-eyebrow text-fg-subtle">
@@ -162,29 +178,18 @@ export function RoleCard({
 
         <div>
           <p className="type-eyebrow text-fg-subtle">TRIGGERS</p>
-          {role.triggers.length === 0 ? (
-            <p className="mt-1 text-small text-fg-subtle">None planned.</p>
-          ) : (
-            <ul className="mt-2 space-y-2">
-              {role.triggers.map((trigger) => (
-                <li key={trigger.id} className="rounded-md border border-line px-3 py-2">
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="text-small font-medium text-fg">{trigger.label}</span>
-                    {trigger.firedAt ? (
-                      <Badge tone="info">Fired {formatTimestamp(trigger.firedAt, timeZone)}</Badge>
-                    ) : trigger.plannedFor ? (
-                      <Mono dim className="text-[12px]">
-                        planned {formatTimestamp(trigger.plannedFor, timeZone)}
-                      </Mono>
-                    ) : null}
-                  </span>
-                  <span className="mt-1 block whitespace-pre-wrap break-words text-small text-fg-subtle">
-                    {trigger.description}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <TriggerList
+            trialId={trialId}
+            roleId={role.id}
+            triggers={role.triggers}
+            editable={triggersEditable}
+            roleAuthorized={role.authorized}
+            exerciseActive={record.status === 'active'}
+            viewerUserId={viewerUserId}
+            canAuthorize={canAuthorize}
+            timeZone={timeZone}
+            actions={actions}
+          />
         </div>
 
         <div>
@@ -200,7 +205,8 @@ export function RoleCard({
           <div className="rounded-md border border-line p-4">
             <p className="type-eyebrow text-fg-subtle">EVALUATION</p>
             <p className="mt-1 text-small text-fg-muted">
-              Security culture <Mono className="text-fg">{role.evaluation.securityCultureScore}/10</Mono>
+              Security culture{' '}
+              <Mono className="text-fg">{role.evaluation.securityCultureScore}/10</Mono>
               {role.evaluation.overrideJustification
                 ? ` — override: ${role.evaluation.overrideJustification}`
                 : ''}
@@ -219,20 +225,27 @@ export function RoleCard({
 
       <footer className="flex flex-wrap items-center gap-2 border-t border-line-subtle px-5 py-3">
         {record.status === 'planned' && !role.authorized && canAuthorize ? (
-          planner ? (
+          planner || wroteTrigger ? (
             <span className="text-small text-fg-subtle">
-              You planned this role: a different authorizer must approve it.
+              {planner
+                ? 'You planned this role: a different authorizer must approve it.'
+                : 'You wrote a trigger in this plan: a different authorizer must approve it.'}
             </span>
           ) : (
             <ConfirmActionDialog
               eyebrow="TWO-PERSON RULE"
               title="Authorize role"
-              description="You are the second person. Everything the operative will see — objective, guardrails, assets, triggers — is checked again now."
+              description={`You are the second person. You sign plan revision ${record.planRevision}: everything the operative will see — objective, guardrails, assets, ${role.triggers.length} trigger(s) — is checked again now. A plan changed since you loaded it is refused.`}
               confirmLabel="Authorize"
               action={actions.authorize}
-              hidden={hidden}
+              hidden={{ ...hidden, planRevision: String(record.planRevision) }}
               trigger={
-                <Button variant="primary" size="sm" iconLeft={ShieldCheck} data-testid="authorize-role">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  iconLeft={ShieldCheck}
+                  data-testid="authorize-role"
+                >
                   Authorize
                 </Button>
               }
@@ -243,7 +256,11 @@ export function RoleCard({
                 label="I attest: fictional data and sandbox accounts only"
                 description="No real credentials, personal data, outside people or external systems."
               />
-              <FormField name="note" label="Note" description="Optional. Recorded in the audit log.">
+              <FormField
+                name="note"
+                label="Note"
+                description="Optional. Recorded in the audit log."
+              >
                 <Textarea name="note" maxLength={500} rows={2} />
               </FormField>
             </ConfirmActionDialog>
@@ -298,11 +315,15 @@ export function RoleCard({
           />
         ) : null}
 
-        {live ? (
+        {triggersEditable ? (
           <ConfirmActionDialog
             eyebrow="ADVERSARIAL"
             title="Add trigger"
-            description="A planned beat for the operative. After authorization, only a second authorizer may add triggers; a briefed operative gets the updated briefing."
+            description={
+              role.authorized
+                ? 'A planned beat for the operative. It stays pending — invisible to the operative — until an authorizer other than you approves it.'
+                : 'A planned beat for the operative. It becomes part of the plan under review; the authorizer approves it with the role.'
+            }
             confirmLabel="Add trigger"
             action={actions.addTrigger}
             hidden={hidden}
@@ -316,7 +337,13 @@ export function RoleCard({
               <Input name="label" required minLength={3} maxLength={TEXT.label} />
             </FormField>
             <FormField name="description" label="What the operative does" required>
-              <Textarea name="description" required minLength={10} maxLength={TEXT.prose} rows={3} />
+              <Textarea
+                name="description"
+                required
+                minLength={10}
+                maxLength={TEXT.prose}
+                rows={3}
+              />
             </FormField>
             <FormField name="plannedFor" label="Planned for" description={`Optional. ${timeZone}.`}>
               <Input name="plannedFor" type="datetime-local" mono />
@@ -354,7 +381,27 @@ export function RoleCard({
                   name="triggerId"
                   defaultValue=""
                   placeholder="Not tied to a trigger"
-                  options={role.triggers.map((trigger) => ({ value: trigger.id, label: trigger.label }))}
+                  options={role.triggers.map((trigger) => ({
+                    value: trigger.id,
+                    label: trigger.label,
+                  }))}
+                />
+              </FormField>
+            ) : null}
+            {subjects.length > 0 ? (
+              <FormField
+                name="subjectMemberId"
+                label="Participant"
+                description="Optional. Staff-only; the team debrief never names anyone."
+              >
+                <NativeSelect
+                  name="subjectMemberId"
+                  defaultValue=""
+                  placeholder="The team as a whole"
+                  options={subjects.map((subject) => ({
+                    value: subject.memberId,
+                    label: subject.displayName,
+                  }))}
                 />
               </FormField>
             ) : null}
@@ -436,7 +483,7 @@ export function RoleCard({
           </ConfirmActionDialog>
         ) : null}
 
-        {awaitingReveal && role.evaluation?.debrief ? (
+        {awaitingReveal && role.evaluation?.debrief && trialOver ? (
           <ConfirmActionDialog
             eyebrow="ADVERSARIAL"
             title="Reveal to the team"

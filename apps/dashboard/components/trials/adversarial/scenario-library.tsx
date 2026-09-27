@@ -57,12 +57,23 @@ function ScenarioFields({
   return (
     <>
       {scenario ? null : (
-        <FormField name="key" label="Key" description="Permanent: 3–64 lowercase letters, digits, dashes." required>
+        <FormField
+          name="key"
+          label="Key"
+          description="Permanent: 3–64 lowercase letters, digits, dashes."
+          required
+        >
           <Input name="key" required maxLength={LIMITS.key} mono spellCheck={false} />
         </FormField>
       )}
       <FormField name="title" label="Title" required>
-        <Input name="title" required minLength={3} maxLength={LIMITS.title} defaultValue={scenario?.title} />
+        <Input
+          name="title"
+          required
+          minLength={3}
+          maxLength={LIMITS.title}
+          defaultValue={scenario?.title}
+        />
       </FormField>
       <FormField name="technique" label="Technique" required>
         <NativeSelect
@@ -81,7 +92,12 @@ function ScenarioFields({
           defaultValue={scenario?.description}
         />
       </FormField>
-      <FormField name="objective" label="Objective" description="What the operative attempts. Fictional assets only." required>
+      <FormField
+        name="objective"
+        label="Objective"
+        description="What the operative attempts. Fictional assets only."
+        required
+      >
         <Textarea
           name="objective"
           required

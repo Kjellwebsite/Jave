@@ -80,7 +80,9 @@ export function OverviewTab({ ctx, view, facetLabels, timeZone }: OverviewTabPro
             <Fact label="TEAM SIZE">{view.teamSize}</Fact>
             <Fact label="MAX PARTICIPANTS">{view.maxParticipants ?? 'No cap'}</Fact>
             <Fact label="LATE WINDOW">
-              {view.status === 'draft' || view.status === 'recruiting' || view.status === 'teams_assigned'
+              {view.status === 'draft' ||
+              view.status === 'recruiting' ||
+              view.status === 'teams_assigned'
                 ? 'Set at start'
                 : `${view.graceMinutes} min`}
             </Fact>
@@ -125,7 +127,10 @@ export function OverviewTab({ ctx, view, facetLabels, timeZone }: OverviewTabPro
           title="Brief"
           description="Competitors see it only once the trial is live. Staff read it here."
         >
-          <p className="whitespace-pre-wrap break-words text-body text-fg-muted" data-testid="brief">
+          <p
+            className="whitespace-pre-wrap break-words text-body text-fg-muted"
+            data-testid="brief"
+          >
             {view.brief}
           </p>
         </Panel>
@@ -173,7 +178,8 @@ export function OverviewTab({ ctx, view, facetLabels, timeZone }: OverviewTabPro
               timeZone={timeZone}
               editable={trials.EDITABLE_STATUSES.includes(view.status)}
               resyncable={
-                view.teams.length > 0 && (view.status === 'teams_assigned' || view.status === 'active')
+                view.teams.length > 0 &&
+                (view.status === 'teams_assigned' || view.status === 'active')
               }
               cancellable={!trials.TERMINAL_STATUSES.includes(view.status)}
               actions={{
@@ -194,7 +200,11 @@ export function OverviewTab({ ctx, view, facetLabels, timeZone }: OverviewTabPro
         <Panel eyebrow="DISCORD" title="Presence">
           <dl className="space-y-3">
             <Fact label="RECRUITMENT CARD">
-              {view.announcement ? 'Posted' : view.status === 'draft' ? 'Not yet' : 'Pending or no channel'}
+              {view.announcement
+                ? 'Posted'
+                : view.status === 'draft'
+                  ? 'Not yet'
+                  : 'Pending or no channel'}
             </Fact>
             <Fact label="TEAM CHANNELS">
               {view.teams.length === 0 ? '—' : `${channels} of ${view.teams.length} provisioned`}

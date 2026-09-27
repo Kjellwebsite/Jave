@@ -70,9 +70,7 @@ export default async function TrialsPage({
   const params = await searchParams;
   const { status } = filterSchema.parse({ status: firstParam(params.status) || undefined });
   const offset = offsetParam(params.offset);
-  const result = await guarded(() =>
-    trials.listTrials(ctx, { status, limit: PAGE_SIZE, offset }),
-  );
+  const result = await guarded(() => trials.listTrials(ctx, { status, limit: PAGE_SIZE, offset }));
   if (!result.ok)
     return <RestrictedPage eyebrow="OPERATIONS" title="Trials" capability="canManageTrials" />;
   const page = result.value;
@@ -178,10 +176,7 @@ export default async function TrialsPage({
                 page.items.map((trial) => (
                   <TableRow key={trial.id} className="relative" data-trial={trial.ref}>
                     <TableCell>
-                      <Link
-                        href={`/trials/${trial.id}`}
-                        className="block min-w-0 after:absolute after:inset-0 focus-visible:outline-none"
-                      >
+                      <Link href={`/trials/${trial.id}`} className="row-link block min-w-0">
                         <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                           <Mono dim className="text-[12px]">
                             {trial.ref}

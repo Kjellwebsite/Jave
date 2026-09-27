@@ -4,13 +4,7 @@
  */
 
 export type TrialStatusKey =
-  | 'draft'
-  | 'recruiting'
-  | 'teams_assigned'
-  | 'active'
-  | 'evaluating'
-  | 'completed'
-  | 'cancelled';
+  'draft' | 'recruiting' | 'teams_assigned' | 'active' | 'evaluating' | 'completed' | 'cancelled';
 
 export type BadgeToneKey = 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'accent';
 
@@ -126,7 +120,10 @@ export const ROLE_STATUS_TONE: Record<RoleStatusKey, BadgeToneKey> = {
 
 export type ObservationOutcomeKey = 'resisted' | 'detected' | 'reported' | 'partial' | 'failure';
 
-export const OBSERVATION_TONE: Record<ObservationOutcomeKey, 'success' | 'info' | 'warning' | 'danger' | 'neutral'> = {
+export const OBSERVATION_TONE: Record<
+  ObservationOutcomeKey,
+  'success' | 'info' | 'warning' | 'danger' | 'neutral'
+> = {
   reported: 'success',
   detected: 'success',
   resisted: 'info',

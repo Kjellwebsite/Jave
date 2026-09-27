@@ -155,7 +155,9 @@ export function ResultsPanel({
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="flex flex-wrap items-center gap-2 text-small text-fg-subtle">
-          <Badge tone={published ? 'success' : 'warning'}>{published ? 'Published' : 'Preview'}</Badge>
+          <Badge tone={published ? 'success' : 'warning'}>
+            {published ? 'Published' : 'Preview'}
+          </Badge>
           {OUTCOME_ORDER.map((outcome) => (
             <span key={outcome}>
               {OUTCOME_LABELS[outcome]} <Mono className="text-fg">{counts[outcome]}</Mono>

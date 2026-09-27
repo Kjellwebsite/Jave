@@ -32,7 +32,11 @@ export default async function TemplatesPage() {
   const loaded = await guarded(() => trials.listTemplates(ctx, { includeInactive: true }));
   if (!loaded.ok)
     return (
-      <RestrictedPage eyebrow="OPERATIONS / TRIALS" title="Templates" capability="canManageTrials" />
+      <RestrictedPage
+        eyebrow="OPERATIONS / TRIALS"
+        title="Templates"
+        capability="canManageTrials"
+      />
     );
   const templates = loaded.value;
   const seeAdversarial = can(ctx, 'canManageAdversarial');
@@ -91,7 +95,7 @@ export default async function TemplatesPage() {
                   <TableCell>
                     <Link
                       href={`/trials/templates/${template.id}`}
-                      className="block min-w-0 after:absolute after:inset-0 focus-visible:outline-none"
+                      className="row-link block min-w-0"
                     >
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="text-body font-medium text-fg">{template.title}</span>

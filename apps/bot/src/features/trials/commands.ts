@@ -41,7 +41,9 @@ async function trialChoices(h: HandlerContext, query: string) {
   const page = await trials.listTrials(h.ctx, { limit: 50 });
   const q = query.trim().toLowerCase();
   return page.items
-    .filter((item) => !q || item.ref.toLowerCase().includes(q) || item.title.toLowerCase().includes(q))
+    .filter(
+      (item) => !q || item.ref.toLowerCase().includes(q) || item.title.toLowerCase().includes(q),
+    )
     .slice(0, LIMITS.autocompleteChoices)
     .map((item) => ({
       name: clip(`${item.ref} — ${item.title} · ${STATUS_LABEL[item.status]}`, CHOICE_NAME_MAX),
@@ -109,7 +111,9 @@ export const trialCommand: CommandDefinition = {
       s.setName('status').setDescription('Your trials, teams, deadlines and results.'),
     )
     .addSubcommand((s) =>
-      s.setName('briefing').setDescription('Your confidential briefing, if one is addressed to you.'),
+      s
+        .setName('briefing')
+        .setDescription('Your confidential briefing, if one is addressed to you.'),
     )
     .addSubcommand((s) =>
       s

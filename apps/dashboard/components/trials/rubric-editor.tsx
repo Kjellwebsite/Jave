@@ -109,15 +109,28 @@ export function RubricEditor({ name, initial, seedKey = '' }: RubricEditorProps)
   function add() {
     setRows((current) => [
       ...current,
-      { uid: nextUid, key: '', label: '', description: '', weight: DEFAULT_WEIGHT, keyEdited: false },
+      {
+        uid: nextUid,
+        key: '',
+        label: '',
+        description: '',
+        weight: DEFAULT_WEIGHT,
+        keyEdited: false,
+      },
     ]);
     setNextUid((uid) => uid + 1);
   }
 
   return (
-    <fieldset className="min-w-0 space-y-3" aria-describedby={error ? `${baseId}-error` : undefined}>
+    <fieldset
+      className="min-w-0 space-y-3"
+      aria-describedby={error ? `${baseId}-error` : undefined}
+    >
       <legend className="text-small font-medium text-fg-muted">
-        Rubric<span aria-hidden className="ml-1 text-fg-subtle">*</span>
+        Rubric
+        <span aria-hidden className="ml-1 text-fg-subtle">
+          *
+        </span>
       </legend>
       <p className="-mt-1.5 text-small text-fg-subtle">
         Evaluators score every criterion 0–10. Weights are relative; the share of each is shown.
@@ -127,7 +140,9 @@ export function RubricEditor({ name, initial, seedKey = '' }: RubricEditorProps)
       <ol className="space-y-3">
         {rows.map((row, index) => {
           const share =
-            totalWeight > 0 && row.weight > 0 ? Math.round((row.weight / totalWeight) * PERCENT) : 0;
+            totalWeight > 0 && row.weight > 0
+              ? Math.round((row.weight / totalWeight) * PERCENT)
+              : 0;
           const id = `${baseId}-${row.uid}`;
           return (
             <li
@@ -174,7 +189,10 @@ export function RubricEditor({ name, initial, seedKey = '' }: RubricEditorProps)
                 </div>
               </div>
               <div className="mt-3 space-y-1.5">
-                <label htmlFor={`${id}-description`} className="text-small font-medium text-fg-muted">
+                <label
+                  htmlFor={`${id}-description`}
+                  className="text-small font-medium text-fg-muted"
+                >
                   What earns a 10
                 </label>
                 <Textarea

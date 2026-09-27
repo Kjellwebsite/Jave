@@ -118,7 +118,11 @@ export function ScoreDialog({ trialId, teamName, criteria, targets, action }: Sc
             />
           </FormField>
         ))}
-        <FormField name="notes" label="Notes" description="Staff only. Never shown to participants.">
+        <FormField
+          name="notes"
+          label="Notes"
+          description="Staff only. Never shown to participants."
+        >
           <Textarea
             name="notes"
             maxLength={NOTES_MAX}

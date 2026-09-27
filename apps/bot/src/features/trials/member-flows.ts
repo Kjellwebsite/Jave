@@ -60,7 +60,11 @@ export function trialOption(summary: Summary): APISelectMenuOption {
   };
 }
 
-export function pickerRow(purpose: PickPurpose, placeholder: string, summaries: readonly Summary[]) {
+export function pickerRow(
+  purpose: PickPurpose,
+  placeholder: string,
+  summaries: readonly Summary[],
+) {
   return row(
     stringSelect(
       trialsId(MEMBER_ACTIONS.pick, purpose),
@@ -75,7 +79,10 @@ export async function listOngoing(h: HandlerContext): Promise<void> {
   const ongoing = (await ongoingTrials(h)).slice(0, LIST_SIZE);
   if (ongoing.length === 0) {
     await h.respond(
-      infoReply('No open trials', 'Nothing is recruiting or running right now. New trials are announced in the announcements channel.'),
+      infoReply(
+        'No open trials',
+        'Nothing is recruiting or running right now. New trials are announced in the announcements channel.',
+      ),
     );
     return;
   }
@@ -277,14 +284,27 @@ async function withdrawable(h: HandlerContext) {
 export async function offerWithdraw(h: HandlerContext): Promise<void> {
   const entries = await withdrawable(h);
   if (entries.length === 0) {
-    await h.respond(infoReply('Nothing to withdraw from', 'You hold no place in a trial that has not started.'));
+    await h.respond(
+      infoReply('Nothing to withdraw from', 'You hold no place in a trial that has not started.'),
+    );
     return;
   }
   await h.respond({
-    embeds: [panel({ kicker: 'TRIALS', title: 'Withdraw', color: COLORS.base, fields: entries.map((e) => listField(e.trial)) })],
+    embeds: [
+      panel({
+        kicker: 'TRIALS',
+        title: 'Withdraw',
+        color: COLORS.base,
+        fields: entries.map((e) => listField(e.trial)),
+      }),
+    ],
     components: buttonRows(
       entries.map((entry) =>
-        button(`Withdraw · ${entry.trial.ref}`, trialsId(MEMBER_ACTIONS.withdraw, entry.trial.id), 'danger'),
+        button(
+          `Withdraw · ${entry.trial.ref}`,
+          trialsId(MEMBER_ACTIONS.withdraw, entry.trial.id),
+          'danger',
+        ),
       ),
     ).slice(0, 5),
     ephemeral: true,
@@ -309,7 +329,9 @@ export async function confirmWithdraw(h: HandlerContext, trialId: string): Promi
       }),
     ],
     components: [
-      row(button('Confirm withdrawal', trialsId(MEMBER_ACTIONS.withdrawConfirm, trialId), 'danger')),
+      row(
+        button('Confirm withdrawal', trialsId(MEMBER_ACTIONS.withdrawConfirm, trialId), 'danger'),
+      ),
     ],
     ephemeral: true,
   });
@@ -336,7 +358,9 @@ async function submittable(h: HandlerContext) {
 export async function offerSubmit(h: HandlerContext): Promise<void> {
   const entries = await submittable(h);
   if (entries.length === 0) {
-    await h.respond(infoReply('Nothing to submit', 'None of your teams has an open submission window.'));
+    await h.respond(
+      infoReply('Nothing to submit', 'None of your teams has an open submission window.'),
+    );
     return;
   }
   await h.respond({
@@ -351,7 +375,11 @@ export async function offerSubmit(h: HandlerContext): Promise<void> {
     ],
     components: buttonRows(
       entries.map((entry) =>
-        button(`Submit · ${entry.trial.ref}`, trialsId(MEMBER_ACTIONS.submit, entry.trial.id), 'primary'),
+        button(
+          `Submit · ${entry.trial.ref}`,
+          trialsId(MEMBER_ACTIONS.submit, entry.trial.id),
+          'primary',
+        ),
       ),
     ).slice(0, 5),
     ephemeral: true,
@@ -363,7 +391,16 @@ export async function showStatus(h: HandlerContext): Promise<void> {
   const open = mine.filter((entry) => entry.trial.status !== 'draft');
   await h.respond({
     embeds: [statusEmbed(open)],
-    components: open.length > 0 ? [pickerRow('view', 'Open a trial', open.map((e) => e.trial))] : undefined,
+    components:
+      open.length > 0
+        ? [
+            pickerRow(
+              'view',
+              'Open a trial',
+              open.map((e) => e.trial),
+            ),
+          ]
+        : undefined,
     ephemeral: true,
   });
 }
@@ -372,11 +409,15 @@ export async function showStatus(h: HandlerContext): Promise<void> {
 export async function showTeams(h: HandlerContext): Promise<void> {
   const mine = await trials.myTrials(h.ctx);
   const onTeams = mine.filter(
-    (entry) => entry.status === 'selected' && entry.teamName && TEAM_STATUSES.includes(entry.trial.status),
+    (entry) =>
+      entry.status === 'selected' && entry.teamName && TEAM_STATUSES.includes(entry.trial.status),
   );
   if (onTeams.length === 0) {
     await h.respond(
-      infoReply('No active team', 'You are not on a trial team right now. `/trial list` shows what is open.'),
+      infoReply(
+        'No active team',
+        'You are not on a trial team right now. `/trial list` shows what is open.',
+      ),
     );
     return;
   }
@@ -386,7 +427,10 @@ export async function showTeams(h: HandlerContext): Promise<void> {
   const replies: ReplyPayload[] = views.map((view) => {
     const team = view.participation?.team;
     const roster = (team?.members ?? [])
-      .map((m) => `${GLYPH.bullet} ${userText(m.displayName, NAME_MAX)}${m.role === 'lead' ? ' — lead' : ''}`)
+      .map(
+        (m) =>
+          `${GLYPH.bullet} ${userText(m.displayName, NAME_MAX)}${m.role === 'lead' ? ' — lead' : ''}`,
+      )
       .join('\n');
     const lines = [
       `**${userText(team?.name ?? '', NAME_MAX)}** ${GLYPH.dot} ${STATUS_LABEL[view.status]}`,
@@ -414,7 +458,9 @@ export async function showTeams(h: HandlerContext): Promise<void> {
         }),
       ],
       components: buttonRows([
-        ...(view.canSubmit ? [button('Submit', trialsId(MEMBER_ACTIONS.submit, view.id), 'primary')] : []),
+        ...(view.canSubmit
+          ? [button('Submit', trialsId(MEMBER_ACTIONS.submit, view.id), 'primary')]
+          : []),
         button('Trial', trialsId(MEMBER_ACTIONS.view, view.id)),
       ]),
       ephemeral: true,
@@ -424,7 +470,11 @@ export async function showTeams(h: HandlerContext): Promise<void> {
 }
 
 /** Staff-or-self record of trials a member competed in (user context menu). */
-export async function showTrialRecord(h: HandlerContext, memberId: string, name: string): Promise<void> {
+export async function showTrialRecord(
+  h: HandlerContext,
+  memberId: string,
+  name: string,
+): Promise<void> {
   const history = await trials.memberTrialHistory(h.ctx, { memberId });
   const embed = statusEmbed(history, {
     kicker: 'TRIAL RECORD',

@@ -56,14 +56,17 @@ export function clockLine(summary: Summary): string | null {
     return summary.scheduledStartAt
       ? `Starts ${discordTime(summary.scheduledStartAt, 'R')}`
       : 'Teams set — starts when staff give the signal';
-  if (timing.phase === 'open' && timing.deadlineAt) return `Deadline ${deadlineLine(timing.deadlineAt)}`;
+  if (timing.phase === 'open' && timing.deadlineAt)
+    return `Deadline ${deadlineLine(timing.deadlineAt)}`;
   if (timing.phase === 'grace' && timing.closesAt)
     return `Deadline passed — late window closes ${discordTime(timing.closesAt, 'R')}`;
   return null;
 }
 
 /** Rows of up to five buttons (Discord's per-row cap). */
-export function buttonRows(buttons: ReturnType<typeof button>[]): NonNullable<ReplyPayload['components']> {
+export function buttonRows(
+  buttons: ReturnType<typeof button>[],
+): NonNullable<ReplyPayload['components']> {
   const rows: NonNullable<ReplyPayload['components']> = [];
   for (let index = 0; index < buttons.length; index += BUTTONS_PER_ROW)
     rows.push(row(...buttons.slice(index, index + BUTTONS_PER_ROW)));
@@ -77,11 +80,18 @@ function participationFields(view: ParticipantView): APIEmbedField[] {
   const team = participation.team;
   if (team) {
     const roster = team.members
-      .map((member) =>
-        `${userText(member.displayName, NAME_MAX)}${member.role === 'lead' ? ' (lead)' : ''}`,
+      .map(
+        (member) =>
+          `${userText(member.displayName, NAME_MAX)}${member.role === 'lead' ? ' (lead)' : ''}`,
       )
       .join('\n');
-    fields.push(field('Team', `**${userText(team.name, NAME_MAX)}**${team.role === 'lead' ? ' — you lead' : ''}`, true));
+    fields.push(
+      field(
+        'Team',
+        `**${userText(team.name, NAME_MAX)}**${team.role === 'lead' ? ' — you lead' : ''}`,
+        true,
+      ),
+    );
     if (team.channelId) fields.push(field('Channel', `<#${team.channelId}>`, true));
     fields.push(field('Roster', roster || GLYPH.unknown));
   }
@@ -151,7 +161,8 @@ function resultEmbed(result: NonNullable<ParticipantView['result']>): APIEmbed {
 /** Buttons a member can use on this trial right now (as computed by core). */
 export function participantButtons(view: ParticipantView): ReturnType<typeof button>[] {
   const buttons: ReturnType<typeof button>[] = [];
-  if (view.canApply) buttons.push(button('Apply', trialsId(MEMBER_ACTIONS.apply, view.id), 'primary'));
+  if (view.canApply)
+    buttons.push(button('Apply', trialsId(MEMBER_ACTIONS.apply, view.id), 'primary'));
   if (view.canSubmit)
     buttons.push(button('Submit', trialsId(MEMBER_ACTIONS.submit, view.id), 'primary'));
   if (view.canWithdraw)
@@ -177,7 +188,14 @@ export function participantReplies(view: ParticipantView): ReplyPayload[] {
     fields: [
       field('State', factsLine(view)),
       ...(view.teams.length > 0
-        ? [field('Teams', view.teams.map((team) => `${userText(team.name, NAME_MAX)} (${team.memberCount})`).join(' · '))]
+        ? [
+            field(
+              'Teams',
+              view.teams
+                .map((team) => `${userText(team.name, NAME_MAX)} (${team.memberCount})`)
+                .join(' · '),
+            ),
+          ]
         : []),
       ...participationFields(view),
       ...[submissionField(view)].filter((entry): entry is APIEmbedField => entry !== null),
@@ -204,7 +222,10 @@ export function participantReplies(view: ParticipantView): ReplyPayload[] {
         title: 'What is measured',
         color: COLORS.base,
         fields: view.rubric.map((criterion) =>
-          field(`${criterion.label} ${GLYPH.dot} ${criterion.weightPercent}%`, userText(criterion.description, 900) || GLYPH.unknown),
+          field(
+            `${criterion.label} ${GLYPH.dot} ${criterion.weightPercent}%`,
+            userText(criterion.description, 900) || GLYPH.unknown,
+          ),
         ),
       }),
     );
@@ -239,7 +260,12 @@ export function statusEmbed(
   },
 ): APIEmbed {
   if (entries.length === 0)
-    return panel({ kicker: copy.kicker, title: copy.title, description: copy.empty, color: COLORS.steel });
+    return panel({
+      kicker: copy.kicker,
+      title: copy.title,
+      description: copy.empty,
+      color: COLORS.steel,
+    });
   return panel({
     kicker: copy.kicker,
     title: copy.title,
@@ -261,7 +287,11 @@ export function statusEmbed(
 }
 
 /** Informational one-panel reply. */
-export function infoReply(title: string, description: string, components?: ReplyPayload['components']): ReplyPayload {
+export function infoReply(
+  title: string,
+  description: string,
+  components?: ReplyPayload['components'],
+): ReplyPayload {
   return {
     embeds: [panel({ kicker: 'TRIALS', title, description, color: COLORS.steel })],
     components,

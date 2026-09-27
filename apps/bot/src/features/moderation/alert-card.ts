@@ -12,12 +12,15 @@ const SEVERITY_COLOR: Record<SecurityAlertCard['severity'], number> = {
   critical: COLORS.danger,
   elevated: COLORS.warning,
   low: COLORS.steel,
+  // Not assessed is not low: a distinct, neutral tone that still reads as "needs a human".
+  unscored: COLORS.info,
 };
 
 const SEVERITY_LABEL: Record<SecurityAlertCard['severity'], string> = {
   critical: 'CRITICAL',
   elevated: 'ELEVATED',
   low: 'LOW',
+  unscored: 'NOT SCORED',
 };
 
 const RISK_SEGMENTS = 10;
@@ -81,7 +84,7 @@ export function alertCardPayload(card: SecurityAlertCard): MessagePayload {
     );
   }
   buttons.push(button('Dismiss', modId(MOD_ACTIONS.securityDismiss, card.securityEventId)));
-  if (card.subjectDiscordId) {
+  if (card.quarantineOffered) {
     buttons.push(
       button('Quarantine', modId(MOD_ACTIONS.securityQuarantine, card.securityEventId), 'danger'),
     );

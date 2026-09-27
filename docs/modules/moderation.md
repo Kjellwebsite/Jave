@@ -110,7 +110,13 @@ through a reversal case. Reversals themselves cannot be revoked.
 
 **Discord sync** (`discord_sync`): `pending → applied | failed`, `failed → applied`;
 `applied` is final; notes (and actions on members not in the server) are
-`not_required`. A quarantine without `settings.roles.quarantineRoleId` is
+`not_required`. Case views also carry `discordState`, which surfaces show:
+it equals `discord_sync`, except that a timeout, quarantine or ban that ended
+(lifted, superseded, revoked) while still `pending` reads `not_applied` — the
+bot skips it (`getCaseForSync`), so it is not waiting for Discord. A late
+apply that still lands flips it to `applied` and re-sends the reversal.
+
+A quarantine without `settings.roles.quarantineRoleId` is
 still enforced: the apply payload carries `quarantineFallback: 'timeout'` and
 the bot times the member out (capped at Discord's 28 days); release lifts it.
 Configure a quarantine role for indefinite quarantines — `/jave setup` flags it.
@@ -156,6 +162,15 @@ who may read it (founders, and holders ranked above the subject).
 | view / triage security events  | `canViewSecurityEvents`                                      |
 | raid mode                      | `canManageSecurity`                                          |
 
+- **Bots and webhooks are integrations, not members.** Nobody — staff,
+  automod, join screening or AI — warns, times out, kicks, bans or
+  quarantines a bot account (`users.is_bot`): `botTargetViolation` is checked
+  in every case service and again in `executeCase`, and refuses with
+  `InvalidStateError`. Notes and reversals stay possible, so a record made
+  before this rule can still be lifted. Automod records a bot author's event
+  as `flagged` (no deletion); raid mode never holds a joining bot; alert
+  cards about bots offer no QUARANTINE. A quarantined bot would lose access
+  to every channel it serves (for JAVE itself: automod and alert cards).
 - Nobody acts on themselves; a user acts only on members ranked strictly
   below their highest role. Founders are therefore only actionable
   out-of-band (by the Discord server owner) — deliberate.
@@ -193,6 +208,17 @@ the same user; optional `source: 'ai_suggested'` for confirmed AI proposals.
 Security: `recordSecurityEvent`, `reviewSecurityEvent`, `getSecurityEvent`,
 `listSecurityEvents` (status/trigger/source/action/user/min risk/time filters,
 pagination), `getSecurityAlertCard`, `markSecurityAlertPosted`.
+
+**Unscored events.** A `manual_report` with risk `UNSCORED_RISK_SCORE` (0) —
+every member report — has no automated assessment. `isRiskScored` is false,
+views carry `riskScored: false`, the alert card's severity is `unscored`
+(RISK SCORE "NOT SCORED · staff judgement"), and staff alerts say "not
+scored" instead of "risk 0/100". A staff report filed with a score keeps it.
+
+**Alert card MODERATOR** is the reviewer only, never the reporter (the card
+is posted in a shared channel; `SecurityEventView.reportedBy` keeps the
+reporter for staff reads). Unreviewed, it names the source: AUTOMOD, JOIN
+SCREENING, SYSTEM, INTEGRATION, or "— awaiting review" for reports.
 
 Automod: `screenMessage` (one call per message: resolves roles, account age,
 join time, own invite codes from `invite_codes`, then evaluates and applies;
@@ -298,13 +324,14 @@ re-implements a rule. Full reference: [`docs/commands/moderation.md`](../command
 | Context menus | `context-menus.ts`                                       | user: Moderation history, Quarantine · message: Report message (`reportMessage`), Delete & warn                                                                  |
 | Flows         | `actions.ts`, `modals.ts`, `components.ts`, `pending.ts` | reason forms, duration selects, kick/ban CONFIRM (per-process token bound to the issuer, single use, 10 min), history and case cards, revoke, alert-card buttons |
 | Job handlers  | `apply-job.ts`, `alert-job.ts`, `message-jobs.ts`        | every contract in `discord-jobs.ts`; permanent Discord errors dead-letter after reporting                                                                        |
-| Listeners     | `listeners.ts`                                           | `onMessage` → pure pre-check with a per-process recent-message window, then `screenMessage`; `onMemberJoin` → `screenJoin`                                       |
+| Listeners     | `listeners.ts`                                           | `onMessage` and `onMessageUpdate` (real edits) → pure pre-check with a per-process recent-message window, then `screenMessage`; `onMemberJoin` → `screenJoin`    |
 
 **Dashboard** (`/moderation`, nav: SUPPORT & SAFETY, `canModerate`): Cases
 (number/action/source/state filters; `/moderation/cases/[id]` with Discord
 sync state, error, timeline, linked records and REVOKE), Security events
-(needs-review queue, risk meters, trigger, excerpt; `/moderation/security/[id]`
-with signals, context modifiers and ACKNOWLEDGE / DISMISS / MARK ACTIONED),
+(needs-review queue, risk meters — NOT SCORED for member reports, trigger,
+excerpt; `/moderation/security/[id]` with signals, context modifiers and
+ACKNOWLEDGE / DISMISS / MARK ACTIONED, risk and review first on phones),
 Member lookup (record by Discord ID or name search) and Raid mode (switch with
 `canManageSecurity`; screening and automod summary linking to settings).
 
@@ -326,14 +353,16 @@ Member lookup (record by Discord ID or name search) and Raid mode (switch with
   unknown to JAVE: `unbanMember` refuses a user JAVE does not consider banned.
   Mirroring Discord's `guildBanAdd`/`guildAuditLogEntryCreate` into cases is
   an extension point for the bot team (needs View Audit Log).
-- Bot accounts are exempt from automod, so a compromised third-party bot is
-  not screened; restrict bot permissions in Discord.
+- Bot accounts are exempt from automod and are never moderation targets, so
+  a compromised third-party bot is not screened or actioned by JAVE; members
+  can still report its messages. Restrict bot permissions in Discord and
+  remove a rogue bot there.
 - Founders can only be actioned out-of-band (the rank rule is strict `<`,
   so founder-on-founder is denied). A compromised founder account must be
   handled by the Discord server owner.
 - Revoking a warning does not send a "withdrawn" notice.
 - Bot: the automod recent-message window and kick/ban confirmations live in
   the bot process; a restart resets spam counting and expires pending
-  confirmations. Message edits are not screened (Discord's update event
-  carries no author). The lockdown job posts a notice only; it does not pause
-  Discord invites.
+  confirmations. Edits are screened for content only (links, invites,
+  mentions), not for rate or duplicates. The lockdown job posts a notice
+  only; it does not pause Discord invites.

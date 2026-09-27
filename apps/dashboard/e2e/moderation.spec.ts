@@ -12,6 +12,8 @@ test.describe.configure({ mode: 'serial' });
 const SCREENSHOT_DIR = fileURLToPath(new URL('../../../docs/screenshots/', import.meta.url));
 const SAVE = process.env.JAVE_SCREENSHOTS === '1';
 const MAX_CAPTURE_HEIGHT = 2200;
+/** Tailwind's lg breakpoint: below it the event page stacks into one column. */
+const DESKTOP_BREAKPOINT = 1024;
 const JUN_DISCORD_ID = '110000000000000016';
 const FORGED_UUID = '00000000-0000-4000-8000-000000000000';
 
@@ -73,6 +75,9 @@ test.describe('moderation console', () => {
     ).toBeVisible();
     await expect(dialog).toBeHidden();
     await expect(page.getByTestId('revoke-case')).toBeHidden();
+    // No bot ran: the quarantine ended before it was applied, so it is no longer "pending".
+    await expect(page.getByTestId('discord-sync')).toHaveText(/Not applied/i);
+    await expect(page.getByText('Ended before the bot applied it')).toBeVisible();
     await expect(
       page.getByText('Account recovered; the phishing DMs came from a stolen token.'),
     ).toBeVisible();
@@ -91,6 +96,9 @@ test.describe('moderation console', () => {
     await expect(events).toContainText('Member report');
     await expect(events).toContainText('guaranteed trial pass');
     await expect(events).not.toContainText('arxiv-mirror.example');
+    // A member report has no automated score: it never reads as a low 0/100.
+    await expect(eventRow(page, 'Member report')).toContainText('Not scored');
+    await expect(eventRow(page, 'Member report').getByRole('meter')).toHaveCount(0);
 
     await eventRow(page, 'Member report').click();
     await page.waitForURL(/\/moderation\/security\/[0-9a-f-]{36}/);
@@ -152,11 +160,23 @@ test.describe('moderation console', () => {
     await expect(page.getByTestId('raid-state')).toHaveText(/Off/i);
     await expect(page.getByText('Switching requires')).toBeVisible();
     await expect(page.getByTestId('raid-on')).toHaveCount(0);
+    // No settings access at all: no link.
+    await expect(page.getByRole('link', { name: /^(Edit|View)$/ })).toHaveCount(0);
+  });
+
+  test('operations can read settings but not change them: the links say View', async ({ page }) => {
+    await signInAs(page, 'operations');
+    await page.goto('/moderation?tab=raid');
+    await expect(page.getByRole('link', { name: 'View', exact: true })).toHaveCount(2);
+    await expect(page.getByRole('link', { name: 'Edit', exact: true })).toHaveCount(0);
+    // Exemption is read from settings, not assumed.
+    await expect(page.getByText('Screens every message; exempt roles skip it.')).toBeVisible();
   });
 
   test('core switches raid mode on and off, audited', async ({ page }) => {
     await signInAs(page, 'core');
     await page.goto('/moderation?tab=raid');
+    await expect(page.getByRole('link', { name: 'Edit', exact: true })).toHaveCount(2);
     await page.getByTestId('raid-on').click();
     const on = page.getByRole('dialog', { name: 'Switch raid mode on' });
     await on.getByLabel('Reason').fill('Join burst from a known raid server.');
@@ -242,7 +262,8 @@ for (const viewport of VIEWPORTS) {
       await signInAs(page, 'founder');
       const shots: { name: string; path: string }[] = [
         { name: 'moderation-cases', path: '/moderation' },
-        { name: 'moderation-security', path: '/moderation?tab=security' },
+        // All events: scored automod detections next to an unscored member report.
+        { name: 'moderation-security', path: '/moderation?tab=security&view=all' },
         { name: 'moderation-lookup', path: `/moderation?tab=lookup&q=${JUN_DISCORD_ID}` },
         { name: 'moderation-raid', path: '/moderation?tab=raid' },
         {
@@ -257,10 +278,30 @@ for (const viewport of VIEWPORTS) {
             eventRow(p, 'Noor Haddad'),
           ),
         },
+        {
+          name: 'moderation-report',
+          path: await detailPath(page, '/moderation?tab=security&view=all', (p) =>
+            eventRow(p, 'Member report'),
+          ),
+        },
       ];
       for (const shot of shots) {
         await page.goto(shot.path);
         await page.waitForLoadState('networkidle');
+        if (shot.name === 'moderation-report') {
+          await expect(page.getByText('Reports carry no automated score.')).toBeVisible();
+          await expect(page.getByRole('meter')).toHaveCount(0);
+        }
+        if (shot.name === 'moderation-event' && viewport.width < DESKTOP_BREAKPOINT) {
+          // Phones: risk and review (triage) come before the long evidence panel.
+          const review = await page
+            .getByRole('heading', { name: 'Review', exact: true })
+            .boundingBox();
+          const evidence = await page
+            .getByRole('heading', { name: 'Evidence', exact: true })
+            .boundingBox();
+          expect(review!.y, 'review panel precedes evidence on phones').toBeLessThan(evidence!.y);
+        }
         const overflow = await page.evaluate(
           () => document.documentElement.scrollWidth - window.innerWidth,
         );

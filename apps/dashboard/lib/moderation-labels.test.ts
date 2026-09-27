@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   caseState,
+  eventSeverity,
   evidenceModifiers,
   parseCaseFilters,
   parseCaseNumber,
@@ -8,6 +9,8 @@ import {
   parseLookupQuery,
   REVIEW_TARGETS,
   riskSeverity,
+  SYNC_LABELS,
+  syncExplanation,
 } from './moderation-labels';
 
 describe('moderation labels and filters', () => {
@@ -101,6 +104,27 @@ describe('moderation labels and filters', () => {
     expect(riskSeverity(85, thresholds)).toBe('critical');
     expect(riskSeverity(60, thresholds)).toBe('elevated');
     expect(riskSeverity(0, thresholds)).toBe('low');
+  });
+
+  it('never grades an unscored report as low risk', () => {
+    const thresholds = { critical: 85, elevated: 50 };
+    expect(eventSeverity({ riskScore: 0, riskScored: false }, thresholds)).toBe('unscored');
+    expect(eventSeverity({ riskScore: 0, riskScored: true }, thresholds)).toBe('low');
+    expect(eventSeverity({ riskScore: 90, riskScored: true }, thresholds)).toBe('critical');
+  });
+
+  it('explains Discord state per case, naming who was told of a failure', () => {
+    const moderator = { userId: 'u', discordId: '1', name: 'mod' };
+    expect(SYNC_LABELS.not_applied).toBe('Not applied');
+    expect(syncExplanation({ discordState: 'not_applied', moderator })).toContain(
+      'Ended before the bot applied it',
+    );
+    expect(syncExplanation({ discordState: 'failed', moderator })).toContain(
+      'issuing moderator was notified',
+    );
+    const automated = syncExplanation({ discordState: 'failed', moderator: null });
+    expect(automated).toContain('once per cause per hour');
+    expect(automated).not.toContain('issuing moderator');
   });
 
   it('mirrors the review state machine', () => {

@@ -1,5 +1,5 @@
 import { getSettings, moderation } from '@jave/core';
-import type { IncomingMessage, JoinedMember } from '../../gateway-events/types';
+import type { IncomingMessage, JoinedMember, MessageUpdate } from '../../gateway-events/types';
 import type { BotServices } from '../../runtime';
 import { systemContext } from './context';
 import { isSnowflake } from './ids';
@@ -74,41 +74,58 @@ function profileText(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed.slice(0, PROFILE_TEXT_MAX) : null;
 }
 
+/** What automod screens, from a new message or an edit. */
+interface ScreenedContent {
+  guildId: string | null;
+  channelId: string;
+  messageId: string;
+  author: IncomingMessage['author'];
+  content: unknown;
+  mentionCount: unknown;
+  mentionsEveryone: unknown;
+}
+
+type ScreenKind = 'message' | 'edit';
+
 /**
- * Automod for one message. The pure engine runs first with no exemptions and
- * no own-invite list: it can only over-flag, so a clean result there is clean
- * for `screenMessage` too, and ordinary messages never touch the database.
- * Anything flagged goes through `screenMessage`, which resolves the author's
- * JAVE roles (exemptions come from JAVE roles, never Discord roles), account
- * age, raid mode and this server's invite codes, then applies the decision.
+ * Automod for one message or edit. The pure engine runs first with no
+ * exemptions and no own-invite list: it can only over-flag, so a clean result
+ * there is clean for `screenMessage` too, and ordinary messages never touch
+ * the database. Anything flagged goes through `screenMessage`, which resolves
+ * the author's JAVE roles (exemptions come from JAVE roles, never Discord
+ * roles), account age, raid mode and this server's invite codes, then
+ * applies the decision. Idempotent per message ID in core, so a message
+ * flagged when posted is not actioned twice when edited.
  */
-export async function screenIncomingMessage(
+async function screenContent(
   services: BotServices,
-  message: IncomingMessage,
+  input: ScreenedContent,
+  kind: ScreenKind,
 ): Promise<void> {
-  if (!message.guildId || message.guildId !== services.discord.guildId) return;
-  if (message.author.bot) return;
+  if (!input.guildId || input.guildId !== services.discord.guildId) return;
+  if (input.author.bot) return;
   if (
-    !isSnowflake(message.author.id) ||
-    !isSnowflake(message.id) ||
-    !isSnowflake(message.channelId)
+    !isSnowflake(input.author.id) ||
+    !isSnowflake(input.messageId) ||
+    !isSnowflake(input.channelId)
   ) {
     return;
   }
-  const ctx = systemContext(services, 'gateway:automod');
+  const ctx = systemContext(services, kind === 'edit' ? 'gateway:automod-edit' : 'gateway:automod');
   const settings = await getSettings(ctx, 'moderation');
   const now = services.clock.now();
   const content =
-    typeof message.content === 'string' ? message.content.slice(0, MAX_STORED_CONTENT) : '';
-  const mentionCount = clampCount(message.mentionCount);
-  const mentionsEveryone = message.mentionsEveryone === true;
+    typeof input.content === 'string' ? input.content.slice(0, MAX_STORED_CONTENT) : '';
+  const mentionCount = clampCount(input.mentionCount);
+  const mentionsEveryone = input.mentionsEveryone === true;
   const horizonMs =
     settings.spam.windowSeconds * moderation.DUPLICATE_WINDOW_FACTOR * MS_PER_SECOND;
-  const recent = recentWindowFor(services).recordAndGet(
-    message.author.id,
-    { content, at: now },
-    horizonMs,
-  );
+  // An edit is not a new message: rate and duplicate signals were decided when
+  // it was posted (it is already in the window), so edits screen content only.
+  const recent =
+    kind === 'message'
+      ? recentWindowFor(services).recordAndGet(input.author.id, { content, at: now }, horizonMs)
+      : [];
 
   const preview = moderation.evaluateMessage({
     content,
@@ -123,17 +140,17 @@ export async function screenIncomingMessage(
   });
   if (preview.action === 'none') return;
 
-  const username = profileText(message.author.username) ?? message.author.id;
+  const username = profileText(input.author.username) ?? input.author.id;
   const result = await moderation.screenMessage(ctx, {
     author: {
-      discordId: message.author.id,
+      discordId: input.author.id,
       username,
-      displayName: profileText(message.author.globalName),
-      avatarHash: message.author.avatar?.slice(0, AVATAR_HASH_MAX) ?? null,
+      displayName: profileText(input.author.globalName),
+      avatarHash: input.author.avatar?.slice(0, AVATAR_HASH_MAX) ?? null,
       isBot: false,
     },
-    channelId: message.channelId,
-    messageId: message.id,
+    channelId: input.channelId,
+    messageId: input.messageId,
     content,
     mentionCount,
     mentionsEveryone,
@@ -142,8 +159,9 @@ export async function screenIncomingMessage(
   if (result.outcome.applied !== 'none') {
     ctx.logger.info(
       {
-        messageId: message.id,
-        channelId: message.channelId,
+        messageId: input.messageId,
+        channelId: input.channelId,
+        kind,
         applied: result.outcome.applied,
         riskScore: result.evaluation.riskScore,
         trigger: result.evaluation.trigger,
@@ -152,6 +170,53 @@ export async function screenIncomingMessage(
     );
   }
   await services.runJobsNow(ctx.effects.jobIds);
+}
+
+/** Automod for a new message (see `screenContent`). */
+export async function screenIncomingMessage(
+  services: BotServices,
+  message: IncomingMessage,
+): Promise<void> {
+  await screenContent(
+    services,
+    {
+      guildId: message.guildId,
+      channelId: message.channelId,
+      messageId: message.id,
+      author: message.author,
+      content: message.content,
+      mentionCount: message.mentionCount,
+      mentionsEveryone: message.mentionsEveryone,
+    },
+    'message',
+  );
+}
+
+/**
+ * Automod for an edited message: posting something harmless and editing in
+ * a scam link or foreign invite is screened like a new message would be.
+ * Skipped: updates Discord makes itself (link embeds unfurling — the post
+ * was screened when created, and screening it again could race that
+ * decision), updates without an author, and webhook posts.
+ */
+export async function screenMessageEdit(
+  services: BotServices,
+  update: MessageUpdate,
+): Promise<void> {
+  if (!update.author || update.webhookId || update.contentEdited !== true) return;
+  await screenContent(
+    services,
+    {
+      guildId: update.guildId,
+      channelId: update.channelId,
+      messageId: update.id,
+      author: update.author,
+      content: update.content,
+      mentionCount: update.mentionCount,
+      mentionsEveryone: update.mentionsEveryone,
+    },
+    'edit',
+  );
 }
 
 /**

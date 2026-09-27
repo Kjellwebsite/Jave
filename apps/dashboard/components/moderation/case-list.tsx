@@ -47,7 +47,7 @@ export function CaseList({ cases, timeZone, hideMember = false, label }: CaseLis
       <ul aria-label={label} className="divide-y divide-line-subtle">
         {cases.map((view) => {
           const state = caseState(view);
-          const syncNeedsEye = view.discordSync === 'failed' || view.discordSync === 'pending';
+          const syncNeedsEye = view.discordState === 'failed' || view.discordState === 'pending';
           return (
             <li key={view.id} data-case={view.reference}>
               <Link
@@ -89,16 +89,16 @@ export function CaseList({ cases, timeZone, hideMember = false, label }: CaseLis
                   {syncNeedsEye ? (
                     <StatusBadge
                       className="@4xl:hidden"
-                      tone={SYNC_TONE[view.discordSync]}
-                      label={`Discord ${SYNC_LABELS[view.discordSync]}`}
+                      tone={SYNC_TONE[view.discordState]}
+                      label={`Discord ${SYNC_LABELS[view.discordState]}`}
                     />
                   ) : null}
                 </span>
                 <span className="hidden @4xl:block">
                   <StatusBadge
-                    tone={SYNC_TONE[view.discordSync]}
+                    tone={SYNC_TONE[view.discordState]}
                     quiet={!syncNeedsEye}
-                    label={SYNC_LABELS[view.discordSync]}
+                    label={SYNC_LABELS[view.discordState]}
                   />
                 </span>
                 <Mono dim className="justify-self-end text-[12px] @4xl:justify-self-start">

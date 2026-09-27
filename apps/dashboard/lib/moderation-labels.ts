@@ -45,11 +45,13 @@ export const CASE_SOURCE_LABELS = {
 } as const;
 export type CaseSourceKey = keyof typeof CASE_SOURCE_LABELS;
 
+/** Keyed by the case view's `discordState` (core derives `not_applied`). */
 export const SYNC_LABELS = {
   pending: 'Pending',
   applied: 'Applied',
   failed: 'Failed',
   not_required: 'Not required',
+  not_applied: 'Not applied',
 } as const;
 export type SyncKey = keyof typeof SYNC_LABELS;
 export const SYNC_TONE: Record<SyncKey, Tone> = {
@@ -57,6 +59,7 @@ export const SYNC_TONE: Record<SyncKey, Tone> = {
   applied: 'success',
   failed: 'danger',
   not_required: 'neutral',
+  not_applied: 'neutral',
 };
 /** Expected sync outcomes render quietly so failures stand out. */
 export const SYNC_QUIET: Record<SyncKey, boolean> = {
@@ -64,14 +67,25 @@ export const SYNC_QUIET: Record<SyncKey, boolean> = {
   applied: true,
   failed: false,
   not_required: true,
+  not_applied: true,
 };
 
-export const SYNC_EXPLANATION: Record<SyncKey, string> = {
+const SYNC_EXPLANATION: Record<Exclude<SyncKey, 'failed'>, string> = {
   pending: 'Queued for the bot. Discord applies it within seconds while the bot is online.',
   applied: 'Discord reflects this case.',
-  failed: 'Discord refused or could not be reached. The issuing moderator was notified.',
   not_required: 'Nothing to apply in Discord (a note, or the member is not in the server).',
+  not_applied: 'Ended before the bot applied it, so the bot skipped it.',
 };
+const SYNC_FAILED_MANUAL =
+  'Discord refused or could not be reached. The issuing moderator was notified.';
+const SYNC_FAILED_AUTOMATED =
+  'Discord refused or could not be reached. Moderators were alerted, once per cause per hour.';
+
+/** Why a case reads as it does in Discord. Failures name who was told: issuer or all moderators. */
+export function syncExplanation(view: { discordState: SyncKey; moderator: unknown }): string {
+  if (view.discordState !== 'failed') return SYNC_EXPLANATION[view.discordState];
+  return view.moderator ? SYNC_FAILED_MANUAL : SYNC_FAILED_AUTOMATED;
+}
 
 export const END_REASON_LABELS = {
   expired: 'Expired',
@@ -150,26 +164,37 @@ export const REVIEW_TARGETS: Record<EventStatusKey, readonly Exclude<EventStatus
   actioned: [],
 };
 
-export type Severity = 'critical' | 'elevated' | 'low';
+/** `unscored`: a report nobody assessed. Not low risk — staff judgement. */
+export type Severity = 'critical' | 'elevated' | 'low' | 'unscored';
 export const SEVERITY_LABELS: Record<Severity, string> = {
   critical: 'Critical',
   elevated: 'Elevated',
   low: 'Low',
+  unscored: 'Not scored',
 };
 export const SEVERITY_TONE: Record<Severity, Tone> = {
   critical: 'danger',
   elevated: 'warning',
   low: 'neutral',
+  unscored: 'info',
 };
 
 /** Same thresholds as the Discord alert card: quarantine threshold › elevated › low. */
 export function riskSeverity(
   score: number,
   thresholds: { critical: number; elevated: number },
-): Severity {
+): Exclude<Severity, 'unscored'> {
   if (score >= thresholds.critical) return 'critical';
   if (score >= thresholds.elevated) return 'elevated';
   return 'low';
+}
+
+/** An event's severity: core's `riskScored` decides whether a score exists at all. */
+export function eventSeverity(
+  event: { riskScore: number; riskScored: boolean },
+  thresholds: { critical: number; elevated: number },
+): Severity {
+  return event.riskScored ? riskSeverity(event.riskScore, thresholds) : 'unscored';
 }
 
 // ─── URL filters ─────────────────────────────────────────────────────────────

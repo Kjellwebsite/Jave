@@ -32,10 +32,10 @@ import {
   caseState,
   END_REASON_LABELS,
   REVERSAL_ACTIONS,
-  SYNC_EXPLANATION,
   SYNC_LABELS,
   SYNC_QUIET,
   SYNC_TONE,
+  syncExplanation,
 } from '@/lib/moderation-labels';
 import { toQueryString } from '@/lib/search-params';
 import { formatTimestamp } from '@/lib/time';
@@ -261,13 +261,13 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
           <Panel title="Discord" description="The bot applies every case and reports back.">
             <div className="space-y-3">
               <StatusBadge
-                tone={SYNC_TONE[view.discordSync]}
-                quiet={SYNC_QUIET[view.discordSync]}
-                label={SYNC_LABELS[view.discordSync]}
+                tone={SYNC_TONE[view.discordState]}
+                quiet={SYNC_QUIET[view.discordState]}
+                label={SYNC_LABELS[view.discordState]}
                 data-testid="discord-sync"
               />
-              <p className="text-small text-fg-subtle">{SYNC_EXPLANATION[view.discordSync]}</p>
-              {view.discordSync === 'failed' && view.discordError ? (
+              <p className="text-small text-fg-subtle">{syncExplanation(view)}</p>
+              {view.discordState === 'failed' && view.discordError ? (
                 <Callout tone="danger" title="Discord said">
                   <span className="break-words">{view.discordError}</span>
                 </Callout>

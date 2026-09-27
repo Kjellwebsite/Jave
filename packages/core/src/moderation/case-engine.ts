@@ -34,6 +34,7 @@ import {
   SECONDS_PER_DAY,
 } from './discord-jobs';
 import {
+  botTargetViolation,
   hierarchyViolation,
   issuerRoles,
   type ModerationTarget,
@@ -397,10 +398,13 @@ export async function lockTarget(ctx: ServiceContext, userId: string): Promise<v
  *
  * Callers authorize (capability + hierarchy) before calling. Automated actors
  * are re-checked here as a last line of defense: they never take punitive
- * action against staff. Runs in its own transaction, or as a savepoint inside
- * the caller's.
+ * action against staff. Nobody takes punitive action against a bot account.
+ * Runs in its own transaction, or as a savepoint inside the caller's.
  */
 export async function executeCase(ctx: ServiceContext, spec: CaseSpec): Promise<ModCaseRecord> {
+  // Every path (manual, automod, join screening, AI) ends here, so no caller can act on a bot.
+  const botRefusal = botTargetViolation(spec.target, spec.action);
+  if (botRefusal) throw new InvalidStateError(botRefusal);
   if (ctx.actor.kind !== 'user') {
     const violation = hierarchyViolation(ctx.actor, spec.target, spec.action);
     if (violation) {

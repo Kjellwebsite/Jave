@@ -4,6 +4,7 @@ import { ValidationError } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { requireUser } from '../permissions/authorize';
 import { consumeRateLimit } from '../rate-limit/rate-limit';
+import { UNSCORED_RISK_SCORE } from './alerts';
 import { MAX_MESSAGE_INPUT } from './automod.service';
 import { MESSAGE_REPORT_LIMIT, MESSAGE_REPORT_WINDOW_SECONDS } from './constants';
 import { buildEvidence, createSecurityEvent } from './security.service';
@@ -11,8 +12,8 @@ import { deny, loadTarget } from './targets';
 
 const snowflake = z.string().regex(/^\d{17,20}$/, 'must be a Discord ID');
 
-/** A member report carries no automated assessment: staff judge it. */
-export const MESSAGE_REPORT_RISK_SCORE = 0;
+/** A member report carries no automated assessment: NOT SCORED, staff judge it. */
+export const MESSAGE_REPORT_RISK_SCORE = UNSCORED_RISK_SCORE;
 
 export const reportMessageSchema = z.object({
   /** The message author. The surface must have synced this Discord user. */

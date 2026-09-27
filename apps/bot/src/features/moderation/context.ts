@@ -1,10 +1,12 @@
 import {
   createContext,
   findMemberByDiscordId,
+  moderation,
   type ServiceContext,
   syncDiscordUser,
   systemActor,
   upsertDiscordUser,
+  ValidationError,
 } from '@jave/core';
 import type { HandlerContext, InteractionUser } from '../../interactions/types';
 import type { BotServices } from '../../runtime';
@@ -41,11 +43,16 @@ function profileOf(user: InteractionUser) {
  * with their Discord ID. The profile comes from Discord's resolved
  * interaction data (never from typed input). Members already known are left
  * untouched; unknown users get a member record only if they are in the
- * server right now. This is identity sync, not authorization — the case
+ * server right now. Bot accounts are integrations, never members: they get
+ * a user record only. This is identity sync, not authorization — the case
  * services still check the acting user.
  */
 export async function ensureKnownUser(services: BotServices, user: InteractionUser): Promise<void> {
   const ctx = systemContext(services, 'moderation:identity-sync');
+  if (user.bot) {
+    await upsertDiscordUser(ctx, profileOf(user));
+    return;
+  }
   if (await findMemberByDiscordId(ctx, user.id)) return;
   const inGuild = (await services.gateway.fetchMember(user.id).catch(() => null)) !== null;
   if (inGuild) await syncDiscordUser(ctx, profileOf(user), { inGuild: true });
@@ -55,4 +62,18 @@ export async function ensureKnownUser(services: BotServices, user: InteractionUs
 /** Display name of a Discord user as Discord resolved it. */
 export function displayNameOf(user: InteractionUser): string {
   return user.globalName ?? user.username;
+}
+
+/**
+ * UI gate before any form or identity sync: bot and webhook accounts are
+ * refused for punitive actions with core's own rule and wording. The case
+ * services enforce the same rule for every surface.
+ */
+export function refuseBotTarget(
+  target: { bot: boolean; webhookId?: string | null },
+  action: moderation.ModAction,
+): void {
+  const isBot = target.bot || Boolean(target.webhookId);
+  const refusal = moderation.botTargetViolation({ isBot }, action);
+  if (refusal) throw new ValidationError(refusal);
 }

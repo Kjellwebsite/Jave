@@ -60,7 +60,13 @@ export async function RaidTab({ ctx, raidAction }: RaidTabProps) {
   const posture = await loadPosture(ctx);
   const { security, automod } = posture;
   const canSwitch = can(ctx, 'canManageSecurity');
-  const canEdit = can(ctx, 'canViewSettings');
+  // Settings are readable with canViewSettings; only canManageSettings may change them.
+  const settingsLink = can(ctx, 'canManageSettings')
+    ? 'Edit'
+    : can(ctx, 'canViewSettings')
+      ? 'View'
+      : null;
+  const exemptRoles = automod.exemptRoles.filter(isRoleKey);
 
   return (
     <div className="space-y-6">
@@ -114,7 +120,7 @@ export async function RaidTab({ ctx, raidAction }: RaidTabProps) {
         <Panel
           title="Join screening"
           description="Applied to every join by the bot."
-          actions={canEdit ? <SettingsLink section="security" label="Edit" /> : null}
+          actions={settingsLink ? <SettingsLink section="security" label={settingsLink} /> : null}
           flush
         >
           <dl className="divide-y divide-line-subtle">
@@ -137,8 +143,13 @@ export async function RaidTab({ ctx, raidAction }: RaidTabProps) {
 
         <Panel
           title="Automod"
-          description="Evaluated on every message; staff roles are exempt."
-          actions={canEdit ? <SettingsLink section="moderation" label="Edit" /> : null}
+          // Read from settings: exemption is whatever exemptRoles says, never assumed.
+          description={
+            exemptRoles.length > 0
+              ? 'Screens every message; exempt roles skip it.'
+              : 'Screens every message; staff are only flagged.'
+          }
+          actions={settingsLink ? <SettingsLink section="moderation" label={settingsLink} /> : null}
           flush
         >
           <dl className="divide-y divide-line-subtle">
@@ -176,11 +187,11 @@ export async function RaidTab({ ctx, raidAction }: RaidTabProps) {
               <Mono>{automod.quarantineRiskScore}/100</Mono>
             </Row>
             <Row label="Exempt roles">
-              {automod.exemptRoles.length === 0 ? (
+              {exemptRoles.length === 0 ? (
                 <span className="text-fg-subtle">None</span>
               ) : (
                 <span className="inline-flex flex-wrap justify-end gap-1.5 sm:justify-start">
-                  {automod.exemptRoles.filter(isRoleKey).map((role) => (
+                  {exemptRoles.map((role) => (
                     <RoleBadge key={role} role={role} size="sm" />
                   ))}
                 </span>

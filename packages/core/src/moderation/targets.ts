@@ -20,6 +20,8 @@ export interface ModerationTarget {
   inGuild: boolean;
   joinedGuildAt: Date | null;
   roles: OrgRole[];
+  /** A Discord bot or webhook account: an integration, never a member. */
+  isBot: boolean;
 }
 
 export type TargetRef = { userId: string } | { discordId: string };
@@ -43,6 +45,7 @@ export async function loadTarget(ctx: ServiceContext, ref: TargetRef): Promise<M
     inGuild: member?.guildStatus === 'present',
     joinedGuildAt: member?.joinedGuildAt ?? null,
     roles: member ? await activeRoles(ctx, member.id) : [],
+    isBot: user.isBot,
   };
 }
 
@@ -54,6 +57,24 @@ export const PUNITIVE_ACTIONS: ReadonlySet<ModAction> = new Set([
   'ban',
   'quarantine',
 ]);
+
+/** Why punitive actions on bot and webhook accounts are refused, for every actor. */
+export const BOT_TARGET_MESSAGE =
+  'Bot and webhook accounts are not moderated through JAVE. Manage integrations in Discord server settings.';
+
+/**
+ * Bot rule (pure). Bots and webhooks are integrations, not members: JAVE
+ * never warns, times out, kicks, bans or quarantines them (a quarantined bot
+ * would lose access to every channel it serves). Notes and reversals stay
+ * possible, so a record created before this rule can still be lifted.
+ * Returns a refusal message, or null when allowed.
+ */
+export function botTargetViolation(
+  target: Pick<ModerationTarget, 'isBot'>,
+  action: ModAction,
+): string | null {
+  return target.isBot && PUNITIVE_ACTIONS.has(action) ? BOT_TARGET_MESSAGE : null;
+}
 
 /** Highest role rank, or 0 without roles. */
 export function rankOf(roles: readonly OrgRole[]): number {

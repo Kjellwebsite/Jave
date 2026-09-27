@@ -4,7 +4,7 @@ import { cx, Mono, StatusBadge } from '@jave/ui';
 import {
   EVENT_STATUS_LABELS,
   EVENT_STATUS_TONE,
-  riskSeverity,
+  eventSeverity,
   SECURITY_ACTION_LABELS,
   TRIGGER_LABELS,
 } from '@/lib/moderation-labels';
@@ -44,7 +44,7 @@ export function EventList({ events, thresholds, timeZone }: EventListProps) {
       </div>
       <ul aria-label="Security events" className="divide-y divide-line-subtle">
         {events.map((event) => {
-          const severity = riskSeverity(event.riskScore, thresholds);
+          const severity = eventSeverity(event, thresholds);
           const excerpt = event.evidence.excerpt ?? event.evidence.signals[0]?.detail ?? null;
           return (
             <li key={event.id} data-event={event.reference}>

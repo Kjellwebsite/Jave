@@ -10,7 +10,7 @@ import {
   quarantineContextCommand,
   reportContextCommand,
 } from './context-menus';
-import { screenIncomingMessage, screenMemberJoin } from './listeners';
+import { screenIncomingMessage, screenMemberJoin, screenMessageEdit } from './listeners';
 import { moderationDeleteMessagesHandler, moderationLockdownHandler } from './message-jobs';
 import { moderationModals } from './modals';
 import { raidModeCommand } from './raidmode';
@@ -35,5 +35,6 @@ export const feature: BotFeature = {
     [moderation.DISCORD_MODERATION_LOCKDOWN_JOB]: moderationLockdownHandler(services),
   }),
   onMessage: screenIncomingMessage,
+  onMessageUpdate: screenMessageEdit,
   onMemberJoin: screenMemberJoin,
 };

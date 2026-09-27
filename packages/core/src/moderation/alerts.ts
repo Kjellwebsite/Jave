@@ -35,14 +35,42 @@ export const ACTION_LABELS: Record<SecurityActionKey, string> = {
 export const ELEVATED_RISK_SCORE = 50;
 const MAX_CARD_SIGNALS = 5;
 
+/**
+ * The risk a manual report carries when nobody assessed it (a member's report
+ * of a message). Such an event is NOT SCORED, which is not the same as low
+ * risk: staff judge it. A staff report filed with a score keeps that score.
+ */
+export const UNSCORED_RISK_SCORE = 0;
+
+/** False for a manual report without an assessed score: surfaces show NOT SCORED, never LOW. */
+export function isRiskScored(event: Pick<SecurityEventRecord, 'trigger' | 'riskScore'>): boolean {
+  return !(event.trigger === 'manual_report' && event.riskScore === UNSCORED_RISK_SCORE);
+}
+
+/** Who acted on an event nobody has reviewed yet, by source. Reports await a human. */
+const UNREVIEWED_ACTOR: Record<SecurityEventRecord['source'], string> = {
+  automod: 'AUTOMOD',
+  join_screening: 'JOIN SCREENING',
+  system: 'SYSTEM',
+  integration: 'INTEGRATION',
+  manual: '— awaiting review',
+};
+
 export interface AlertCardPerson {
   discordId: string;
   name: string;
+  /** A bot or webhook account: never offered for quarantine. */
+  isBot?: boolean;
 }
 
 export interface SecurityAlertCardInput {
   event: SecurityEventRecord;
   subject: AlertCardPerson | null;
+  /**
+   * The staff member who reviewed the event, if anyone. Never the reporter:
+   * the card is posted in a shared channel and a member's report stays
+   * confidential there (staff see the reporter on the dashboard).
+   */
   moderator: AlertCardPerson | null;
   quarantineRiskScore: number;
   /** Seconds of timeout applied by automod, when relevant. */
@@ -53,12 +81,15 @@ export interface SecurityAlertCard {
   securityEventId: string;
   reference: string;
   title: string;
-  severity: 'critical' | 'elevated' | 'low';
+  /** `unscored`: a report nobody assessed — staff judgement, not low risk. */
+  severity: 'critical' | 'elevated' | 'low' | 'unscored';
   status: SecurityEventStatusKey;
   /** Buttons (ACKNOWLEDGE / DISMISS / QUARANTINE) are shown only while actionable. */
   actionable: boolean;
-  /** Discord ID of the subject, for the QUARANTINE button and a non-pinging mention. */
+  /** Discord ID of the subject, for a non-pinging mention. */
   subjectDiscordId: string | null;
+  /** Offer QUARANTINE: the event is about a member (not a bot or webhook account). */
+  quarantineOffered: boolean;
   /** USER · RISK SCORE · TRIGGER · EVIDENCE · ACTION · MODERATOR · TIMESTAMP. Values are user text: escape. */
   fields: { label: string; value: string }[];
   timestamp: Date;
@@ -68,8 +99,10 @@ export interface SecurityAlertCard {
 export function buildSecurityAlertCard(input: SecurityAlertCardInput): SecurityAlertCard {
   const { event } = input;
   const reference = securityReference(event.number);
-  const severity =
-    event.riskScore >= input.quarantineRiskScore
+  const scored = isRiskScored(event);
+  const severity = !scored
+    ? 'unscored'
+    : event.riskScore >= input.quarantineRiskScore
       ? 'critical'
       : event.riskScore >= ELEVATED_RISK_SCORE
         ? 'elevated'
@@ -96,12 +129,16 @@ export function buildSecurityAlertCard(input: SecurityAlertCardInput): SecurityA
     status: event.status,
     actionable: event.status === 'open' || event.status === 'acknowledged',
     subjectDiscordId: input.subject?.discordId ?? null,
+    quarantineOffered: Boolean(input.subject && !input.subject.isBot),
     fields: [
       {
         label: 'USER',
         value: input.subject ? `${input.subject.name} (${input.subject.discordId})` : '—',
       },
-      { label: 'RISK SCORE', value: `${event.riskScore}/100` },
+      {
+        label: 'RISK SCORE',
+        value: scored ? `${event.riskScore}/100` : 'NOT SCORED · staff judgement',
+      },
       { label: 'TRIGGER', value: TRIGGER_LABELS[event.trigger] },
       { label: 'EVIDENCE', value: evidence.length ? evidence.join('\n') : '—' },
       { label: 'ACTION', value: `${action} · ${event.status.toUpperCase()}` },
@@ -109,7 +146,7 @@ export function buildSecurityAlertCard(input: SecurityAlertCardInput): SecurityA
         label: 'MODERATOR',
         value: input.moderator
           ? `${input.moderator.name} (${input.moderator.discordId})`
-          : 'AUTOMOD',
+          : UNREVIEWED_ACTOR[event.source],
       },
       { label: 'TIMESTAMP', value: event.createdAt.toISOString() },
     ],

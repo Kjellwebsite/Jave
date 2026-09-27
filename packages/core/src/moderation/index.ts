@@ -44,7 +44,9 @@ export {
   warnSchema,
 } from './cases.service';
 export {
+  type CaseDiscordState,
   caseHistorySchema,
+  discordStateOf,
   getCase,
   getCaseHistory,
   listCases,
@@ -134,16 +136,20 @@ export {
   type AlertCardPerson,
   buildSecurityAlertCard,
   ELEVATED_RISK_SCORE,
+  isRiskScored,
   type SecurityActionKey,
   type SecurityAlertCard,
   type SecurityAlertCardInput,
   type SecurityEventRecord,
   type SecurityEventStatusKey,
   TRIGGER_LABELS,
+  UNSCORED_RISK_SCORE,
 } from './alerts';
 export * from './copy';
 export * from './constants';
 export {
+  BOT_TARGET_MESSAGE,
+  botTargetViolation,
   hierarchyViolation,
   overturnViolation,
   PUNITIVE_ACTIONS,

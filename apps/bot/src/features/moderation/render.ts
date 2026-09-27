@@ -54,11 +54,12 @@ const SOURCE_LABEL: Record<ModCaseView['source'], string> = {
   system: 'SYSTEM',
 };
 
-const SYNC_LABEL: Record<ModCaseView['discordSync'], string> = {
+const SYNC_LABEL: Record<ModCaseView['discordState'], string> = {
   pending: 'PENDING',
   applied: `APPLIED ${GLYPH.verified}`,
   failed: `FAILED ${GLYPH.cross}`,
   not_required: 'NOT REQUIRED',
+  not_applied: 'NOT APPLIED · ended first',
 };
 
 const END_LABEL: Record<NonNullable<ModCaseView['endedReason']>, string> = {
@@ -93,7 +94,7 @@ export function caseStatus(view: ModCaseView): string {
 function caseColor(view: ModCaseView): number {
   if (view.revokedAt) return COLORS.steel;
   if (view.inForce) return COLORS.warning;
-  if (view.discordSync === 'failed') return COLORS.danger;
+  if (view.discordState === 'failed') return COLORS.danger;
   return COLORS.base;
 }
 
@@ -117,9 +118,9 @@ export function caseEmbed(view: ModCaseView) {
     fields.push(field('Messages deleted', `${view.deleteMessageDays}d`, true));
   }
   const sync =
-    view.discordSync === 'failed' && view.discordError
+    view.discordState === 'failed' && view.discordError
       ? `${SYNC_LABEL.failed}\n${userText(view.discordError, 300)}`
-      : SYNC_LABEL[view.discordSync];
+      : SYNC_LABEL[view.discordState];
   fields.push(field('Discord', sync, true));
   if (view.revokedAt) {
     fields.push(
@@ -168,6 +169,7 @@ function caseLine(view: ModCaseView): string {
 function summaryLine(history: CaseHistory): string {
   const { summary } = history;
   const parts = [`WARNINGS ${summary.warnings}`];
+  if (history.isBot) parts.unshift('BOT ACCOUNT');
   if (summary.timeoutUntil) parts.push(`TIMED OUT until ${discordTime(summary.timeoutUntil, 'f')}`);
   if (summary.quarantined) parts.push('QUARANTINED');
   if (summary.banned) parts.push('BANNED');
@@ -177,6 +179,10 @@ function summaryLine(history: CaseHistory): string {
 
 /** Actions offered in the "Take action" select, given state and the viewer's capabilities. */
 export function availableActions(history: CaseHistory, ctx: ServiceContext): CaseActionKey[] {
+  // Bot and webhook accounts: only what core allows on them (notes, reversals).
+  const allowed = (action: CaseActionKey) =>
+    can(ctx, ACTION_CAPABILITY[action]) &&
+    moderation.botTargetViolation({ isBot: history.isBot }, action) === null;
   const { summary } = history;
   const candidates: CaseActionKey[] = summary.banned
     ? ['unban', 'note']
@@ -188,7 +194,7 @@ export function availableActions(history: CaseHistory, ctx: ServiceContext): Cas
         'ban',
         'note',
       ];
-  return candidates.filter((action) => can(ctx, ACTION_CAPABILITY[action]));
+  return candidates.filter(allowed);
 }
 
 const ACTION_HINT: Record<CaseActionKey, string> = {
@@ -268,8 +274,8 @@ export function caseResultReply(view: ModCaseView, action: CaseActionKey): Reply
   if (view.durationSeconds) {
     lines.push(`Duration ${GLYPH.dot} ${describeDuration(view.durationSeconds).toUpperCase()}`);
   }
-  if (view.discordSync === 'pending') lines.push('Discord applies it within seconds.');
-  if (view.discordSync === 'not_required' && action !== 'note') {
+  if (view.discordState === 'pending') lines.push('Discord applies it within seconds.');
+  if (view.discordState === 'not_required' && action !== 'note') {
     lines.push('Not in the server: recorded in JAVE only.');
   }
   return {

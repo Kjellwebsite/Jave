@@ -13,6 +13,7 @@ import {
   EVENT_SOURCE_LABELS,
   EVENT_STATUS_LABELS,
   EVENT_STATUS_TONE,
+  eventSeverity,
   evidenceModifiers,
   isSnowflake,
   riskSeverity,
@@ -64,7 +65,7 @@ export default async function SecurityEventPage({ params }: { params: Promise<{ 
   const event = loaded.value;
   const [viewer, thresholds] = await Promise.all([loadViewer(ctx), loadRiskThresholds(ctx)]);
   const tz = viewer.timeZone;
-  const severity = riskSeverity(event.riskScore, thresholds);
+  const severity = eventSeverity(event, thresholds);
   const { evidence } = event;
   const modifiers = evidenceModifiers(evidence);
   const channelId = evidence.channelId ?? event.channelId;
@@ -126,8 +127,9 @@ export default async function SecurityEventPage({ params }: { params: Promise<{ 
         </Fact>
       </dl>
 
+      {/* Below lg the triage column (risk, review) comes first: it is what a moderator needs. */}
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="min-w-0 space-y-6">
+        <div className="order-2 min-w-0 space-y-6 lg:order-none">
           <Panel
             title="Evidence"
             description="Excerpts are redacted and truncated. Never full message history."
@@ -224,10 +226,14 @@ export default async function SecurityEventPage({ params }: { params: Promise<{ 
           </Panel>
         </div>
 
-        <div className="min-w-0 space-y-6">
+        <div className="order-1 min-w-0 space-y-6 lg:order-none">
           <Panel
             title="Risk"
-            description="Combined evidence for this event. Not a verdict on a person."
+            description={
+              event.riskScored
+                ? 'Combined evidence for this event. Not a verdict on a person.'
+                : 'Reports carry no automated score. Staff judgement decides.'
+            }
           >
             <RiskMeter score={event.riskScore} severity={severity} size="md" showSeverity />
           </Panel>

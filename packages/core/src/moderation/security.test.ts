@@ -288,7 +288,8 @@ describe('security events', () => {
         'MODERATOR',
         'TIMESTAMP',
       ]);
-      expect(card.fields.find((f) => f.label === 'MODERATOR')?.value).toBe('AUTOMOD');
+      // Unreviewed: the card names the source that raised it (a system caller here).
+      expect(card.fields.find((f) => f.label === 'MODERATOR')?.value).toBe('SYSTEM');
       expect(card.fields.find((f) => f.label === 'EVIDENCE')?.value).toContain('discord.gg/abc');
     });
   });

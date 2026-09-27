@@ -264,8 +264,9 @@ describe('moderation feature — Discord job handlers', () => {
         securityEventId: '00000000-0000-4000-8000-000000000001',
         reference: 'SEC-0001',
         title: 'SECURITY EVENT SEC-0001 — MANUAL REPORT',
-        severity: 'low' as const,
+        severity: 'unscored' as const,
         subjectDiscordId: null,
+        quarantineOffered: false,
         fields: [{ label: 'RISK SCORE', value: '0/100' }],
         timestamp: new Date(),
       };

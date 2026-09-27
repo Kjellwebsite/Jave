@@ -13,7 +13,7 @@ import type {
 import { clip } from '../../ui/format';
 import { GLYPH, LIMITS } from '../../ui/theme';
 import { beginAction, CASE_ACTIONS, deleteDaysFor, durationFor, knownName } from './actions';
-import { displayNameOf, ensureKnownUser } from './context';
+import { displayNameOf, ensureKnownUser, refuseBotTarget } from './context';
 import {
   BAN_DELETE_PRESETS,
   durationChoices,
@@ -227,6 +227,7 @@ async function startCaseSubcommand(h: HandlerContext, action: CaseActionKey): Pr
     return;
   }
   const target = requireMemberOption(h);
+  refuseBotTarget(target, action);
   await ensureKnownUser(h.services, target);
   const deleteDays = o.integer('delete_messages');
   await beginAction(

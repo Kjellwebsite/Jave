@@ -13,7 +13,7 @@ import { success } from '../../ui/components';
 import { clip } from '../../ui/format';
 import { LIMITS } from '../../ui/theme';
 import { beginAction, FIELD } from './actions';
-import { displayNameOf, ensureKnownUser, pending, systemContext } from './context';
+import { displayNameOf, ensureKnownUser, pending, refuseBotTarget, systemContext } from './context';
 import { MOD_ACTIONS, modId } from './ids';
 import { showHistory } from './commands';
 
@@ -68,6 +68,7 @@ export const quarantineContextCommand: CommandDefinition = {
   async execute(h) {
     const target = h.interaction.targetUser;
     if (!target) throw new NotFoundError('Member');
+    refuseBotTarget(target, 'quarantine');
     await ensureKnownUser(h.services, target);
     await beginAction(h, 'quarantine', { discordId: target.id, name: displayNameOf(target) }, {});
   },
@@ -93,7 +94,7 @@ export const reportContextCommand: CommandDefinition = {
       username: message.author.username.slice(0, 64) || message.author.id,
       displayName: message.author.globalName?.slice(0, 64) ?? null,
       avatarHash: message.author.avatar,
-      isBot: message.author.bot,
+      isBot: message.author.bot || Boolean(message.webhookId),
     });
     await moderation.reportMessage(h.ctx, {
       authorDiscordId: message.author.id,
@@ -131,6 +132,8 @@ export const deleteWarnContextCommand: CommandDefinition = {
     if (message.author.id === h.interaction.user.id) {
       throw new ValidationError('You cannot take moderation action on yourself.');
     }
+    // Bot posts, JAVE's own cards and webhook relays are never deleted-and-warned.
+    refuseBotTarget({ bot: message.author.bot, webhookId: message.webhookId }, 'warn');
     await ensureKnownUser(h.services, message.author);
     const authorName = displayNameOf(message.author);
     const token = pending(h).put({

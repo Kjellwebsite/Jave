@@ -28,6 +28,7 @@ import { getSettings } from '../settings/settings.service';
 import {
   enqueueAlertPost,
   enqueueAlertRefresh,
+  isRiskScored,
   type SecurityActionKey,
   type SecurityEventRecord,
   type SecurityEventStatusKey,
@@ -238,7 +239,7 @@ export async function createSecurityEvent(
     const alert: StaffAlert = {
       type: 'security.alert',
       title: `${critical ? 'SECURITY ALERT' : 'SECURITY EVENT'} — ${TRIGGER_LABELS[inserted.trigger]}`,
-      body: `${reference} · risk ${inserted.riskScore}/100 · ${subjectLabel} · action ${inserted.actionTaken.replace('_', ' ')}`,
+      body: `${reference} · ${isRiskScored(inserted) ? `risk ${inserted.riskScore}/100` : 'not scored'} · ${subjectLabel} · action ${inserted.actionTaken.replace('_', ' ')}`,
       severity: critical ? 'critical' : 'notice',
       // Below the quarantine threshold: dashboard inbox only, no DM.
       ...(!critical && { channels: [] }),

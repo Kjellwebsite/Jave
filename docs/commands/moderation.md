@@ -36,6 +36,15 @@ Nobody acts on themselves or on staff at or above their rank; records about
 such people read as not found. Autocomplete answers non-staff with an empty
 list without touching the services.
 
+**Bot and webhook accounts are never targets.** Warn, timeout, kick, ban,
+quarantine and Delete & warn refuse bots and webhook posts (JAVE's own alert
+cards included) before any form, identity sync or Discord call: "Bot and
+webhook accounts are not moderated through JAVE. Manage integrations in
+Discord server settings." Core enforces the same rule for every caller
+(manual, automod, join screening, AI). Bots never get a member record; their
+history shows **BOT ACCOUNT** and offers only **Note** (plus a reversal, if
+a record from before this rule is still in force).
+
 ## `/mod` — cases
 
 Every action is recorded as a case (`CASE-0042`) and applied in Discord by the
@@ -53,7 +62,7 @@ reference, reason, duration and a **Member history** button.
 | `quarantine` | `member`, `duration?` (autocomplete; default until released), `reason?` | Adds the quarantine role and strips JAVE-managed roles (or times out when no quarantine role is set).                 |
 | `release`    | `member`, `reason?`                                                     | Removes the quarantine role; a role sync restores managed roles.                                                      |
 | `note`       | `member`, `reason?` (the note)                                          | Private staff note. Never shown to the member; nothing happens in Discord.                                            |
-| `case`       | `case` (autocomplete: number or text)                                   | Case card: member, moderator, source, status, duration, **Discord sync state** and error; **REVOKE**.                 |
+| `case`       | `case` (autocomplete: number or text)                                   | Case card: member, moderator, source, status, duration, **Discord state** and error; **REVOKE**.                      |
 | `history`    | `member`                                                                | Record card: warnings, running timeout, quarantine/ban, last 10 cases; **Open a case…** and **Take action…** selects. |
 
 Durations. Autocomplete offers presets and validates typed values
@@ -85,6 +94,11 @@ issued and opens a form for the revocation reason. Revoking a case still in
 force lifts it through a reversal case (applied in Discord); otherwise the
 case is struck from the record only.
 
+The **Discord** field reads PENDING, APPLIED, FAILED (with Discord's error),
+NOT REQUIRED (a note, or a member not in the server) or **NOT APPLIED · ended
+first**: a timeout, quarantine or ban that was lifted, superseded or revoked
+before the bot applied it (the bot skips it, so it is not pending).
+
 ## Context menus
 
 | Menu                   | Target  | Flow                                                                                                                                                                                                                       |
@@ -112,6 +126,17 @@ SECURITY EVENT SEC-0042 — FOREIGN INVITE
 USER · RISK SCORE ▰▰▰▰▰▰▰▰▰▱ 92/100 · TRIGGER · EVIDENCE · ACTION · MODERATOR · TIMESTAMP
 [ Acknowledge ] [ Dismiss ] [ Quarantine ]
 ```
+
+- **MODERATOR** is the staff member who reviewed the event, never the
+  reporter. Until someone reviews it, it names the source: AUTOMOD, JOIN
+  SCREENING, SYSTEM, INTEGRATION, or "— awaiting review" for a report. The
+  card lives in a shared channel, so a member's report stays confidential
+  there; staff see who reported it on the dashboard.
+- **Member reports are not scored.** A report nobody assessed reads
+  `JAVE SECURITY · NOT SCORED` with RISK SCORE "NOT SCORED · staff judgement"
+  in a neutral blue, never LOW 0/100. UNKNOWN is not low.
+- **QUARANTINE** is offered only when the event is about a member; a report
+  about a bot or webhook message gets ACKNOWLEDGE and DISMISS only.
 
 | Button          | Does                                                                                             |
 | --------------- | ------------------------------------------------------------------------------------------------ |
@@ -145,6 +170,13 @@ Thresholds are changed in the dashboard (Settings → Security / Moderation).
   (`discord.moderation.delete_messages`) and times out or quarantines per the risk
   ladder. Bots, DMs and other guilds are ignored; content is capped at 4 000
   characters and mention counts are clamped.
+- **Edited messages** (`onMessageUpdate`). Posting harmless text and editing in
+  a scam link or foreign invite is screened like a new message: same pre-check,
+  same `screenMessage`, same actions. Edits are content-only (they do not count
+  towards the spam rate or duplicates, which were judged when the message was
+  posted) and idempotent per message ID, so a message is never actioned twice.
+  Updates Discord makes itself (link embeds unfurling, no edit timestamp),
+  webhook posts and bots are skipped.
 - **Join screening** (`onMemberJoin`). `screenJoin` re-applies a live ban or
   quarantine on rejoin, detects join bursts from the recorded joins (switching
   raid mode on when `autoRaidMode`), records suspicious accounts, and quarantines
@@ -221,11 +253,14 @@ or above the bot's role — such cases show as `failed` with the reason in
 `/moderation` (canModerate): **Cases** (filters, case detail with Discord sync
 state and revoke), **Security events** (risk meters, trigger, evidence excerpt,
 review), **Member lookup** (record by Discord ID or name), **Raid mode** (switch
-with canManageSecurity; screening and automod summary with links to settings).
+with canManageSecurity; screening and automod summary with links to settings —
+**Edit** with canManageSettings, **View** with canViewSettings only).
 
 ## Limits
 
 - The recent-message window and pending confirmations are per bot process:
   a restart forgets them (spam counting restarts; confirmations expire).
-- Message edits are not screened (Discord's edit event carries no author).
+- An edit that lands while the original post is still being screened keeps
+  the first decision (one event per message); editing a deleted message is
+  impossible, so this only matters within about a second of posting.
 - Raid mode does not pause Discord invites; the lockdown job posts a notice only.

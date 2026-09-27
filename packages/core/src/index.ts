@@ -52,5 +52,6 @@ export * as calendar from './calendar';
 export * as games from './games';
 export * as ai from './ai';
 export * as research from './research';
+export * as housekeeping from './housekeeping';
 
 export { coreJobHandlers, coreRecurringJobs, coreSubscribers } from './registry';

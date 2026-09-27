@@ -180,7 +180,9 @@ at most what it measured (a higher rank is an evaluator decision through
 from identity), and stores `rankHistoryId` on the result. Applies once per
 result; never lowers or repeats a verified rank (a lower recommendation is
 refused — evaluators can still use `setVerifiedRank` directly). Self-application
-is refused and audited.
+is refused and audited. Views report both `recommendedRank` and `appliedRank`
+(the rank history's `toRank`, joined through `rankHistoryId`) — surfaces show the
+rank that was granted, never the recommendation in its place.
 
 ## Capabilities
 
@@ -206,6 +208,7 @@ needs that capability and the global switch.
 
 Lifecycle: `createTrial`, `updateTrial`, `setAdversarialEnabled`,
 `openRecruitment`, `applyToTrial`, `withdraw`, `selectParticipants`,
+`previewTeams` (dry run of `assignTeams`, same seed → same teams; writes nothing),
 `assignTeams`, `startTrial`, `extendDeadline`, `submit`, `closeSubmissions`,
 `evaluate`, `previewResults`, `publishResults`, `applyRankConsequence`,
 `cancelTrial`.
@@ -295,8 +298,8 @@ they run anyway.
 
 ## Discord job contracts
 
-Source of truth: `discord-jobs.ts`. All handlers live in `apps/bot` (not yet
-implemented). Rules common to every handler: parse the payload with the
+Source of truth: `discord-jobs.ts`. All handlers live in
+`apps/bot/src/features/trials/jobs` (see [Surfaces](#surfaces)). Rules common to every handler: parse the payload with the
 exported zod schema; load current state through the named **spec loader**
 (system actor only); be idempotent; render user text with `userText()` and send
 with `allowedMentions: { parse: [] }`; map `DiscordActionError.permanent` to
@@ -383,9 +386,9 @@ Added to `trials`: `submissionGraceMinutes` (0–1440, default 15),
 
 ## Extension points
 
-- **Bot handlers** for the six contracts (`apps/bot/src/features/trials`). The
-  MOCK / DEVELOPMENT ONLY bot in `trials/testing/fixtures.ts` shows the exact
-  call sequence for each and is exercised by the tests.
+- **Bot handlers** for the six contracts live in `apps/bot/src/features/trials/jobs`.
+  The MOCK / DEVELOPMENT ONLY bot in `trials/testing/fixtures.ts` shows the exact
+  call sequence for each and is exercised by the core tests.
 - **Eligibility** is `ELIGIBLE_ROLES` / `eligibilityProblem` — one place to change.
 - **Rank ladder** is `RANK_RECOMMENDATION_LADDER`; new tiers (S+, SS) need no
   change here because a single trial never recommends S.
@@ -395,6 +398,30 @@ Added to `trials`: `submissionGraceMinutes` (0–1440, default 15),
 - **Adversarial module** owns roles/observations; it can read
   `adversarialEnabled` through `getTrialForStaff` (with `canManageAdversarial`)
   and toggle it with `setAdversarialEnabled`.
+
+## Surfaces
+
+Full reference: [docs/commands/trials.md](../commands/trials.md).
+
+- **Discord** (`apps/bot/src/features/trials`, namespace `trials`): `/trial list |
+view | apply | withdraw | submit | status | briefing | manage`, `/team`, the
+  **Trial Record** user context menu, the public recruitment card with APPLY, the
+  staff control panel (state-dependent controls, each confirmed; random / manual
+  selection; balanced / random assignment with a seed; the scheduled-start
+  _passed_ prompt; quick evaluation for rubrics of ≤ 4 criteria), and one job
+  handler per `discord.trials.*` contract. Refresh, the withdrawal result and every
+  staff control, screen and modal replace the private message they came from instead
+  of stacking copies; a public card or team-channel post is never edited by a press.
+- **Dashboard** (`apps/dashboard/app/(console)/trials`): `/trials` (states,
+  readouts, countdowns), `/trials/new` (from a template or custom, rubric editor
+  with weights), `/trials/templates` (CRUD, starters), `/trials/[id]` with Overview,
+  Participants, Teams (seeded preview = assignment), Submissions, Evaluation (score
+  grid and dialog — only teams that submitted can be scored), Results (publish,
+  explicit per-member rank consequence showing the granted `appliedRank`) and the
+  staff-only Adversarial tab. `previewTeams` (dry run of `assignTeams`) exists for
+  the Teams preview.
+- Every surface calls these services as the acting user; custom ids and forms
+  route, they never authorize.
 
 ## Known limitations
 

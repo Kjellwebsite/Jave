@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, lte, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, lte, ne, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { sanitizeForDiscord } from '@jave/ai';
 import { aiActionProposals, aiProposalStatus, aiRequests } from '@jave/database';
@@ -449,7 +449,11 @@ export const listProposalsSchema = pageSchema.extend({
   scope: z.enum(['mine', 'to_confirm']).default('mine'),
 });
 
-/** Your proposals, or the pending ones you are allowed to confirm. */
+/**
+ * Your proposals, or other members' proposals you are allowed to confirm
+ * (`to_confirm`: your own are in `mine`, so the total is the queue's size;
+ * pending ones past their expiry are left out before the sweep runs).
+ */
 export async function listProposals(
   ctx: ServiceContext,
   input: z.input<typeof listProposalsSchema> = {},
@@ -468,10 +472,13 @@ export async function listProposals(
     if (!can(ctx, 'canConfirmAIActions') || confirmable.length === 0) {
       return { items: [], total: 0, limit: q.limit, offset: q.offset };
     }
+    const status = q.status ?? 'pending';
     filters.push(
       inArray(aiActionProposals.kind, confirmable),
-      eq(aiActionProposals.status, q.status ?? 'pending'),
+      eq(aiActionProposals.status, status),
+      ne(aiActionProposals.requestedByUserId, actor.userId),
     );
+    if (status === 'pending') filters.push(gt(aiActionProposals.expiresAt, ctx.clock.now()));
   }
   const where = and(...filters);
   const [rows, [count]] = await Promise.all([

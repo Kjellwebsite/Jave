@@ -1262,7 +1262,9 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `created_at`    | timestamp with time zone                                       |      | `now()`             |            |
 
 - `ai_requests_user_idx` (user_id, created_at)
-- `ai_requests_time_idx` (created_at)
+- `ai_requests_time_idx` (created_at, id)
+- `ai_requests_feature_idx` (feature, created_at, id)
+- `ai_requests_status_idx` (status, created_at, id)
 
 ### Research (Sidus)
 
@@ -1507,10 +1509,10 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `request_id`    | varchar(64)                            |  ✓   |             |            |
 | `created_at`    | timestamp with time zone               |      | `now()`     |            |
 
-- `audit_logs_time_idx` (created_at)
-- `audit_logs_actor_idx` (actor_user_id, created_at)
-- `audit_logs_target_idx` (target_type, target_id)
-- `audit_logs_action_idx` (action, created_at)
+- `audit_logs_time_idx` (created_at, id)
+- `audit_logs_actor_idx` (actor_user_id, created_at, id)
+- `audit_logs_target_idx` (target_type, target_id, created_at, id)
+- `audit_logs_action_idx` (action, created_at, id)
 
 #### `domain_events`
 

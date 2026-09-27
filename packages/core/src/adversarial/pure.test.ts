@@ -113,6 +113,19 @@ describe('briefing', () => {
     expect(view.exerciseActive).toBe(false);
   });
 
+  it('the stop protocol matches what JAVE enforces and never contradicts the guardrails', () => {
+    // The operative's own RED FLAG — button or typed in the server — ends the exercise.
+    expect(STOP_PROTOCOL).toContain(`Press the ${STOP_WORD} button`);
+    expect(STOP_PROTOCOL).toContain(`type ${STOP_WORD} anywhere in the server`);
+    // Direct messages are never read (no DM intent): typing it there would reach nobody.
+    expect(STOP_PROTOCOL).toContain('Direct messages to JAVE are not read.');
+    // "Stop immediately when anyone says RED FLAG" still binds: a participant's words pause
+    // the operative until staff check in, even though the exercise keeps running.
+    expect(STANDARD_GUARDRAILS).toContain(`Stop immediately when anyone says ${STOP_WORD}.`);
+    expect(STOP_PROTOCOL).toContain('pause all adversarial activity at once');
+    expect(STOP_PROTOCOL).not.toMatch(/participant[^.]*ends the exercise/i);
+  });
+
   it('renders triggers when present', () => {
     const withTrigger = buildBriefing({
       ...view,

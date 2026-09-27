@@ -7,7 +7,9 @@ import postgres from 'postgres';
 import { databaseEnvSchema, parseEnv } from '@jave/config';
 import { seedReferralFixtures } from './seed-referrals';
 import { seedDashboardFixtures } from './seed';
+import { seedAiResearchFixtures } from './seed-ai-research';
 import { seedTicketFixtures } from './tickets-seed';
+import { seedTrialFixtures } from './seed-trials';
 
 const E2E_DATABASE_NAME = /e2e/i;
 
@@ -32,7 +34,9 @@ async function main(): Promise<void> {
   });
   if (migrate.status !== 0) throw new Error('migration failed');
   await seedDashboardFixtures(DATABASE_URL);
+  await seedAiResearchFixtures(DATABASE_URL);
   await seedTicketFixtures(DATABASE_URL);
+  await seedTrialFixtures(DATABASE_URL);
   // Last: it records the analytics snapshots, which must see every fixture.
   await seedReferralFixtures(DATABASE_URL);
   console.log(`e2e database "${name}" ready`);

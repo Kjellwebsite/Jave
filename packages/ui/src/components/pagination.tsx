@@ -14,6 +14,8 @@ export interface PaginationProps {
   linkComponent?: LinkComponent;
   className?: string;
   label?: string;
+  /** The total is a lower bound (a capped count): shown as "10,000+". */
+  totalIsLowerBound?: boolean;
 }
 
 /** Previous/next pagination with an exact range readout ("26–50 of 132"). */
@@ -25,6 +27,7 @@ export function Pagination({
   linkComponent: Link = PlainLink,
   className,
   label = 'Pagination',
+  totalIsLowerBound = false,
 }: PaginationProps) {
   const pages = pageWindow({ offset, limit, total });
   const previousOffset = Math.max(0, (pages.page - 2) * limit);
@@ -37,10 +40,12 @@ export function Pagination({
     >
       <p className="type-data text-fg-subtle" aria-live="polite">
         {formatRange(pages)}
+        {totalIsLowerBound ? '+' : ''}
       </p>
       <div className="flex items-center gap-2">
         <span className="type-data hidden text-fg-subtle sm:inline">
           {pages.page} / {pages.pageCount}
+          {totalIsLowerBound ? '+' : ''}
         </span>
         {pages.hasPrevious ? (
           <Link

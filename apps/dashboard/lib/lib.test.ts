@@ -161,7 +161,12 @@ describe('content security policy', () => {
 describe('navigation', () => {
   it('shows each entry only with its capability and drops empty groups', () => {
     const member = visibleNav(NAV_GROUPS, ['canViewMembers']);
-    expect(member.map((group) => group.label)).toEqual(['OVERVIEW', 'PEOPLE', 'SUPPORT & SAFETY']);
+    expect(member.map((group) => group.label)).toEqual([
+      'OVERVIEW',
+      'PEOPLE',
+      'SUPPORT & SAFETY',
+      'INTELLIGENCE',
+    ]);
     const founder = visibleNav(NAV_GROUPS, [
       'canViewMembers',
       'canViewAuditLogs',
@@ -172,6 +177,7 @@ describe('navigation', () => {
       '/members',
       '/ranking',
       '/tickets',
+      '/research',
       '/audit',
       '/settings',
     ]);

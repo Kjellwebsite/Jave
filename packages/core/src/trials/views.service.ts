@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, inArray, ne, type SQL } from 'drizzle-orm';
 import type { z } from 'zod';
 import {
+  rankHistory,
   trialParticipants,
   trialResults,
   trials,
@@ -79,7 +80,13 @@ export interface ParticipantTrialView extends TrialSummaryView {
     status: ParticipantStatus;
     statement: string | null;
     appliedAt: Date;
-    team: { name: string; role: 'lead' | 'member'; members: TeammateView[] } | null;
+    team: {
+      name: string;
+      role: 'lead' | 'member';
+      members: TeammateView[];
+      /** The team's own private Discord channel, once provisioned (its members can see it anyway). */
+      channelId: string | null;
+    } | null;
   } | null;
   mySubmissions: SubmissionView[];
   /** Latest submission of every other team — only once the trial is completed. */
@@ -182,6 +189,7 @@ export async function getTrialForParticipant(
             ? {
                 name: myTeam.name,
                 role: participation.teamRole ?? 'member',
+                channelId: myTeam.discordChannelId,
                 members: competitors
                   .filter((c) => c.teamId === myTeam.id)
                   .map((c) => ({
@@ -275,6 +283,8 @@ export interface TrialHistoryEntry {
   facetKey: string | null;
   recommendedRank: string | null;
   rankApplied: boolean;
+  /** The verified rank the consequence granted (may be below the recommendation). */
+  appliedRank: string | null;
 }
 
 async function participationHistory(
@@ -290,6 +300,7 @@ async function participationHistory(
       participant: trialParticipants,
       teamName: trialTeams.name,
       result: trialResults,
+      appliedRank: rankHistory.toRank,
     })
     .from(trialParticipants)
     .innerJoin(trials, eq(trials.id, trialParticipants.trialId))
@@ -298,6 +309,7 @@ async function participationHistory(
       trialResults,
       and(eq(trialResults.trialId, trials.id), eq(trialResults.memberId, memberId)),
     )
+    .leftJoin(rankHistory, eq(rankHistory.id, trialResults.rankHistoryId))
     .where(and(...conditions))
     .orderBy(desc(trials.number), asc(trialParticipants.appliedAt))
     .limit(HISTORY_LIMIT);
@@ -315,6 +327,7 @@ async function participationHistory(
       facetKey: published?.facetKey ?? null,
       recommendedRank: published?.recommendedRank ?? null,
       rankApplied: Boolean(published?.rankHistoryId),
+      appliedRank: published?.rankHistoryId ? row.appliedRank : null,
     };
   });
 }

@@ -2,7 +2,9 @@ import {
   Bell,
   ChartLine,
   ChartNoAxesColumn,
+  Cpu,
   FileText,
+  FlaskConical,
   Inbox,
   LayoutGrid,
   LifeBuoy,
@@ -11,6 +13,7 @@ import {
   Settings2,
   ShieldAlert,
   ShieldCheck,
+  Swords,
   UserPlus,
   UserRound,
   Users,
@@ -62,7 +65,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/referrals', label: 'Referrals', icon: UserPlus, capability: 'canViewAnalytics' },
     ],
   },
-  { label: 'OPERATIONS', items: [] },
+  {
+    label: 'OPERATIONS',
+    items: [{ href: '/trials', label: 'Trials', icon: Swords, capability: 'canManageTrials' }],
+  },
   {
     label: 'SUPPORT & SAFETY',
     items: [
@@ -70,7 +76,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/moderation', label: 'Moderation', icon: ShieldAlert, capability: 'canModerate' },
     ],
   },
-  { label: 'INTELLIGENCE', items: [] },
+  {
+    label: 'INTELLIGENCE',
+    items: [
+      { href: '/ai', label: 'JAVE AI', icon: Cpu, capability: 'canUseAI' },
+      { href: '/research', label: 'Research', icon: FlaskConical, capability: 'canViewMembers' },
+    ],
+  },
   {
     label: 'SYSTEM',
     items: [

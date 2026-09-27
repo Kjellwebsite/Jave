@@ -5,7 +5,9 @@ import {
   ComponentType,
   SelectMenuDefaultValueType,
 } from 'discord.js';
+import { isJaveError } from '@jave/core';
 import type { HandlerContext, ReplyPayload } from '../../interactions/types';
+import { renderError } from '../../interactions/errors';
 import { LIMITS } from '../../ui/theme';
 import type { OutputChannelKind } from './settings-catalog';
 
@@ -94,5 +96,33 @@ export async function showPanel(h: HandlerContext, payload: ReplyPayload): Promi
     await interaction.editReply(payload);
   } else {
     await interaction.update(payload);
+  }
+}
+
+/** Buttons and selects that talk to Discord acknowledge first (3-second limit). */
+export async function acknowledge(h: HandlerContext): Promise<void> {
+  const { interaction } = h;
+  if ((interaction.kind === 'button' || interaction.kind === 'select') && !interaction.deferred) {
+    await interaction.deferUpdate();
+  }
+}
+
+/**
+ * After a component's deferred update the router would replace the panel with
+ * the error. A refusal (wrong channel, role not allowed…) instead arrives as
+ * its own ephemeral message and the panel stays usable. Slash commands and
+ * unexpected errors go to the router as usual (the latter are logged with a
+ * reference).
+ */
+export async function keepingPanel(h: HandlerContext, action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch (error) {
+    const { interaction } = h;
+    const component = interaction.kind === 'button' || interaction.kind === 'select';
+    if (!isJaveError(error) || !component || !interaction.deferred || interaction.replied) {
+      throw error;
+    }
+    await interaction.followUp(renderError(error, h.ctx.logger).payload);
   }
 }

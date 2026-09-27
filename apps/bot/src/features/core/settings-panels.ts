@@ -35,6 +35,23 @@ export function flagValue(settings: AllSettings, flag: FlagSpec): boolean {
   return section[flag.field] === true;
 }
 
+/** Separates a flag key from its target state in a flag select option value. */
+const FLAG_CHOICE_SEPARATOR = ':';
+
+/** A flag select option value: the flag and the state it switches to ('applications.open:off'). */
+export function flagChoice(flag: FlagSpec, next: boolean): string {
+  return `${flag.key}${FLAG_CHOICE_SEPARATOR}${onOff(next).toLowerCase()}`;
+}
+
+/** Null for a value without a target state (a flags panel from before the state was carried). */
+export function parseFlagChoice(value: string): { key: string; next: boolean } | null {
+  const at = value.lastIndexOf(FLAG_CHOICE_SEPARATOR);
+  if (at < 0) return null;
+  const state = value.slice(at + 1);
+  if (state !== 'on' && state !== 'off') return null;
+  return { key: value.slice(0, at), next: state === 'on' };
+}
+
 export function roleTargetValue(settings: AllSettings, target: RoleTarget): string | undefined {
   return target === QUARANTINE_TARGET
     ? settings.roles.quarantineRoleId
@@ -205,10 +222,19 @@ export function renderChannelEditor(
   };
 }
 
-export function renderRoles(settings: AllSettings, notice?: APIEmbed): ReplyPayload {
+/**
+ * The role mapping panel. `canMap` limits the picker to the targets the
+ * viewer may change (staff mappings are founder-only); core enforces it too.
+ */
+export function renderRoles(
+  settings: AllSettings,
+  canMap: (target: RoleTarget) => boolean,
+  notice?: APIEmbed,
+): ReplyPayload {
   const lines = ROLE_TARGETS.map(
     (t) => `\`${roleTargetLabel(t)}\` ${roleRef(roleTargetValue(settings, t))}`,
   );
+  const mappable = ROLE_TARGETS.filter(canMap);
   return {
     embeds: [
       ...(notice ? [notice] : []),
@@ -219,6 +245,7 @@ export function renderRoles(settings: AllSettings, notice?: APIEmbed): ReplyPayl
           'JAVE is the source of truth for roles; mapped Discord roles follow it.',
           `Role sync ${onOff(settings.roles.syncToDiscord)}.`,
         ].join('\n'),
+        footer: 'Staff role mappings are founder-only. JAVE never hands out Administrator.',
         fields: [field('Mapping', fitLines(lines))],
       }),
     ],
@@ -227,7 +254,7 @@ export function renderRoles(settings: AllSettings, notice?: APIEmbed): ReplyPayl
         stringSelect(
           customId(SETTINGS_NS, 'role'),
           'Choose a role to map',
-          ROLE_TARGETS.map((t) => ({
+          mappable.map((t) => ({
             label: roleTargetLabel(t),
             value: t,
             description:
@@ -258,7 +285,7 @@ export function renderRoleEditor(
         description:
           target === QUARANTINE_TARGET
             ? 'Applied while a member is quarantined. JAVE strips every managed role meanwhile.'
-            : `Members holding ${label} in JAVE get this Discord role. JAVE's own role must sit above it.`,
+            : `Members holding ${label} in JAVE get this Discord role. JAVE's own role must sit above it. A replaced role is removed from its holders.`,
         fields: [field('Current', roleRef(current))],
       }),
     ],
@@ -297,7 +324,7 @@ export function renderFlags(settings: AllSettings, notice?: APIEmbed): ReplyPayl
             const on = flagValue(settings, f);
             return {
               label: `${f.label} ${GLYPH.arrow} ${onOff(!on)}`,
-              value: f.key,
+              value: flagChoice(f, !on),
               description: f.consequence.slice(0, OPTION_DESCRIPTION_MAX),
             };
           }),

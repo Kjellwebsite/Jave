@@ -151,8 +151,14 @@ export interface DiscordGateway {
 
   // Introspection (read-only: readiness checks and settings validation)
   botMember(): Promise<BotMemberSnapshot>;
-  /** Null when the channel does not exist in the guild. */
-  botPermissionsIn(channelId: string): Promise<ChannelAccessSnapshot | null>;
+  /**
+   * Null when the channel does not exist in the guild. `audienceRoleIds`:
+   * roles to test for View Channel there (reported in `audienceWithView`).
+   */
+  botPermissionsIn(
+    channelId: string,
+    audienceRoleIds?: readonly string[],
+  ): Promise<ChannelAccessSnapshot | null>;
   listRoles(): Promise<RoleSnapshot[]>;
 
   // Idempotent posting
@@ -189,6 +195,13 @@ export interface ChannelAccessSnapshot {
   /** False when the channel exists but the bot cannot see it. */
   visible: boolean;
   permissions: DiscordPermission[];
+  /** A member with no roles beyond @everyone can view the channel. */
+  everyoneCanView: boolean;
+  /**
+   * The requested audience roles whose holders can view the channel (with
+   * @everyone's permissions and the channel overwrites applied).
+   */
+  audienceWithView: string[];
 }
 
 export interface RoleSnapshot {

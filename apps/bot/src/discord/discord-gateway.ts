@@ -12,6 +12,7 @@ import {
   OverwriteType,
   PermissionFlagsBits,
   RESTJSONErrorCodes,
+  type Role,
   type TextChannel,
   ThreadAutoArchiveDuration,
   type ThreadChannel,
@@ -32,7 +33,7 @@ import {
   type ThreadAutoArchiveMinutes,
   type ThreadState,
 } from './gateway';
-import { channelKind, permissionNames } from './introspection';
+import { channelKind, permissionNames, roleCanView } from './introspection';
 
 const AUTO_ARCHIVE_DURATION: Record<ThreadAutoArchiveMinutes, ThreadAutoArchiveDuration> = {
   60: ThreadAutoArchiveDuration.OneHour,
@@ -71,6 +72,19 @@ function normalize(error: unknown, action: string): never {
     );
   }
   throw error;
+}
+
+/** A guild role, or null when it no longer exists (a deleted role still mapped). */
+async function roleOrNull(guild: Guild, roleId: string): Promise<Role | null> {
+  const cached = guild.roles.cache.get(roleId);
+  if (cached) return cached;
+  try {
+    return await guild.roles.fetch(roleId);
+  } catch (error) {
+    if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownRole)
+      return null;
+    throw error;
+  }
 }
 
 async function attempt<T>(action: string, fn: () => Promise<T>): Promise<T> {
@@ -443,7 +457,10 @@ export class DiscordJsGateway implements DiscordGateway {
     };
   }
 
-  async botPermissionsIn(channelId: string): Promise<ChannelAccessSnapshot | null> {
+  async botPermissionsIn(
+    channelId: string,
+    audienceRoleIds: readonly string[] = [],
+  ): Promise<ChannelAccessSnapshot | null> {
     const guild = await this.guild();
     let channel;
     try {
@@ -454,19 +471,35 @@ export class DiscordJsGateway implements DiscordGateway {
       if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownChannel)
         return null;
       if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.MissingAccess)
-        return { channelId, name: null, kind: 'other', visible: false, permissions: [] };
+        return {
+          channelId,
+          name: null,
+          kind: 'other',
+          visible: false,
+          permissions: [],
+          everyoneCanView: false,
+          audienceWithView: [],
+        };
       return normalize(error, 'fetch channel');
     }
     if (!channel) return null;
     const me = await attempt('fetch bot member', () => guild.members.fetchMe());
     const permissions = channel.permissionsFor(me);
     const visible = permissions.has(PermissionFlagsBits.ViewChannel);
+    const everyone = guild.roles.everyone;
+    const audience = await attempt('fetch roles', () =>
+      Promise.all(audienceRoleIds.map((id) => roleOrNull(guild, id))),
+    );
     return {
       channelId: channel.id,
       name: visible ? channel.name : null,
       kind: channelKind(channel.type),
       visible,
       permissions: permissionNames(permissions),
+      everyoneCanView: roleCanView(channel, everyone, everyone),
+      audienceWithView: audience
+        .filter((role): role is Role => role !== null && roleCanView(channel, everyone, role))
+        .map((role) => role.id),
     };
   }
 

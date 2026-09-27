@@ -1,11 +1,14 @@
 import { eq, sql } from 'drizzle-orm';
+import type { z } from 'zod';
 import { serverSettings } from '@jave/database';
 import { type ServiceContext, withTransaction } from '../kernel/context';
-import { ValidationError } from '../kernel/errors';
+import { ConflictError, ValidationError } from '../kernel/errors';
+import type { Logger } from '../kernel/logger';
 import { recordAudit } from '../audit/audit.service';
 import { authorize } from '../permissions/authorize';
 import { publishEvent } from '../events/bus';
 import { scheduleRoleResyncForAll } from '../identity/role-resync';
+import { assertRoleMappingWrite, retiredRoleIds } from './role-mapping';
 import {
   type AllSettings,
   SETTINGS_SECTIONS,
@@ -19,12 +22,55 @@ const cacheKey = (section: SettingsSection) => `settings:${section}`;
 /** pg_advisory_xact_lock namespace serializing writes of one settings section. */
 const SETTINGS_LOCK_NAMESPACE = 424_202;
 
-function parseStored<S extends SettingsSection>(section: S, stored: unknown): Settings<S> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Parse a stored section. A value that no longer validates as a whole (e.g.
+ * after a schema change) is recovered field by field: valid fields are kept,
+ * each invalid field falls back to its default, and the invalid field names
+ * (never their values) are logged. Resetting the whole section instead would
+ * silently drop every valid field, and the next write would make it permanent.
+ */
+function parseStored<S extends SettingsSection>(
+  section: S,
+  stored: unknown,
+  logger: Logger,
+): Settings<S> {
   const schema = settingsSchemas[section];
   const result = schema.safeParse(stored ?? {});
-  // A stored value that no longer validates (e.g. after a schema change) falls back to defaults
-  // per-field rather than taking the bot down.
-  return (result.success ? result.data : schema.parse({})) as Settings<S>;
+  if (result.success) return result.data as Settings<S>;
+  const source = isRecord(stored) ? stored : {};
+  const shape: Record<string, z.ZodType> = schema.shape;
+  const recovered: Record<string, unknown> = {};
+  const invalidFields: string[] = [];
+  for (const [field, fieldSchema] of Object.entries(shape)) {
+    const parsed = fieldSchema.safeParse(source[field]);
+    if (parsed.success) {
+      recovered[field] = parsed.data;
+    } else {
+      invalidFields.push(field);
+      recovered[field] = fieldSchema.safeParse(undefined).data;
+    }
+  }
+  logger.warn(
+    { section, invalidFields },
+    'stored settings failed validation; invalid fields read as their defaults',
+  );
+  const repaired = schema.safeParse(recovered);
+  return (repaired.success ? repaired.data : schema.parse({})) as Settings<S>;
+}
+
+async function loadSection<S extends SettingsSection>(
+  ctx: ServiceContext,
+  section: S,
+): Promise<Settings<S>> {
+  const [row] = await ctx.db
+    .select({ value: serverSettings.value })
+    .from(serverSettings)
+    .where(eq(serverSettings.section, section));
+  return parseStored(section, row?.value, ctx.logger);
 }
 
 /** Read a settings section (defaults merged). Cached briefly per process. */
@@ -32,13 +78,24 @@ export async function getSettings<S extends SettingsSection>(
   ctx: ServiceContext,
   section: S,
 ): Promise<Settings<S>> {
-  return ctx.cache.getOrLoad(cacheKey(section), CACHE_TTL_MS, async () => {
-    const [row] = await ctx.db
-      .select({ value: serverSettings.value })
-      .from(serverSettings)
-      .where(eq(serverSettings.section, section));
-    return parseStored(section, row?.value);
-  });
+  return ctx.cache.getOrLoad(cacheKey(section), CACHE_TTL_MS, () => loadSection(ctx, section));
+}
+
+/**
+ * Read a settings section from the database, bypassing (and refreshing) the
+ * per-process cache. For work that must act on the latest value even when
+ * another process changed it moments ago — e.g. the bot's role sync jobs,
+ * queued by a dashboard change the bot's cache has not seen yet. Not for use
+ * inside a transaction that writes the section (it would cache the
+ * uncommitted value).
+ */
+export async function getSettingsFresh<S extends SettingsSection>(
+  ctx: ServiceContext,
+  section: S,
+): Promise<Settings<S>> {
+  const value = await loadSection(ctx, section);
+  ctx.cache.set(cacheKey(section), value, CACHE_TTL_MS);
+  return value;
 }
 
 export async function getAllSettings(ctx: ServiceContext): Promise<AllSettings> {
@@ -108,7 +165,7 @@ export async function updateSettings<S extends SettingsSection>(
       .select({ value: serverSettings.value })
       .from(serverSettings)
       .where(eq(serverSettings.section, section));
-    const current = parseStored(section, row?.value);
+    const current = parseStored(section, row?.value, tx.logger);
     const merged = { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
     const result = settingsSchemas[section].safeParse(merged);
     if (!result.success) {
@@ -122,6 +179,9 @@ export async function updateSettings<S extends SettingsSection>(
       );
     }
     const next = result.data as Settings<S>;
+    if (section === 'roles') {
+      assertRoleMappingWrite(tx, current as Settings<'roles'>, next as Settings<'roles'>);
+    }
     const changes = diff(current as Record<string, unknown>, next as Record<string, unknown>);
     if (Object.keys(changes).length === 0) return { value: current, changed: false };
 
@@ -156,9 +216,35 @@ export async function updateSettings<S extends SettingsSection>(
       aggregateId: section,
       payload: { section, fields: Object.keys(changes) },
     });
-    if (needsRoleResync(section, changes, next)) await scheduleRoleResyncForAll(tx);
+    if (needsRoleResync(section, changes, next)) {
+      await scheduleRoleResyncForAll(tx, {
+        retire: retiredRoleIds(current as Settings<'roles'>, next as Settings<'roles'>),
+      });
+    }
     return { value: next, changed: true };
   });
   if (outcome.changed) ctx.cache.delete(cacheKey(section));
   return outcome.value;
+}
+
+/**
+ * Queue a Discord role sync for every present member on request — e.g. after
+ * the admin moved JAVE's role above the mapped roles, so syncs Discord refused
+ * earlier are applied now. Audited; `canManageSettings`. Returns the number of
+ * members queued.
+ */
+export async function requestRoleResync(ctx: ServiceContext): Promise<number> {
+  await authorize(ctx, 'canManageSettings', { type: 'settings', id: 'roles' });
+  return withTransaction(ctx, async (tx) => {
+    const roles = await loadSection(tx, 'roles');
+    if (!roles.syncToDiscord) throw new ConflictError('Role sync is off.');
+    const count = await scheduleRoleResyncForAll(tx);
+    await recordAudit(tx, {
+      action: 'settings.roles_resync_requested',
+      targetType: 'settings',
+      targetId: 'roles',
+      context: { members: count },
+    });
+    return count;
+  });
 }

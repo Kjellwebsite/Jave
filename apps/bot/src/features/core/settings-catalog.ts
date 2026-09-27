@@ -6,7 +6,12 @@ import {
   type SettingsSection,
   ValidationError,
 } from '@jave/core';
-import type { ChannelKind, DiscordPermission, RoleSnapshot } from '../../discord/gateway';
+import type {
+  ChannelAccessSnapshot,
+  ChannelKind,
+  DiscordPermission,
+  RoleSnapshot,
+} from '../../discord/gateway';
 
 /**
  * What the Discord surface knows about settings: which channel outputs exist
@@ -30,6 +35,11 @@ export interface ChannelSpec {
   needs: readonly DiscordPermission[];
   /** Readiness warns when a recommended channel is unset. */
   recommended: boolean;
+  /**
+   * Carries staff-only data (applicant answers, moderation reasons, private
+   * transcripts…): refused, and failed by readiness, in a channel members can read.
+   */
+  staffOnly: boolean;
 }
 
 const POSTABLE: readonly OutputChannelKind[] = ['text', 'announcement'];
@@ -67,6 +77,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
+    staffOnly: false,
   },
   announcements: {
     label: 'Announcements',
@@ -74,6 +85,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
+    staffOnly: false,
   },
   applicationsReview: {
     label: 'Applications review',
@@ -81,6 +93,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
+    staffOnly: true,
   },
   verificationQueue: {
     label: 'Verification queue',
@@ -88,6 +101,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
+    staffOnly: true,
   },
   tickets: {
     label: 'Tickets',
@@ -103,6 +117,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
       'ManageThreads',
     ],
     recommended: true,
+    staffOnly: false,
   },
   ticketArchive: {
     label: 'Ticket archive',
@@ -110,6 +125,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: [...POSTING, 'AttachFiles'],
     recommended: false,
+    staffOnly: true,
   },
   trialsCategory: {
     label: 'Trials category',
@@ -117,6 +133,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: CATEGORY,
     needs: ['ViewChannel', 'ManageChannels'],
     recommended: true,
+    staffOnly: false,
   },
   securityAlerts: {
     label: 'Security alerts',
@@ -124,6 +141,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
+    staffOnly: true,
   },
   staffAlerts: {
     label: 'Staff alerts',
@@ -131,6 +149,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
+    staffOnly: true,
   },
   missions: {
     label: 'Missions',
@@ -138,6 +157,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
+    staffOnly: false,
   },
   events: {
     label: 'Events',
@@ -145,6 +165,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
+    staffOnly: false,
   },
   achievements: {
     label: 'Achievements',
@@ -152,6 +173,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
+    staffOnly: false,
   },
   research: {
     label: 'Research',
@@ -159,6 +181,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
+    staffOnly: false,
   },
   modLog: {
     label: 'Moderation log',
@@ -166,6 +189,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
+    staffOnly: true,
   },
   auditLog: {
     label: 'Audit log',
@@ -173,6 +197,7 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
+    staffOnly: true,
   },
 };
 
@@ -185,6 +210,29 @@ export function channelSpec(key: string): ChannelSpec {
   const spec = CHANNELS.find((c) => c.key === key);
   if (!spec) throw new ValidationError('Unknown channel setting.');
   return spec;
+}
+
+/**
+ * Discord roles held by non-staff members: the roles mapped to non-staff JAVE
+ * roles. A staff-only channel must stay closed to them and to @everyone.
+ */
+export function audienceRoleIds(roles: Settings<'roles'>): string[] {
+  const ids = ROLE_KEYS.filter((role) => !isStaffRole(role)).map((r) => roles.discordRoleIds[r]);
+  return [...new Set(ids.filter((id): id is string => Boolean(id)))];
+}
+
+/**
+ * Who beyond staff can read a channel, for a staff-only output: "@everyone",
+ * "<@&role>, <@&role>", or null when only staff can.
+ */
+export function channelExposure(
+  spec: Pick<ChannelSpec, 'staffOnly'>,
+  probe: Pick<ChannelAccessSnapshot, 'everyoneCanView' | 'audienceWithView'>,
+): string | null {
+  if (!spec.staffOnly) return null;
+  if (probe.everyoneCanView) return '@everyone';
+  if (probe.audienceWithView.length === 0) return null;
+  return probe.audienceWithView.map((id) => `<@&${id}>`).join(', ');
 }
 
 /** Role mapping targets: every JAVE role plus the quarantine role. */

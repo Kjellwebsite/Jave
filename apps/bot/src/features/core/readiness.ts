@@ -1,4 +1,4 @@
-import { ROLE_KEYS, type Settings } from '@jave/core';
+import { quarantineConflicts, ROLE_KEYS, type Settings } from '@jave/core';
 import type {
   BotMemberSnapshot,
   ChannelAccessSnapshot,
@@ -9,6 +9,7 @@ import { REQUIRED_PERMISSIONS } from '../../discord/permissions';
 import {
   acceptsChannel,
   CHANNELS,
+  channelExposure,
   type ChannelKey,
   describeKinds,
   elevatedPermissions,
@@ -117,7 +118,7 @@ function hierarchySection(input: ReadinessInput): ReadinessSection {
       items.push({
         state: 'fail',
         text: `<@&${id}> (${label}) sits at or above JAVE's highest role.`,
-        fix: "Drag JAVE's role above it in Server Settings → Roles.",
+        fix: "Drag JAVE's role above it in Server Settings → Roles, then press Re-sync roles.",
       });
     }
   }
@@ -137,6 +138,9 @@ function roleProblem(target: RoleTarget, role: RoleSnapshot | undefined): string
   if (role.everyone) return 'is @everyone';
   if (role.managed) return 'is managed by an integration; Discord will not let JAVE assign it';
   const elevated = elevatedPermissions(role);
+  if (elevated.includes('Administrator')) {
+    return 'grants Administrator; role sync never hands it out';
+  }
   if (elevated.length > 0 && !mayCarryElevated(target)) {
     return `grants ${elevated.map(permissionLabel).join(', ')} to ${roleHolders(target)}`;
   }
@@ -166,6 +170,14 @@ function mappingSection(input: ReadinessInput): ReadinessSection {
         fix: `/settings role → ${label}.`,
       });
     }
+  }
+  const conflicts = quarantineConflicts(roleSettings);
+  if (conflicts.length > 0) {
+    items.push({
+      state: 'fail',
+      text: `QUARANTINE → <@&${roleSettings.quarantineRoleId}> is also mapped to ${conflicts.map((r) => r.toUpperCase()).join(', ')}. Role sync would undo quarantines.`,
+      fix: '/settings role → QUARANTINE, and pick a role of its own.',
+    });
   }
   const unmapped = ROLE_KEYS.filter((role) => !roleSettings.discordRoleIds[role]);
   const mappedCount = ROLE_KEYS.length - unmapped.length;
@@ -214,6 +226,14 @@ function channelItem(
       state: 'fail',
       text: `${spec.label} — <#${id}> must be ${describeKinds(spec.accepts)}.`,
       fix,
+    };
+  }
+  const exposedTo = channelExposure(spec, probe);
+  if (exposedTo) {
+    return {
+      state: 'fail',
+      text: `${spec.label} — <#${id}> is readable by ${exposedTo}. It carries staff-only data.`,
+      fix: `Deny View Channel to ${exposedTo} there, or ${fix}`,
     };
   }
   const missing = spec.needs.filter((p) => !probe.permissions.includes(p));

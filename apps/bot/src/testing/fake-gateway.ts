@@ -29,6 +29,8 @@ export interface FakeGuildChannel {
   hidden?: boolean;
   /** Permission overwrites denying the bot these flags in this channel. */
   denied?: DiscordPermission[];
+  /** Roles whose holders can view the channel; the guild id stands for @everyone. */
+  viewers?: string[];
 }
 
 export interface GatewayCall {
@@ -331,23 +333,37 @@ export class FakeDiscordGateway implements DiscordGateway {
     };
   }
 
-  async botPermissionsIn(channelId: string): Promise<ChannelAccessSnapshot | null> {
-    this.record('botPermissionsIn', channelId);
+  async botPermissionsIn(
+    channelId: string,
+    audienceRoleIds: readonly string[] = [],
+  ): Promise<ChannelAccessSnapshot | null> {
+    this.record('botPermissionsIn', channelId, [...audienceRoleIds]);
     const created = this.channels.get(channelId);
     const channel: FakeGuildChannel | undefined =
       this.guildChannels.get(channelId) ??
       (created ? { name: created.name, kind: created.thread ? 'thread' : 'text' } : undefined);
     if (!channel) return null;
     if (channel.hidden && !this.botAdministrator) {
-      return { channelId, name: null, kind: 'other', visible: false, permissions: [] };
+      return {
+        channelId,
+        name: null,
+        kind: 'other',
+        visible: false,
+        permissions: [],
+        everyoneCanView: false,
+        audienceWithView: [],
+      };
     }
     const permissions = this.effectivePermissions(channel.denied);
+    const viewers = channel.viewers ?? [];
     return {
       channelId,
       name: channel.name,
       kind: channel.kind,
       visible: permissions.includes('ViewChannel'),
       permissions,
+      everyoneCanView: viewers.includes(this.guildId),
+      audienceWithView: audienceRoleIds.filter((id) => viewers.includes(id)),
     };
   }
 

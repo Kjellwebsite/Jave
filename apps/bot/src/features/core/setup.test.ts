@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { auditLogs } from '@jave/database';
+import { auditLogs, serverSettings } from '@jave/database';
 import { updateSettings, type UserActor } from '@jave/core';
 import type { APIButtonComponent } from 'discord.js';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
@@ -125,10 +125,120 @@ describe('/jave setup', () => {
 
     const text = (await setup(founder.user)).interaction.lastText();
     expect(text).toContain(
-      `✕ VERIFIED → <@&${ROLE.admin}> grants Administrator to everyone holding VERIFIED.`,
+      `✕ VERIFIED → <@&${ROLE.admin}> grants Administrator; role sync never hands it out.`,
     );
     expect(text).not.toContain('MODERATOR → role');
     expect(text).toContain(`✕ Tickets — <#${CHANNEL.news}> must be a text channel.`);
+  });
+
+  it('fails Administrator behind a staff role, and a quarantine role that is also mapped', async () => {
+    bot.gateway.addRole(ROLE.admin, 'Operators', 20, false, ['Administrator']);
+    bot.gateway.addRole(ROLE.quarantine, 'Quarantine', 5);
+    // Written before today's write rules existed: read back as stored, reported here.
+    await bot.kit.db.insert(serverSettings).values({
+      section: 'roles',
+      value: {
+        discordRoleIds: { core: ROLE.admin, member: ROLE.quarantine },
+        quarantineRoleId: ROLE.quarantine,
+        syncToDiscord: true,
+      },
+    });
+    const text = (await setup(founder.user)).interaction.lastText();
+    expect(text).toContain(
+      `✕ CORE → <@&${ROLE.admin}> grants Administrator; role sync never hands it out.`,
+    );
+    expect(text).toContain(
+      `✕ QUARANTINE → <@&${ROLE.quarantine}> is also mapped to MEMBER. Role sync would undo quarantines.`,
+    );
+  });
+
+  it('fails staff-only outputs in channels members can read', async () => {
+    bot.gateway.addRole(ROLE.verified, 'Verified', 20);
+    bot.gateway.addGuildChannel(CHANNEL.welcome, {
+      name: 'general',
+      kind: 'text',
+      viewers: [bot.gateway.guildId],
+    });
+    bot.gateway.addGuildChannel(CHANNEL.news, {
+      name: 'lounge',
+      kind: 'text',
+      viewers: [ROLE.verified],
+    });
+    bot.gateway.addGuildChannel(CHANNEL.hidden, { name: 'staff-only', kind: 'text' });
+    await updateSettings(bot.kit.as(founder.actor), 'roles', {
+      discordRoleIds: { verified: ROLE.verified },
+    });
+    // Stored directly: the dashboard stores channel ids without inspecting Discord.
+    await updateSettings(bot.kit.as(founder.actor), 'channels', {
+      welcome: CHANNEL.welcome,
+      modLog: CHANNEL.welcome,
+      ticketArchive: CHANNEL.news,
+      auditLog: CHANNEL.hidden,
+    });
+    const text = (await setup(founder.user)).interaction.lastText();
+    expect(text).toContain(`✓ Welcome — <#${CHANNEL.welcome}>`);
+    expect(text).toContain(
+      `✕ Moderation log — <#${CHANNEL.welcome}> is readable by @everyone. It carries staff-only data.`,
+    );
+    expect(text).toContain(
+      `✕ Ticket archive — <#${CHANNEL.news}> is readable by <@&${ROLE.verified}>.`,
+    );
+    expect(text).toContain(`✓ Audit log — <#${CHANNEL.hidden}>`);
+  });
+
+  describe('RE-SYNC ROLES', () => {
+    const resync = (user: InteractionUser) =>
+      bot.run({ kind: 'button', name: customId('setup', 'resync'), user });
+
+    it('is offered once a role is mapped and sync is on; applies roles Discord refused before', async () => {
+      const first = (await setup(founder.user)).interaction.lastPayload()!;
+      expect(first.components).toHaveLength(1);
+
+      bot.gateway.addRole(ROLE.verified, 'Verified', 60);
+      const verified = await bot.member({ roles: ['verified'] });
+      await updateSettings(bot.kit.as(founder.actor), 'roles', {
+        discordRoleIds: { verified: ROLE.verified },
+      });
+      await bot.drain();
+      const holder = () => bot.gateway.members.get(verified.actor.discordId)!.roleIds;
+      expect(holder()).toEqual([]);
+
+      const blocked = await setup(founder.user);
+      expect(blocked.interaction.lastText()).toContain('then press Re-sync roles');
+      const buttons = blocked.interaction.lastPayload()!.components![1]!
+        .components as APIButtonComponent[];
+      expect(buttons.map((b) => ('custom_id' in b ? b.custom_id : null))).toEqual(['setup:resync']);
+
+      bot.gateway.botHighestRolePosition = 70;
+      const { interaction } = await resync(founder.user);
+      expect(interaction.responses[0]).toEqual({ type: 'deferUpdate' });
+      expect(interaction.lastText()).toContain('ROLE RE-SYNC QUEUED');
+      expect(interaction.lastText()).toContain('READINESS');
+      await bot.drain();
+      expect(holder()).toEqual([ROLE.verified]);
+      const [audit] = await bot.kit.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, 'settings.roles_resync_requested'));
+      expect(audit!.actorUserId).toBe(founder.actor.userId);
+    });
+
+    it('BREAK: refused for non-managers, and while role sync is off (panel kept)', async () => {
+      const ops = await bot.member({ roles: ['operations'] });
+      const denied = await resync(ops.user);
+      expect(denied.interaction.lastText()).toContain('ACCESS RESTRICTED');
+
+      await updateSettings(bot.kit.as(founder.actor), 'roles', { syncToDiscord: false });
+      const off = await resync(founder.user);
+      expect(off.interaction.responses.map((r) => r.type)).toEqual(['deferUpdate', 'followUp']);
+      expect(off.interaction.lastText()).toContain('Role sync is off.');
+      expect(
+        await bot.kit.db
+          .select()
+          .from(auditLogs)
+          .where(eq(auditLogs.action, 'settings.roles_resync_requested')),
+      ).toEqual([]);
+    });
   });
 
   it('warns when the bot holds Administrator (least privilege)', async () => {

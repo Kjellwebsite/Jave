@@ -13,39 +13,6 @@ const domainPattern = z
   );
 
 /**
- * Each Discord role backs at most one JAVE role, and the quarantine role is
- * never a managed role: role sync would otherwise fight itself, and a
- * quarantine (which strips managed roles) would strip its own role.
- */
-function distinctRoleMappings(
-  roles: { discordRoleIds: Partial<Record<string, string>>; quarantineRoleId?: string },
-  ctx: z.RefinementCtx,
-): void {
-  const owner = new Map<string, string>();
-  for (const [role, id] of Object.entries(roles.discordRoleIds)) {
-    if (!id) continue;
-    const taken = owner.get(id);
-    if (taken) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['discordRoleIds', role],
-        message: `is already mapped to ${taken.toUpperCase()}`,
-      });
-    } else {
-      owner.set(id, role);
-    }
-  }
-  const managed = roles.quarantineRoleId ? owner.get(roles.quarantineRoleId) : undefined;
-  if (managed) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['quarantineRoleId'],
-      message: `is mapped to ${managed.toUpperCase()}; quarantine needs its own role`,
-    });
-  }
-}
-
-/**
  * Server configuration, one section per concern. Every field has a default so
  * a fresh install works with zero configuration. Secrets never live here —
  * they come from the environment.
@@ -61,16 +28,22 @@ export const settingsSchemas = {
       .regex(/^#[0-9a-fA-F]{6}$/)
       .default('#B8BDC3'),
   }),
-  roles: z
-    .object({
-      /** JAVE role → Discord role ID. Unmapped roles exist only inside JAVE. */
-      discordRoleIds: z.partialRecord(orgRoleKey, snowflake).default({}),
-      /** Role applied during quarantine; must deny access to all channels but one. */
-      quarantineRoleId: optionalSnowflake,
-      /** Push JAVE role changes to Discord. */
-      syncToDiscord: z.boolean().default(true),
-    })
-    .superRefine(distinctRoleMappings),
+  /**
+   * Cross-field rules (who may change which mapping, the quarantine role never
+   * being a mapped role) apply to writes only: see `role-mapping.ts`. A stored
+   * value always reads back as stored.
+   */
+  roles: z.object({
+    /**
+     * JAVE role → Discord role ID. Unmapped roles exist only inside JAVE. One
+     * Discord role may back several JAVE roles (e.g. one "Staff" role).
+     */
+    discordRoleIds: z.partialRecord(orgRoleKey, snowflake).default({}),
+    /** Role applied during quarantine; must deny access to all channels but one. */
+    quarantineRoleId: optionalSnowflake,
+    /** Push JAVE role changes to Discord. */
+    syncToDiscord: z.boolean().default(true),
+  }),
   channels: z.object({
     welcome: optionalSnowflake,
     announcements: optionalSnowflake,

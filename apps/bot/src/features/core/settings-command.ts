@@ -1,25 +1,29 @@
 import { type APIEmbed, ChannelType, SlashCommandBuilder } from 'discord.js';
 import {
   type AllSettings,
+  assertMayMapRole,
   authorize,
   can,
   getAllSettings,
-  isJaveError,
+  getSettingsFresh,
   isSnowflake,
+  mayMapRole,
   NotFoundError,
   type OrgRole,
+  retiredRoleIds,
   type Settings,
   type SettingsSection,
   updateSettings,
   ValidationError,
 } from '@jave/core';
 import type { CommandDefinition, ComponentHandler, HandlerContext } from '../../interactions/types';
-import { renderError } from '../../interactions/errors';
 import { failure, field, panel, success } from '../../ui/components';
 import { COLORS } from '../../ui/theme';
 import { introspect } from './readiness-probe';
 import {
   acceptsChannel,
+  audienceRoleIds,
+  channelExposure,
   CHANNELS,
   type ChannelSpec,
   channelSpec,
@@ -38,7 +42,7 @@ import {
   roleTargetLabel,
 } from './settings-catalog';
 import {
-  flagValue,
+  parseFlagChoice,
   renderChannelEditor,
   renderChannels,
   renderFlagConfirm,
@@ -47,7 +51,7 @@ import {
   renderRoles,
   renderSummary,
 } from './settings-panels';
-import { SETTINGS_NS, showPanel } from './settings-ui';
+import { acknowledge, keepingPanel, SETTINGS_NS, showPanel } from './settings-ui';
 
 /** Result banner above a panel: calm success, or a warning when something still needs doing. */
 function outcome(title: string, description: string, warnings: string[] = []): APIEmbed {
@@ -64,34 +68,6 @@ async function requireManager(h: HandlerContext, target: string): Promise<void> 
   await authorize(h.ctx, 'canManageSettings', { type: 'settings', id: target });
 }
 
-/** Buttons and selects that talk to Discord acknowledge first (3-second limit). */
-async function acknowledge(h: HandlerContext): Promise<void> {
-  const { interaction } = h;
-  if ((interaction.kind === 'button' || interaction.kind === 'select') && !interaction.deferred) {
-    await interaction.deferUpdate();
-  }
-}
-
-/**
- * After a component's deferred update the router would replace the settings
- * panel with the error. A refusal (wrong channel, role not allowed…) instead
- * arrives as its own ephemeral message and the panel stays usable. Slash
- * commands and unexpected errors go to the router as usual (the latter are
- * logged with a reference).
- */
-async function keepingPanel(h: HandlerContext, action: () => Promise<void>): Promise<void> {
-  try {
-    await action();
-  } catch (error) {
-    const { interaction } = h;
-    const component = interaction.kind === 'button' || interaction.kind === 'select';
-    if (!isJaveError(error) || !component || !interaction.deferred || interaction.replied) {
-      throw error;
-    }
-    await interaction.followUp(renderError(error, h.ctx.logger).payload);
-  }
-}
-
 // ─── Channels ────────────────────────────────────────────────────────────────
 
 async function setChannel(h: HandlerContext, spec: ChannelSpec, channelId: string) {
@@ -99,10 +75,17 @@ async function setChannel(h: HandlerContext, spec: ChannelSpec, channelId: strin
   if (!isSnowflake(channelId)) throw new ValidationError('Choose a channel.');
   await acknowledge(h);
   await keepingPanel(h, async () => {
-    const probe = await introspect(() => h.services.gateway.botPermissionsIn(channelId));
+    const audience = spec.staffOnly ? audienceRoleIds(await getSettingsFresh(h.ctx, 'roles')) : [];
+    const probe = await introspect(() => h.services.gateway.botPermissionsIn(channelId, audience));
     if (!probe) throw new NotFoundError('Channel');
     if (probe.visible && !acceptsChannel(spec, probe.kind)) {
       throw new ValidationError(`${spec.label} needs ${describeKinds(spec.accepts)}.`);
+    }
+    const exposedTo = channelExposure(spec, probe);
+    if (exposedTo) {
+      throw new ValidationError(
+        `${spec.label} carries staff-only data and <#${channelId}> is readable by ${exposedTo}. Choose a channel only staff can see.`,
+      );
     }
     await updateSettings(h.ctx, 'channels', { [spec.key]: channelId });
     const warnings: string[] = [];
@@ -151,8 +134,46 @@ function mappingPatch(target: RoleTarget, roleId: string | undefined) {
   };
 }
 
+/** Write a mapping; returns the Discord roles it retired (JAVE removes them from their holders). */
+async function writeMapping(
+  h: HandlerContext,
+  target: RoleTarget,
+  roleId: string | undefined,
+): Promise<{ after: Settings<'roles'>; retired: string[] }> {
+  let before: Settings<'roles'> | undefined;
+  const after = await updateSettings(h.ctx, 'roles', (current) => {
+    before = current;
+    return mappingPatch(target, roleId)(current);
+  });
+  return { after, retired: before ? retiredRoleIds(before, after) : [] };
+}
+
+/** What happens to the Discord roles a mapping change let go of. */
+function retiredNote(retired: readonly string[], after: Settings<'roles'>): string[] {
+  if (retired.length === 0) return [];
+  const refs = retired.map((id) => `<@&${id}>`).join(', ');
+  const one = retired.length === 1;
+  return after.syncToDiscord
+    ? [
+        `${refs} ${one ? 'is' : 'are'} no longer managed. JAVE removes ${one ? 'it' : 'them'} from every member.`,
+      ]
+    : [`Role sync is off: ${refs} ${one ? 'stays' : 'stay'} on current holders.`];
+}
+
+/** Opening a mapping editor: the actor must be allowed to change that mapping. */
+function requireMappable(h: HandlerContext, target: RoleTarget): void {
+  if (target !== QUARANTINE_TARGET) assertMayMapRole(h.ctx, target);
+}
+
+async function openRoleEditor(h: HandlerContext, target: RoleTarget) {
+  await requireManager(h, 'roles');
+  requireMappable(h, target);
+  await showPanel(h, renderRoleEditor(await getAllSettings(h.ctx), target));
+}
+
 async function setRole(h: HandlerContext, target: RoleTarget, roleId: string) {
   await requireManager(h, 'roles');
+  requireMappable(h, target);
   if (!isSnowflake(roleId)) throw new ValidationError('Choose a role.');
   await acknowledge(h);
   await keepingPanel(h, async () => {
@@ -168,36 +189,43 @@ async function setRole(h: HandlerContext, target: RoleTarget, roleId: string) {
       );
     }
     const elevated = elevatedPermissions(role);
+    if (elevated.includes('Administrator')) {
+      throw new ValidationError(
+        'That role grants Administrator. JAVE never hands out Administrator. Map a role without it.',
+      );
+    }
     if (elevated.length > 0 && !mayCarryElevated(target)) {
       throw new ValidationError(
         `That role grants ${elevated.map(permissionLabel).join(', ')}. JAVE would hand it to ${roleHolders(target)}. Map a role without elevated permissions.`,
       );
     }
-    await updateSettings(h.ctx, 'roles', mappingPatch(target, roleId));
-    const warnings =
-      role.position >= bot.highestRolePosition
-        ? [`JAVE's role sits below <@&${roleId}>. Drag it above, or role changes will fail.`]
-        : [];
+    if (role.position >= bot.highestRolePosition) {
+      throw new ValidationError(
+        `<@&${roleId}> sits at or above JAVE's highest role, so Discord would refuse every change. Drag JAVE's role above it in Server Settings → Roles, then map it.`,
+      );
+    }
+    const { after, retired } = await writeMapping(h, target, roleId);
     const settings = await getAllSettings(h.ctx);
+    const description = [
+      `${roleTargetLabel(target)} → <@&${roleId}>`,
+      ...retiredNote(retired, after),
+    ];
     await showPanel(
       h,
-      renderRoleEditor(
-        settings,
-        target,
-        outcome('Role mapped', `${roleTargetLabel(target)} → <@&${roleId}>`, warnings),
-      ),
+      renderRoleEditor(settings, target, success('Role mapped', description.join('\n'))),
     );
   });
 }
 
 async function clearRole(h: HandlerContext, target: RoleTarget) {
   await requireManager(h, 'roles');
-  await updateSettings(h.ctx, 'roles', mappingPatch(target, undefined));
+  requireMappable(h, target);
+  const { after, retired } = await writeMapping(h, target, undefined);
   const settings = await getAllSettings(h.ctx);
-  const label = roleTargetLabel(target);
+  const description = [`${roleTargetLabel(target)} is JAVE-only.`, ...retiredNote(retired, after)];
   await showPanel(
     h,
-    renderRoleEditor(settings, target, success('Mapping cleared', `${label} is JAVE-only.`)),
+    renderRoleEditor(settings, target, success('Mapping cleared', description.join('\n'))),
   );
 }
 
@@ -229,13 +257,23 @@ async function setFlag(h: HandlerContext, flag: FlagSpec, value: boolean) {
   );
 }
 
-/** Pick a flag: sensitive ones go through a confirmation step. */
-async function pickFlag(h: HandlerContext, flag: FlagSpec) {
+/**
+ * Switch a flag to exactly the state the control showed ("Tickets → OFF"
+ * sets OFF, even if someone switched it meanwhile). Sensitive flags go
+ * through a confirmation step that carries the same target state.
+ */
+async function pickFlag(h: HandlerContext, flag: FlagSpec, next: boolean) {
   await requireManager(h, flag.section);
-  const settings = await getAllSettings(h.ctx);
-  const next = !flagValue(settings, flag);
   if (flag.sensitive) return showPanel(h, renderFlagConfirm(flag, next));
   return setFlag(h, flag, next);
+}
+
+/** /settings toggle: the opposite of the flag's current stored value (read fresh, not cached). */
+async function toggleFlag(h: HandlerContext, flag: FlagSpec) {
+  await requireManager(h, flag.section);
+  const current = await getSettingsFresh(h.ctx, flag.section);
+  const next = (current as Record<string, unknown>)[flag.field] !== true;
+  return pickFlag(h, flag, next);
 }
 
 function parseSwitch(value: string | undefined): boolean {
@@ -254,10 +292,14 @@ async function openPanel(h: HandlerContext, name: PanelName) {
   const payload: Record<PanelName, (s: AllSettings) => ReturnType<typeof renderSummary>> = {
     summary: (s) => renderSummary(s, can(h.ctx, 'canManageSettings')),
     channels: (s) => renderChannels(s),
-    roles: (s) => renderRoles(s),
+    roles: (s) => renderRoles(s, (target) => mayMapTarget(h, target)),
     flags: (s) => renderFlags(s),
   };
   await showPanel(h, payload[name](settings));
+}
+
+function mayMapTarget(h: HandlerContext, target: RoleTarget): boolean {
+  return target === QUARANTINE_TARGET || mayMapRole(h.ctx.actor, target);
 }
 
 function isPanel(value: string | undefined): value is PanelName {
@@ -340,13 +382,12 @@ export const settingsCommand: CommandDefinition = {
       case 'role': {
         const role = o.string('role');
         if (!role) return openPanel(h, 'roles');
-        await requireManager(h, 'roles');
-        return showPanel(h, renderRoleEditor(await getAllSettings(h.ctx), parseRoleTarget(role)));
+        return openRoleEditor(h, parseRoleTarget(role));
       }
       case 'toggle': {
         const flag = o.string('flag');
         if (!flag) return openPanel(h, 'flags');
-        return pickFlag(h, flagSpec(flag));
+        return toggleFlag(h, flagSpec(flag));
       }
       default:
         throw new ValidationError('Unknown subcommand.');
@@ -380,13 +421,7 @@ export const settingsComponents: ComponentHandler = {
         if (first) return clearChannel(h, channelSpec(first));
         break;
       case 'role':
-        if (value) {
-          await requireManager(h, 'roles');
-          return showPanel(
-            h,
-            renderRoleEditor(await getAllSettings(h.ctx), parseRoleTarget(value)),
-          );
-        }
+        if (value) return openRoleEditor(h, parseRoleTarget(value));
         break;
       case 'roleset':
         if (first && value) return setRole(h, parseRoleTarget(first), value);
@@ -394,9 +429,11 @@ export const settingsComponents: ComponentHandler = {
       case 'roleclear':
         if (first) return clearRole(h, parseRoleTarget(first));
         break;
-      case 'flag':
-        if (value) return pickFlag(h, flagSpec(value));
+      case 'flag': {
+        const choice = value ? parseFlagChoice(value) : null;
+        if (choice) return pickFlag(h, flagSpec(choice.key), choice.next);
         break;
+      }
       case 'flagset':
         if (first) return setFlag(h, flagSpec(first), parseSwitch(second));
         break;

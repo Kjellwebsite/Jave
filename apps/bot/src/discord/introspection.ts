@@ -1,4 +1,10 @@
-import { ChannelType, PermissionFlagsBits, type PermissionsBitField } from 'discord.js';
+import {
+  ChannelType,
+  type GuildBasedChannel,
+  PermissionFlagsBits,
+  PermissionsBitField,
+  type Role,
+} from 'discord.js';
 import type { ChannelKind, DiscordPermission } from './gateway';
 
 const PERMISSION_NAMES = Object.keys(PermissionFlagsBits) as DiscordPermission[];
@@ -23,4 +29,25 @@ const KIND_BY_TYPE: Partial<Record<ChannelType, ChannelKind>> = {
 
 export function channelKind(type: ChannelType): ChannelKind {
   return KIND_BY_TYPE[type] ?? 'other';
+}
+
+/**
+ * Whether a member holding only @everyone and `role` can view `channel`:
+ * Discord's algorithm — both roles' server permissions, Administrator
+ * short-circuits, then the @everyone overwrite, then the role's overwrite.
+ * (`channel.permissionsFor(role)` would ignore @everyone's server permissions.)
+ */
+export function roleCanView(channel: GuildBasedChannel, everyone: Role, role: Role): boolean {
+  const base = new PermissionsBitField(everyone.permissions).add(role.permissions);
+  if (base.has(PermissionFlagsBits.Administrator)) return true;
+  if (!('permissionOverwrites' in channel)) return base.has(PermissionFlagsBits.ViewChannel);
+  const overwrites = channel.permissionOverwrites.cache;
+  const atEveryone = overwrites.get(everyone.id);
+  const forRole = overwrites.get(role.id);
+  return base
+    .remove(atEveryone?.deny ?? 0n)
+    .add(atEveryone?.allow ?? 0n)
+    .remove(forRole?.deny ?? 0n)
+    .add(forRole?.allow ?? 0n)
+    .has(PermissionFlagsBits.ViewChannel);
 }

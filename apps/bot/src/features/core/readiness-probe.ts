@@ -1,6 +1,7 @@
 import { ExternalServiceError, getSettings, type ServiceContext } from '@jave/core';
 import { DiscordActionError, type DiscordGateway } from '../../discord/gateway';
 import { configuredChannelIds, type ReadinessInput } from './readiness';
+import { audienceRoleIds } from './settings-catalog';
 
 /** Discord could not answer an introspection call: a safe, retryable error for the user. */
 export async function introspect<T>(call: () => Promise<T>): Promise<T> {
@@ -30,13 +31,14 @@ export async function probeReadiness(
     getSettings(ctx, 'roles'),
     getSettings(ctx, 'channels'),
   ]);
+  const audience = audienceRoleIds(roleSettings);
   const [bot, roles, probes] = await introspect(() =>
     Promise.all([
       gateway.botMember(),
       gateway.listRoles(),
       Promise.all(
         configuredChannelIds(channelSettings).map(
-          async (id) => [id, await gateway.botPermissionsIn(id)] as const,
+          async (id) => [id, await gateway.botPermissionsIn(id, audience)] as const,
         ),
       ),
     ]),

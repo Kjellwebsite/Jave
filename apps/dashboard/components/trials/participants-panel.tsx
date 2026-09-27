@@ -33,6 +33,8 @@ export interface ParticipantRow {
   memberId: string;
   displayName: string;
   handle: string;
+  /** Primary capability domain, when the member set one. */
+  domain: string | null;
   status: ParticipantStatusKey;
   teamName: string | null;
   lead: boolean;
@@ -179,7 +181,7 @@ export function ParticipantsPanel({
                     value={row.memberId}
                     defaultChecked={row.status === 'selected'}
                     label={row.displayName}
-                    description={`@${row.handle}`}
+                    description={row.domain ? `@${row.handle} · ${row.domain}` : `@${row.handle}`}
                   />
                 ) : (
                   <span className="block min-w-0">
@@ -191,6 +193,7 @@ export function ParticipantsPanel({
                     </Link>
                     <span className="type-data block text-[12px] text-fg-subtle">
                       @{row.handle}
+                      {row.domain ? ` · ${row.domain}` : ''}
                     </span>
                   </span>
                 )}

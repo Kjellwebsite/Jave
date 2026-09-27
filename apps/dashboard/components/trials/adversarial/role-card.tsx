@@ -8,7 +8,6 @@ import {
   Checkbox,
   Input,
   Mono,
-  NativeSelect,
   StatusBadge,
   Textarea,
   Timeline,
@@ -24,6 +23,7 @@ import { formatTimestamp } from '@/lib/time';
 import type { FormAction } from '../../forms/action-form';
 import { ConfirmActionDialog } from '../../forms/confirm-action-dialog';
 import { FormField } from '../../forms/form-field';
+import { SelectField } from '../../forms/select-field';
 import { type TriggerActions, TriggerList } from './trigger-list';
 
 export interface RoleActions extends TriggerActions {
@@ -154,9 +154,14 @@ export function RoleCard({
       </header>
 
       <div className="space-y-5 px-5 py-4">
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Fact label="PLAN">
+            rev {record.planRevision} · {role.authorized ? 'signed' : 'under review'}
+          </Fact>
           <Fact label="BRIEFING">
-            rev {record.briefingRevision} · {deliveryLabel(record.briefingDelivery)}
+            {record.briefedAt
+              ? `rev ${record.briefingRevision} · ${deliveryLabel(record.briefingDelivery)}`
+              : 'Not sent'}
           </Fact>
           <Fact label="STOP NOTICE">{deliveryLabel(record.stopNoticeDelivery)}</Fact>
           <Fact label="DEBRIEF">{deliveryLabel(record.debriefDelivery)}</Fact>
@@ -328,8 +333,8 @@ export function RoleCard({
             action={actions.addTrigger}
             hidden={hidden}
             trigger={
-              <Button size="sm" variant="ghost" iconLeft={Plus}>
-                Trigger
+              <Button size="sm" variant="ghost" iconLeft={Plus} data-testid="add-trigger">
+                Add trigger
               </Button>
             }
           >
@@ -365,45 +370,40 @@ export function RoleCard({
               </Button>
             }
           >
-            <FormField name="outcome" label="Outcome" required>
-              <NativeSelect
-                name="outcome"
-                defaultValue="reported"
-                options={(Object.keys(outcomeLabels) as ObservationOutcomeKey[]).map((key) => ({
-                  value: key,
-                  label: outcomeLabels[key],
+            <SelectField
+              name="outcome"
+              label="Outcome"
+              required
+              defaultValue="reported"
+              options={(Object.keys(outcomeLabels) as ObservationOutcomeKey[]).map((key) => ({
+                value: key,
+                label: outcomeLabels[key],
+              }))}
+            />
+            {role.triggers.length > 0 ? (
+              <SelectField
+                name="triggerId"
+                label="Trigger"
+                defaultValue=""
+                placeholder="Not tied to a trigger"
+                options={role.triggers.map((trigger) => ({
+                  value: trigger.id,
+                  label: trigger.label,
                 }))}
               />
-            </FormField>
-            {role.triggers.length > 0 ? (
-              <FormField name="triggerId" label="Trigger">
-                <NativeSelect
-                  name="triggerId"
-                  defaultValue=""
-                  placeholder="Not tied to a trigger"
-                  options={role.triggers.map((trigger) => ({
-                    value: trigger.id,
-                    label: trigger.label,
-                  }))}
-                />
-              </FormField>
             ) : null}
             {subjects.length > 0 ? (
-              <FormField
+              <SelectField
                 name="subjectMemberId"
                 label="Participant"
                 description="Optional. Staff-only; the team debrief never names anyone."
-              >
-                <NativeSelect
-                  name="subjectMemberId"
-                  defaultValue=""
-                  placeholder="The team as a whole"
-                  options={subjects.map((subject) => ({
-                    value: subject.memberId,
-                    label: subject.displayName,
-                  }))}
-                />
-              </FormField>
+                defaultValue=""
+                placeholder="The team as a whole"
+                options={subjects.map((subject) => ({
+                  value: subject.memberId,
+                  label: subject.displayName,
+                }))}
+              />
             ) : null}
             <FormField name="description" label="What happened" required>
               <Textarea

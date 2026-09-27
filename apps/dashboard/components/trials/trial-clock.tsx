@@ -50,7 +50,7 @@ export function clockReading(trial: Summary): ClockReading | null {
         return { label: 'Late window', target: timing.closesAt, passed: 'closing' };
       return { label: 'Submissions', passed: 'closing' };
     case 'evaluating':
-      return { label: 'Closed', at: trial.submissionsClosedAt ?? undefined };
+      return { label: 'Submissions closed', at: trial.submissionsClosedAt ?? undefined };
     case 'completed':
       return { label: 'Completed', at: trial.completedAt ?? undefined };
     case 'cancelled':

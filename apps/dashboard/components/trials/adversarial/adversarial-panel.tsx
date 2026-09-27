@@ -1,19 +1,11 @@
 import { FlaskConical, ShieldAlert, UserPlus } from 'lucide-react';
 import type { adversarial } from '@jave/core';
-import {
-  Button,
-  Callout,
-  Card,
-  EmptyState,
-  Icon,
-  NativeSelect,
-  StatusBadge,
-  Textarea,
-} from '@jave/ui';
+import { Button, Callout, Card, EmptyState, Icon, StatusBadge, Textarea } from '@jave/ui';
 import type { ObservationOutcomeKey } from '@/lib/trial-labels';
 import type { FormAction } from '../../forms/action-form';
 import { ConfirmActionDialog } from '../../forms/confirm-action-dialog';
 import { FormField } from '../../forms/form-field';
+import { SelectField } from '../../forms/select-field';
 import { type RoleActions, RoleCard } from './role-card';
 import { ScenarioLibrary, type ScenarioRow } from './scenario-library';
 
@@ -150,7 +142,6 @@ export function AdversarialPanel(props: AdversarialPanelProps) {
               hidden={{ trialId }}
               trigger={
                 <Button
-                  variant="primary"
                   size="sm"
                   iconLeft={UserPlus}
                   disabled={operatives.length === 0 || activeScenarios.length === 0}
@@ -160,23 +151,23 @@ export function AdversarialPanel(props: AdversarialPanelProps) {
                 </Button>
               }
             >
-              <FormField name="operative" label="Operative" required>
-                <NativeSelect
-                  name="operative"
-                  defaultValue={operatives[0]?.value}
-                  options={operatives}
-                />
-              </FormField>
-              <FormField name="scenarioId" label="Scenario" required>
-                <NativeSelect
-                  name="scenarioId"
-                  defaultValue={activeScenarios[0]?.id}
-                  options={activeScenarios.map((scenario) => ({
-                    value: scenario.id,
-                    label: scenario.title,
-                  }))}
-                />
-              </FormField>
+              <SelectField
+                name="operative"
+                label="Operative"
+                required
+                defaultValue={operatives[0]?.value}
+                options={operatives}
+              />
+              <SelectField
+                name="scenarioId"
+                label="Scenario"
+                required
+                defaultValue={activeScenarios[0]?.id}
+                options={activeScenarios.map((scenario) => ({
+                  value: scenario.id,
+                  label: scenario.title,
+                }))}
+              />
               <FormField
                 name="objective"
                 label="Objective"

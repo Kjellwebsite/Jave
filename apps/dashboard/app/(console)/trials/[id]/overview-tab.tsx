@@ -13,7 +13,6 @@ import {
 } from '@jave/ui';
 import { LifecycleControls } from '@/components/trials/lifecycle-controls';
 import { StateTrack } from '@/components/trials/state-track';
-import { TrialClock } from '@/components/trials/trial-clock';
 import { categoryLabel } from '@/lib/trial-labels';
 import { dateToZonedInput } from '@/lib/trial-time';
 import { formatTimestamp } from '@/lib/time';
@@ -45,7 +44,6 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 
 /** State machine, clock, lifecycle controls, facts, sealed brief and rubric. */
 export function OverviewTab({ ctx, view, facetLabels, timeZone }: OverviewTabProps) {
-  const now = ctx.clock.now();
   const manage = can(ctx, 'canManageTrials');
   const channels = view.teams.filter((team) => team.discordChannelId).length;
   return (
@@ -54,17 +52,25 @@ export function OverviewTab({ ctx, view, facetLabels, timeZone }: OverviewTabPro
         <Panel eyebrow="STATE MACHINE" title="Where it stands">
           <div className="space-y-6">
             <StateTrack status={view.status} />
-            <div className="grid gap-5 sm:grid-cols-2">
-              <TrialClock trial={view} now={now} timeZone={timeZone} stacked />
-              {view.startedAt ? (
-                <div>
-                  <p className="type-eyebrow text-fg-subtle">STARTED</p>
-                  <p className="mt-1.5">
-                    <Mono>{formatTimestamp(view.startedAt, timeZone)}</Mono>
-                  </p>
-                </div>
-              ) : null}
-            </div>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+              <Fact label="STARTED">
+                {view.startedAt ? <Mono>{formatTimestamp(view.startedAt, timeZone)}</Mono> : '—'}
+              </Fact>
+              <Fact label="DEADLINE">
+                {view.timing.deadlineAt ? (
+                  <Mono>{formatTimestamp(view.timing.deadlineAt, timeZone)}</Mono>
+                ) : (
+                  'Set at start'
+                )}
+              </Fact>
+              <Fact label="ACCEPTS WORK UNTIL">
+                {view.timing.closesAt ? (
+                  <Mono>{formatTimestamp(view.timing.closesAt, timeZone)}</Mono>
+                ) : (
+                  '—'
+                )}
+              </Fact>
+            </dl>
             {view.cancelReason ? (
               <Callout tone="danger" title="CANCELLED">
                 {view.cancelReason}
@@ -164,7 +170,8 @@ export function OverviewTab({ ctx, view, facetLabels, timeZone }: OverviewTabPro
         </Panel>
       </div>
 
-      <div className="min-w-0 space-y-6 lg:sticky lg:top-20">
+      {/* On phones the next step comes first, before the long brief. */}
+      <div className="order-first min-w-0 space-y-6 lg:sticky lg:top-20 lg:order-none">
         <Panel eyebrow="CONTROL" title="Next step">
           {manage ? (
             <LifecycleControls

@@ -93,6 +93,7 @@ export default async function TrialPage({
   const requested = firstParam(query.tab) as Tab | undefined;
   const tab: Tab = requested && available.includes(requested) ? requested : 'overview';
   const facetLabels = new Map(catalog.facets.map((facet) => [facet.key, facet.label]));
+  const domainLabels = new Map(catalog.domains.map((domain) => [domain.key, domain.label]));
   const submissions = view.teams.reduce((sum, team) => sum + team.submissions.length, 0);
   const counts: Partial<Record<Tab, number>> = {
     participants: view.participants.length,
@@ -145,7 +146,12 @@ export default async function TrialPage({
           <OverviewTab ctx={ctx} view={view} facetLabels={facetLabels} timeZone={viewer.timeZone} />
         ) : null}
         {tab === 'participants' ? (
-          <ParticipantsTab ctx={ctx} view={view} timeZone={viewer.timeZone} />
+          <ParticipantsTab
+            ctx={ctx}
+            view={view}
+            timeZone={viewer.timeZone}
+            domainLabels={domainLabels}
+          />
         ) : null}
         {tab === 'teams' ? <TeamsTab ctx={ctx} view={view} params={query} /> : null}
         {tab === 'submissions' ? <SubmissionsTab view={view} timeZone={viewer.timeZone} /> : null}

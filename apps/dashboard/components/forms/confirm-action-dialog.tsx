@@ -6,12 +6,13 @@ import {
   type ReactNode,
   startTransition,
   useActionState,
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from 'react';
 import { Button, Dialog, DialogClose, DialogContent, DialogTrigger } from '@jave/ui';
-import { IDLE_STATE } from '@/lib/action-state';
+import { type ActionState, IDLE_STATE } from '@/lib/action-state';
 import { useToast } from '../toast';
 import { ActionFeedback, ActionStateProvider, type FormAction } from './action-form';
 
@@ -47,8 +48,20 @@ function ConfirmForm({
   onPendingChange,
   onSuccess,
 }: ConfirmFormProps) {
-  const [state, dispatch, pending] = useActionState(action, IDLE_STATE);
   const callbacks = useRef({ onPendingChange, onSuccess });
+  // Success is announced by the call itself, not by an effect on the result:
+  // a consequential action often changes the state that rendered this dialog
+  // (a lifecycle step, an authorization), the revalidated page unmounts it in
+  // the same update, and an effect in an unmounted component never runs.
+  const run = useCallback(
+    async (previous: ActionState, data: FormData): Promise<ActionState> => {
+      const next = await action(previous, data);
+      if (next.status === 'success') callbacks.current.onSuccess(next.message);
+      return next;
+    },
+    [action],
+  );
+  const [state, dispatch, pending] = useActionState(run, IDLE_STATE);
 
   useEffect(() => {
     callbacks.current = { onPendingChange, onSuccess };
@@ -57,10 +70,6 @@ function ConfirmForm({
   useEffect(() => {
     callbacks.current.onPendingChange(pending);
   }, [pending]);
-
-  useEffect(() => {
-    if (state.status === 'success') callbacks.current.onSuccess(state.message);
-  }, [state]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -132,6 +141,9 @@ export function ConfirmActionDialog({
           {...form}
           onPendingChange={setPending}
           onSuccess={(message) => {
+            // Raised while the action is still pending: the form unmounts with the
+            // dialog, so its pending effect would never report the end.
+            setPending(false);
             setOpen(false);
             toast({ text: message, tone: 'success' });
           }}

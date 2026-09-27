@@ -19,10 +19,13 @@ export function ParticipantsTab({
   ctx,
   view,
   timeZone,
+  domainLabels,
 }: {
   ctx: UserContext;
   view: StaffView;
   timeZone: string;
+  /** Capability domain labels by key (balanced assignment spreads primary domains). */
+  domainLabels: ReadonlyMap<string, string>;
 }) {
   const leads = new Set(
     view.teams.flatMap((team) =>
@@ -33,6 +36,9 @@ export function ParticipantsTab({
     memberId: participant.memberId,
     displayName: participant.displayName,
     handle: participant.handle,
+    domain: participant.primaryDomain
+      ? (domainLabels.get(participant.primaryDomain) ?? participant.primaryDomain)
+      : null,
     status: participant.status,
     teamName: participant.teamName,
     lead: leads.has(participant.memberId),

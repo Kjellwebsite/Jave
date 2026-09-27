@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Ban, Pencil, RefreshCw } from 'lucide-react';
+import { ArrowRight, Ban, Pencil } from 'lucide-react';
 import { Button, buttonStyles, Icon, Input, Textarea } from '@jave/ui';
 import type { TrialStatusKey } from '@/lib/trial-labels';
 import type { FormAction } from '../forms/action-form';
@@ -192,7 +192,7 @@ export function LifecycleControls({
           <ActionButton
             action={actions.reprovision}
             label="Re-sync channels"
-            icon={RefreshCw}
+            icon="resync"
             hidden={hidden}
             data-testid="reprovision"
           />

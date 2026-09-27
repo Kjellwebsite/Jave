@@ -1,9 +1,16 @@
 'use client';
 
-import type { LucideIcon } from 'lucide-react';
+import { PackagePlus, RefreshCw } from 'lucide-react';
 import { Button, type ButtonVariant } from '@jave/ui';
 import type { FormAction } from '../forms/action-form';
 import { useToastedAction } from '../toast';
+
+/**
+ * Icons by name: a Server Component cannot hand a component (a function) to
+ * this Client Component, so it names one instead.
+ */
+const ACTION_ICONS = { install: PackagePlus, resync: RefreshCw } as const;
+export type ActionIcon = keyof typeof ACTION_ICONS;
 
 export interface ActionButtonProps {
   action: FormAction;
@@ -12,7 +19,7 @@ export interface ActionButtonProps {
   hidden?: Record<string, string>;
   variant?: ButtonVariant;
   size?: 'sm' | 'md';
-  icon?: LucideIcon;
+  icon?: ActionIcon;
   'data-testid'?: string;
 }
 
@@ -43,7 +50,7 @@ export function ActionButton({
     <Button
       variant={variant}
       size={size}
-      iconLeft={icon}
+      iconLeft={icon ? ACTION_ICONS[icon] : undefined}
       loading={pending}
       onClick={submit}
       data-testid={testId}

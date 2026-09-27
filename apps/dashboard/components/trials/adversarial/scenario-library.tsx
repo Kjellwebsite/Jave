@@ -1,11 +1,10 @@
-import { BookLock, PackagePlus, Pencil, Plus, Trash2 } from 'lucide-react';
+import { BookLock, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Button,
   EmptyState,
   IconButton,
   Input,
   Mono,
-  NativeSelect,
   Panel,
   StatusBadge,
   Switch,
@@ -14,6 +13,7 @@ import {
 import type { FormAction } from '../../forms/action-form';
 import { ConfirmActionDialog } from '../../forms/confirm-action-dialog';
 import { FormField } from '../../forms/form-field';
+import { SelectField } from '../../forms/select-field';
 import { ActionButton } from '../action-button';
 
 export interface ScenarioRow {
@@ -75,13 +75,13 @@ function ScenarioFields({
           defaultValue={scenario?.title}
         />
       </FormField>
-      <FormField name="technique" label="Technique" required>
-        <NativeSelect
-          name="technique"
-          defaultValue={scenario?.technique ?? techniques[0]?.value}
-          options={techniques}
-        />
-      </FormField>
+      <SelectField
+        name="technique"
+        label="Technique"
+        required
+        defaultValue={scenario?.technique ?? techniques[0]?.value}
+        options={techniques}
+      />
       <FormField name="description" label="Description" required>
         <Textarea
           name="description"
@@ -177,7 +177,7 @@ export function ScenarioLibrary({
           <ActionButton
             action={actions.seed}
             label="Install starters"
-            icon={PackagePlus}
+            icon="install"
             size="sm"
             hidden={{ trialId }}
           />

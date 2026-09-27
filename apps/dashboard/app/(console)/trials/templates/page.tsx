@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowLeft, LayoutTemplate, PackagePlus, Plus } from 'lucide-react';
+import { ArrowLeft, LayoutTemplate, Plus } from 'lucide-react';
 import { can, trials } from '@jave/core';
 import {
   Badge,
@@ -62,7 +62,7 @@ export default async function TemplatesPage() {
             <ActionButton
               action={seedTemplatesAction}
               label="Install starters"
-              icon={PackagePlus}
+              icon="install"
               data-testid="seed-templates"
             />
             <Link href="/trials/templates/new" className={buttonStyles({ variant: 'primary' })}>

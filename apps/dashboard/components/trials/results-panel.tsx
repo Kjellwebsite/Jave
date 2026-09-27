@@ -8,7 +8,6 @@ import {
   Checkbox,
   EmptyState,
   Mono,
-  NativeSelect,
   RankBadge,
   StatusBadge,
   Table,
@@ -29,6 +28,7 @@ import {
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
+import { SelectField } from '../forms/select-field';
 
 export interface ResultRowData {
   memberId: string;
@@ -62,6 +62,15 @@ export interface ResultsPanelProps {
 const RANK_REASON_MAX = 2000;
 const OUTCOME_ORDER: readonly OutcomeKey[] = ['distinction', 'pass', 'fail', 'incomplete'];
 
+/** Outcome first (distinction … incomplete), then the final score, then the name. */
+function byOutcome(a: ResultRowData, b: ResultRowData): number {
+  return (
+    OUTCOME_ORDER.indexOf(a.outcome) - OUTCOME_ORDER.indexOf(b.outcome) ||
+    (b.finalScore ?? -1) - (a.finalScore ?? -1) ||
+    a.displayName.localeCompare(b.displayName)
+  );
+}
+
 function RankCell({
   row,
   trialId,
@@ -78,13 +87,16 @@ function RankCell({
     return (
       <span className="inline-flex items-center gap-2" data-rank-applied="true">
         <RankBadge verifiedRank={row.recommendedRank} size="sm" />
-        <span className="text-small text-fg-subtle">applied</span>
+        <span className="text-small text-fg-subtle">
+          {row.facetLabel ? `${row.facetLabel} · ` : ''}applied
+        </span>
       </span>
     );
   return (
     <span className="inline-flex flex-wrap items-center justify-end gap-2">
       <span className="text-small text-fg-subtle">
-        recommends <Mono className="text-fg">{row.recommendedRank}</Mono>
+        {row.facetLabel ? `${row.facetLabel} · ` : ''}recommends{' '}
+        <Mono className="text-fg">{row.recommendedRank}</Mono>
       </span>
       {canApply ? (
         <ConfirmActionDialog
@@ -100,21 +112,17 @@ function RankCell({
             </Button>
           }
         >
-          <FormField
+          <SelectField
             name="rank"
             label="Verified rank"
             description="The recommendation, or lower — a trial is evidence for at most what it measured."
             required
-          >
-            <NativeSelect
-              name="rank"
-              defaultValue={row.recommendedRank}
-              options={row.rankOptions.map((rank) => ({
-                value: rank,
-                label: rank === row.recommendedRank ? `${rank} — recommended` : rank,
-              }))}
-            />
-          </FormField>
+            defaultValue={row.recommendedRank}
+            options={row.rankOptions.map((rank) => ({
+              value: rank,
+              label: rank === row.recommendedRank ? `${rank} — recommended` : rank,
+            }))}
+          />
           <FormField name="reason" label="Note" description="Optional. Added to the rank history.">
             <Textarea name="reason" maxLength={RANK_REASON_MAX} rows={3} />
           </FormField>
@@ -151,6 +159,7 @@ export function ResultsPanel({
       </Card>
     );
   const unevaluated = rows.filter((row) => row.incompleteReason === 'not_evaluated').length;
+  const ordered = [...rows].sort(byOutcome);
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -160,7 +169,10 @@ export function ResultsPanel({
           </Badge>
           {OUTCOME_ORDER.map((outcome) => (
             <span key={outcome}>
-              {OUTCOME_LABELS[outcome]} <Mono className="text-fg">{counts[outcome]}</Mono>
+              {OUTCOME_LABELS[outcome]}{' '}
+              <Mono className={counts[outcome] > 0 ? 'text-fg' : 'text-fg-subtle'}>
+                {counts[outcome]}
+              </Mono>
             </span>
           ))}
         </p>
@@ -194,6 +206,15 @@ export function ResultsPanel({
           </ConfirmActionDialog>
         ) : null}
       </div>
+      {!published && unevaluated > 0 ? (
+        <Callout tone="warning" title="NOT YET SCORED">
+          {unevaluated} competitor(s) submitted work that nobody has scored. Score it in{' '}
+          <Link href={`/trials/${trialId}?tab=evaluation`} className="underline underline-offset-4">
+            Evaluation
+          </Link>{' '}
+          first — or publish them as INCOMPLETE, never as a fail.
+        </Callout>
+      ) : null}
       {!published ? (
         <p className="text-small text-fg-subtle">
           Preview uses today’s thresholds and team weight; they are read again at publish time.
@@ -213,7 +234,7 @@ export function ResultsPanel({
             </tr>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {ordered.map((row) => (
               <TableRow key={row.memberId} data-result={row.displayName}>
                 <TableCell>
                   <Link

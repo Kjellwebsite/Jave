@@ -66,7 +66,12 @@ function Roster({ members }: { members: readonly TeamMemberRow[] }) {
   return (
     <ul className="space-y-1.5">
       {members.map((member) => (
-        <li key={member.memberId} className="flex min-w-0 items-center justify-between gap-3">
+        <li
+          key={member.memberId}
+          data-member={member.displayName}
+          data-lead={member.lead || undefined}
+          className="flex min-w-0 items-center justify-between gap-3"
+        >
           <Link
             href={`/members/${member.memberId}`}
             className="truncate text-small text-fg-muted hover:text-fg"
@@ -230,6 +235,7 @@ export function TeamsPanel({
                 {preview.teams.map((team) => (
                   <li
                     key={team.name}
+                    data-preview-team={team.name}
                     className="rounded-md border border-dashed border-line-strong p-4"
                   >
                     <p className="type-eyebrow text-fg-muted">{team.name}</p>

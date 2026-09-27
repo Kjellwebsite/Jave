@@ -157,7 +157,7 @@ export default async function TrialsPage({
                 <TableHeaderCell>Trial</TableHeaderCell>
                 <TableHeaderCell className="hidden sm:table-cell">State</TableHeaderCell>
                 <TableHeaderCell className="hidden md:table-cell">Format</TableHeaderCell>
-                <TableHeaderCell className="text-right">Clock</TableHeaderCell>
+                <TableHeaderCell className="hidden text-right sm:table-cell">Clock</TableHeaderCell>
               </tr>
             </TableHead>
             <TableBody>
@@ -190,8 +190,9 @@ export default async function TrialsPage({
                             {trials.formatDuration(trial.durationMinutes)}
                           </span>
                         </span>
-                        <span className="mt-2 block sm:hidden">
+                        <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 sm:hidden">
                           <TrialStatusBadge status={trial.status} />
+                          <TrialClock trial={trial} now={now} timeZone={viewer.timeZone} />
                         </span>
                       </Link>
                     </TableCell>
@@ -203,7 +204,7 @@ export default async function TrialsPage({
                         {trial.teamSize}/team · {trials.formatDuration(trial.durationMinutes)}
                       </Mono>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="hidden text-right sm:table-cell">
                       <TrialClock trial={trial} now={now} timeZone={viewer.timeZone} />
                     </TableCell>
                   </TableRow>

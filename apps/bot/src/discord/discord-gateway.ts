@@ -18,6 +18,7 @@ import {
   type ChannelSubject,
   DiscordActionError,
   type DiscordGateway,
+  MESSAGE_NONCE_MAX,
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
@@ -556,5 +557,19 @@ export class DiscordJsGateway implements DiscordGateway {
       embedLinks: permissions.has(PermissionFlagsBits.EmbedLinks),
       readHistory: permissions.has(PermissionFlagsBits.ReadMessageHistory),
     };
+  }
+
+  async sendMessageOnce(
+    channelId: string,
+    payload: MessagePayload,
+    nonce: string,
+  ): Promise<SentMessage> {
+    if (nonce.length === 0 || nonce.length > MESSAGE_NONCE_MAX)
+      throw new DiscordActionError(`nonce must be 1–${MESSAGE_NONCE_MAX} characters`, null, true);
+    const channel = await this.textChannel(channelId);
+    const message = await attempt('send message', () =>
+      channel.send({ ...toMessageOptions(payload), nonce, enforceNonce: true }),
+    );
+    return { channelId: message.channelId, messageId: message.id };
   }
 }

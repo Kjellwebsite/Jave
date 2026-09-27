@@ -2,11 +2,15 @@ import {
   Bell,
   CalendarDays,
   ChartNoAxesColumn,
+  FileText,
   Gamepad2,
+  Inbox,
   LayoutGrid,
   type LucideIcon,
   ScrollText,
   Settings2,
+  ShieldAlert,
+  ShieldCheck,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -39,6 +43,18 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { href: '/members', label: 'Members', icon: Users, capability: 'canViewMembers' },
       { href: '/ranking', label: 'Ranking', icon: ChartNoAxesColumn, capability: 'canViewMembers' },
+      {
+        href: '/applications',
+        label: 'Applications',
+        icon: Inbox,
+        capability: 'canViewApplications',
+      },
+      {
+        href: '/verification',
+        label: 'Verification',
+        icon: ShieldCheck,
+        capability: 'canVerifyMembers',
+      },
     ],
   },
   {
@@ -48,7 +64,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/games', label: 'Games', icon: Gamepad2, capability: null },
     ],
   },
-  { label: 'SUPPORT & SAFETY', items: [] },
+  {
+    label: 'SUPPORT & SAFETY',
+    items: [
+      { href: '/moderation', label: 'Moderation', icon: ShieldAlert, capability: 'canModerate' },
+    ],
+  },
   { label: 'INTELLIGENCE', items: [] },
   {
     label: 'SYSTEM',
@@ -61,6 +82,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
 
 /** Account pages live in the user menu and top bar, not the sidebar. */
 export const ACCOUNT_ITEMS: readonly NavItem[] = [
+  // Before /me: the breadcrumb takes the first item whose path matches.
+  { href: '/me/application', label: 'My application', icon: FileText, capability: null },
   { href: '/me', label: 'My profile', icon: UserRound, capability: null },
   { href: '/notifications', label: 'Notifications', icon: Bell, capability: null },
 ];

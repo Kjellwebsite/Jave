@@ -3,6 +3,7 @@ import {
   type ChannelSubject,
   DiscordActionError,
   type DiscordGateway,
+  MESSAGE_NONCE_MAX,
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
@@ -294,5 +295,19 @@ export class FakeDiscordGateway implements DiscordGateway {
     if (this.channelAccessOverrides.has(key)) return this.channelAccessOverrides.get(key) ?? null;
     if (subject.kind === 'member' && !this.members.has(subject.userId)) return null;
     return { ...FULL_ACCESS };
+  }
+  /** channelId:nonce → message id, like Discord's enforce_nonce window. */
+  readonly nonces = new Map<string, string>();
+  async sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string) {
+    this.record('sendMessageOnce', channelId, payload, nonce);
+    if (nonce.length === 0 || nonce.length > MESSAGE_NONCE_MAX)
+      throw new DiscordActionError('invalid nonce', 50035, true);
+    const key = `${channelId}:${nonce}`;
+    const existing = this.nonces.get(key);
+    if (existing) return { channelId, messageId: existing };
+    const messageId = nextId();
+    this.messages.set(messageId, { channelId, payload });
+    this.nonces.set(key, messageId);
+    return { channelId, messageId };
   }
 }

@@ -82,6 +82,17 @@ export function wireClient(client: Client, app: BotApp, guildId: string, logger:
         guildId: updated.guildId,
         content: updated.content,
         editedAt: updated.editedAt ?? new Date(),
+        author: {
+          id: updated.author.id,
+          username: updated.author.username,
+          globalName: updated.author.globalName,
+          avatar: updated.author.avatar,
+          bot: updated.author.bot,
+        },
+        webhookId: updated.webhookId,
+        contentEdited: updated.editedTimestamp !== null,
+        mentionCount: updated.mentions.users.size + updated.mentions.roles.size,
+        mentionsEveryone: updated.mentions.everyone,
       }),
     );
   });

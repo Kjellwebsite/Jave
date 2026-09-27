@@ -165,4 +165,15 @@ export interface DiscordGateway {
   // Permissions
   /** Null when the channel or member is unknown, or the channel is outside the guild. */
   channelAccess(channelId: string, subject: ChannelSubject): Promise<ChannelAccess | null>;
+
+  // Idempotent posting
+  /**
+   * Post with an enforced nonce (≤ 25 characters, e.g. a prefix plus the job
+   * id): within Discord's nonce window a retry with the same nonce returns
+   * the message already posted instead of posting a duplicate.
+   */
+  sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string): Promise<SentMessage>;
 }
+
+/** Discord caps message nonces at 25 characters. */
+export const MESSAGE_NONCE_MAX = 25;

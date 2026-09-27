@@ -43,6 +43,8 @@ export const DUPLICATE_MIN_LENGTH = 4;
 
 /** Case history returned in one call. */
 export const MAX_CASE_HISTORY = 100;
+/** Case numbers are Postgres integers; larger lookups cannot match. */
+export const MAX_CASE_NUMBER = 2_147_483_647;
 /** Expired quarantines released per sweep run. */
 export const SWEEP_BATCH_SIZE = 100;
 export const SWEEP_INTERVAL_MS = MINUTE;
@@ -53,3 +55,7 @@ export const MAX_OWN_INVITE_CODES = 1000;
 
 /** Staff alert fan-out cap per security event. */
 export const ALERT_RECIPIENT_LIMIT = 50;
+
+/** Member message reports: at most this many per reporter per window (staff alert fan-out guard). */
+export const MESSAGE_REPORT_LIMIT = 5;
+export const MESSAGE_REPORT_WINDOW_SECONDS = 600;

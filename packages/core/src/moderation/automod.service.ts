@@ -112,7 +112,9 @@ export async function applyAutomodDecision(
   const user = await upsertDiscordUser(ctx, data.discordUser);
   const target = await loadTarget(ctx, { userId: user.id });
   const settings = await getSettings(ctx, 'moderation');
+  // Bot accounts are integrations: flagged for review, never deleted or actioned.
   const protectedTarget =
+    target.isBot ||
     holdsStaffRole(target.roles) ||
     target.roles.some((role) => settings.exemptRoles.includes(role));
   const firstMessageId = data.messageIds[0] ?? '';
@@ -141,7 +143,11 @@ export async function applyAutomodDecision(
     const base = { securityEventId: event.id, caseId: null, duplicate: false };
     if (!created) return { ...base, applied: 'none', duplicate: true, note: 'already processed' };
     if (protectedTarget) {
-      return { ...base, applied: 'flagged', note: 'author is staff or exempt; flagged for review' };
+      return {
+        ...base,
+        applied: 'flagged',
+        note: 'author is staff, exempt or a bot; flagged for review',
+      };
     }
 
     const reference = securityReference(event.number);

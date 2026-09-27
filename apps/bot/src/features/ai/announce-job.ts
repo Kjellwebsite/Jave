@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { aiActionProposals } from '@jave/database';
 import { ai, type JobHandler, PermanentJobError, truncate } from '@jave/core';
-import { DiscordActionError, MESSAGE_NONCE_MAX_LENGTH } from '../../discord/gateway';
+import { DiscordActionError, MESSAGE_NONCE_MAX } from '../../discord/gateway';
 import type { BotServices } from '../../runtime';
 import { panel } from '../../ui/components';
 import { BRAND, COLORS, GLYPH } from '../../ui/theme';
@@ -16,7 +16,7 @@ const MAX_DELIVERY_ERROR = 500;
  */
 export function announceNonce(proposalId: string): string {
   const digest = createHash('sha256').update(proposalId).digest('base64url');
-  return `${NONCE_PREFIX}${digest}`.slice(0, MESSAGE_NONCE_MAX_LENGTH);
+  return `${NONCE_PREFIX}${digest}`.slice(0, MESSAGE_NONCE_MAX);
 }
 
 /**

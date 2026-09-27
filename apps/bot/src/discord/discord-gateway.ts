@@ -16,9 +16,9 @@ import {
 import {
   DiscordActionError,
   type DiscordGateway,
+  MESSAGE_NONCE_MAX,
   type GuildMemberSnapshot,
   type InviteSnapshot,
-  MESSAGE_NONCE_MAX_LENGTH,
   type MessagePayload,
   type PermissionOverwriteSpec,
   type ReadableMessage,
@@ -430,9 +430,8 @@ export class DiscordJsGateway implements DiscordGateway {
     payload: MessagePayload,
     nonce: string,
   ): Promise<SentMessage> {
-    if (nonce.length === 0 || nonce.length > MESSAGE_NONCE_MAX_LENGTH) {
-      throw new DiscordActionError('message nonce must be 1-25 characters', null, true);
-    }
+    if (nonce.length === 0 || nonce.length > MESSAGE_NONCE_MAX)
+      throw new DiscordActionError(`nonce must be 1–${MESSAGE_NONCE_MAX} characters`, null, true);
     const channel = await this.textChannel(channelId);
     const message = await attempt('send message', () =>
       channel.send({ ...toMessageOptions(payload), nonce, enforceNonce: true }),
@@ -467,7 +466,8 @@ export class DiscordJsGateway implements DiscordGateway {
       id: message.id,
       channelId: message.channelId,
       authorId: message.author.id,
-      authorName: message.member?.displayName ?? message.author.globalName ?? message.author.username,
+      authorName:
+        message.member?.displayName ?? message.author.globalName ?? message.author.username,
       authorIsBot: message.author.bot,
       content: message.content,
       embedsText: message.embeds

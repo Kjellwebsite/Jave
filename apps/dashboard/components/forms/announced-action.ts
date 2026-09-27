@@ -15,7 +15,7 @@ export function useAnnouncedAction(action: FormAction): FormAction {
   return useCallback<FormAction>(
     async (state, data) => {
       const result = await action(state, data);
-      if (result.status === 'success') toast(result.message);
+      if (result.status === 'success') toast({ text: result.message, tone: 'success' });
       return result;
     },
     [action, toast],

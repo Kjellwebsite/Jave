@@ -183,6 +183,8 @@ describe('navigation', () => {
   it('resolves page context from nested paths', () => {
     expect(navContext('/members/123')).toEqual({ group: 'PEOPLE', label: 'Members' });
     expect(navContext('/notifications')).toEqual({ group: 'ACCOUNT', label: 'Notifications' });
+    expect(navContext('/me/application')).toEqual({ group: 'ACCOUNT', label: 'My application' });
+    expect(navContext('/me')).toEqual({ group: 'ACCOUNT', label: 'My profile' });
     expect(navContext('/nowhere')).toBeNull();
     expect(isActivePath('/membership', '/members')).toBe(false);
   });

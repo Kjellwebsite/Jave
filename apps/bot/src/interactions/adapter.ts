@@ -105,6 +105,7 @@ function targetMessage(interaction: MessageContextMenuCommandInteraction): Targe
     embedsText: m.embeds
       .map((e) => [e.title, e.description].filter(Boolean).join('\n'))
       .filter(Boolean),
+    webhookId: m.webhookId,
   };
 }
 

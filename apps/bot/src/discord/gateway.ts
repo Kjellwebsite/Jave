@@ -65,9 +65,6 @@ export interface SentMessage {
   messageId: string;
 }
 
-/** Discord caps message nonces at 25 characters. */
-export const MESSAGE_NONCE_MAX_LENGTH = 25;
-
 /** A guild message read on behalf of a member (see `fetchMessageAs`). */
 export interface ReadableMessage {
   id: string;
@@ -154,14 +151,15 @@ export interface DiscordGateway {
   ): Promise<void>;
   cancelScheduledEvent(eventId: string, reason: string): Promise<void>;
 
-  // Messages (idempotent sends, member-scoped reads)
+  // Idempotent posting
   /**
-   * Send with an idempotency nonce (≤ MESSAGE_NONCE_MAX_LENGTH characters):
-   * Discord returns the message the bot already created with the same nonce in
-   * the last few minutes instead of posting a second one, so a retried job
-   * cannot double-post.
+   * Post with an enforced nonce (≤ 25 characters, e.g. a prefix plus the job
+   * id): within Discord's nonce window a retry with the same nonce returns
+   * the message already posted instead of posting a duplicate.
    */
   sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string): Promise<SentMessage>;
+
+  // Member-scoped reads
   /**
    * Read one home-guild message on behalf of a member. Returns null when the
    * message or channel does not exist, is outside the home guild, or the
@@ -175,3 +173,6 @@ export interface DiscordGateway {
     messageId: string,
   ): Promise<ReadableMessage | null>;
 }
+
+/** Discord caps message nonces at 25 characters. */
+export const MESSAGE_NONCE_MAX = 25;

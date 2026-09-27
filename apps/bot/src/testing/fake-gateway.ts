@@ -1,6 +1,7 @@
 import {
   DiscordActionError,
   type DiscordGateway,
+  MESSAGE_NONCE_MAX,
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
@@ -263,6 +264,8 @@ export class FakeDiscordGateway implements DiscordGateway {
   }
   async sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string) {
     this.record('sendMessageOnce', channelId, payload, nonce);
+    if (nonce.length === 0 || nonce.length > MESSAGE_NONCE_MAX)
+      throw new DiscordActionError('invalid nonce', 50035, true);
     const key = `${channelId}:${nonce}`;
     const existing = this.nonces.get(key);
     if (existing) return { channelId, messageId: existing };

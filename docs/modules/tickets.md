@@ -43,8 +43,9 @@ Capabilities: `canHandleTickets` (moderator and up), `canManageTickets`
 | Action                                                  | Who                                                                                                        |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `openTicket`                                            | Any member for themselves (`tickets.enabled`, `maxOpenPerUser`, `openRatePerHour`); not quarantined/banned |
+| `assertCanOpenTicket`                                   | Same as `openTicket`: a read-only preflight (no rate-limit hit, no lock) surfaces run before the form      |
 | `getTicket`, `getTicketCard`                            | Opener (requester view) or handler (full view)                                                             |
-| `listTickets`                                           | Handlers: all tickets + filters. Everyone else (and handlers with `mine`): own tickets                     |
+| `listTickets`                                           | Handlers: all tickets + filters (own tickets stay in requester view). Everyone else (and `mine`): own      |
 | `claimTicket`                                           | Handler, unassigned active ticket                                                                          |
 | `unclaimTicket`                                         | The assignee, or a manager                                                                                 |
 | `transferTicket`                                        | The assignee, or a manager → a user who currently holds `canHandleTickets`                                 |
@@ -61,6 +62,8 @@ Rules that hold everywhere:
 - **Nobody handles their own ticket.** Staff who open a ticket get the
   requester view of it: no internal notes, no staff events, no SLA or AI data;
   they cannot claim it, prioritise it, note on it, or receive it by transfer.
+  That holds inside the staff list too: `listTickets` returns their own rows
+  with `sla: null`, and the `breached` filter (either way) leaves them out.
 - **No IDOR.** A ticket the caller may not see is reported as _not found_ and
   the attempt is audited (`access.denied`, written after the transaction rolls back).
 - **Requester view** omits internal notes, deleted messages, edit history,
@@ -68,6 +71,14 @@ Rules that hold everywhere:
   `created claimed status_changed closed reopened archived`.
 - Internal notes never reach Discord and do not move `lastActivityAt`
   (which the requester can see).
+
+## Lists
+
+`listTickets` filters: `status` (default: every status but `archived`),
+`category`, `priority`, `search` (subject), `number` (exact ticket number, for
+`#0042` lookups), and for handlers `assignee` (`me`, `none`, a user id),
+`breached` and `openerUserId`. Every filter runs inside the caller's scope:
+members only ever match their own tickets.
 
 ## SLA
 
@@ -270,6 +281,34 @@ Rate-limited by `settings.ai.dailyRequestsPerUser` per handler; honours
 - Requester DM with transcript on close: not sent by core; the bot may attach
   `renderTranscript` output to the `ticket.updated` delivery later.
 
+## Surfaces
+
+Full reference: [docs/commands/tickets.md](../commands/tickets.md).
+
+- **Discord** (`apps/bot/src/features/tickets`): `/ticket` (open · mine · view ·
+  close · reopen; staff: queue · panel · claim · unclaim · transfer · priority ·
+  waiting · resume · note · summary), context-aware inside a ticket thread, with
+  typed ticket numbers resolved through the `number` filter; the **Member
+  tickets** user context menu (every status, link to the full history); the
+  public OPEN A TICKET panel (category select → `assertCanOpenTicket` → modal);
+  thread-card CLAIM / CLOSE / MANAGE / REOPEN buttons, MANAGE opening an
+  ephemeral staff panel (claim or release, wait or resume, note, summary,
+  close, priority select, transfer picker); the four `discord.tickets.*` job
+  handlers, which unarchive a thread that archived itself while idle before
+  acting in it and resume a close at the step it stopped; message
+  create/edit/delete and bulk-delete listeners feeding `recordMessage*`.
+- **Dashboard** (`apps/dashboard/app/(console)/tickets`): `/tickets` queue with
+  stat strip, quick views, filters (including one member's history,
+  `?opener=<userId>`), SLA countdowns and bulk actions (or the member's own
+  tickets); `/tickets/[id]` with conversation, timeline, controls, internal
+  notes, AI summary panel, and for staff a link from the requester to their
+  history; `POST /tickets/[id]/transcript` for audited HTML/Markdown exports.
+- **AI summary wiring**: both surfaces pass
+  `ai.ticketSummarizer(ctx, deps, surface)` (core `ai` module) to
+  `summarizeTicket` only when an AI provider is configured in that process
+  (`BotServices.ai`, the dashboard's `server/tickets/ai.ts`); otherwise they
+  show DISABLED.
+
 ## Known limitations
 
 - A transcript is capped at 5000 messages (flagged when truncated); very large
@@ -292,3 +331,8 @@ Rate-limited by `settings.ai.dailyRequestsPerUser` per handler; honours
   (the card does not carry the current reason).
 - Deleted thread messages are retained (flagged) for staff; purging on request
   is not implemented.
+- `close_thread` keeps its progress in the job's last error (and, after a
+  worker crash, in the thread's lock). A worker that dies between posting the
+  closing card and locking the thread posts the card again on the retry.
+- In the staff queue sorted by deadline, a handler's own ticket still sits at
+  its deadline position, although its SLA fields are hidden.

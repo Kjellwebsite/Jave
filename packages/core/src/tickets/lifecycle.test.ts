@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { domainEvents, ticketMessages, tickets } from '@jave/database';
 import { DAY, HOUR, MINUTE } from '../kernel/clock';
-import { ConflictError, DisabledError, InvalidStateError } from '../kernel/errors';
+import {
+  ConflictError,
+  DisabledError,
+  InvalidStateError,
+  RateLimitedError,
+} from '../kernel/errors';
 import { revokeRole } from '../identity/roles.service';
 import { updateSettings } from '../settings/settings.service';
 import type { TestKit } from '../testing';
@@ -21,7 +26,13 @@ import {
   REOPEN_THREAD_JOB,
   UPDATE_CARD_JOB,
 } from './discord-jobs';
-import { archiveTicket, closeTicket, openTicket, reopenTicket } from './lifecycle.service';
+import {
+  archiveTicket,
+  assertCanOpenTicket,
+  closeTicket,
+  openTicket,
+  reopenTicket,
+} from './lifecycle.service';
 import { recordMessage } from './messages.service';
 import { runArchiveSweep } from './sweeps';
 import { getTicket } from './queries.service';
@@ -123,6 +134,29 @@ describe('tickets: lifecycle', INTEGRATION_SUITE, () => {
     await expect(openAs(kit, member)).rejects.toBeInstanceOf(ConflictError);
     await closeTicket(kit.as(member), { ticketId: first.id, reason: 'Solved it myself.' });
     await expect(openAs(kit, member)).resolves.toMatchObject({ status: 'open' });
+  });
+
+  it('assertCanOpenTicket refuses exactly what openTicket would, without spending the rate limit', async () => {
+    const member = await kit.member();
+    await updateSettings(kit.system, 'tickets', { maxOpenPerUser: 1, openRatePerHour: 3 });
+    for (let i = 0; i < 5; i++) await assertCanOpenTicket(kit.as(member));
+    const first = await openAs(kit, member);
+    const limit = await assertCanOpenTicket(kit.as(member)).catch((error: unknown) => error);
+    expect(limit).toBeInstanceOf(ConflictError);
+    await expect(openAs(kit, member)).rejects.toThrow((limit as Error).message);
+
+    await closeTicket(kit.as(member), { ticketId: first.id, reason: 'Solved it myself.' });
+    await openAs(kit, member).then((t) =>
+      closeTicket(kit.as(member), { ticketId: t.id, reason: 'Solved again.' }),
+    );
+    // Three attempts (one refused by the open limit) spent the hourly budget of 3.
+    await expect(assertCanOpenTicket(kit.as(member))).rejects.toBeInstanceOf(RateLimitedError);
+    await expect(openAs(kit, member)).rejects.toBeInstanceOf(RateLimitedError);
+    kit.clock.advance(HOUR + MINUTE);
+    await expect(assertCanOpenTicket(kit.as(member))).resolves.toBeUndefined();
+
+    await updateSettings(kit.system, 'tickets', { enabled: false });
+    await expect(assertCanOpenTicket(kit.as(member))).rejects.toBeInstanceOf(DisabledError);
   });
 
   it('runs the full lifecycle: claim → waiting → reply → close → reopen → close → archive', async () => {

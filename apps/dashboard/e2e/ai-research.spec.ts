@@ -10,6 +10,11 @@ const NEW_PAPER = {
 };
 const UNKNOWN_ITEM = '/research/00000000-0000-4000-8000-000000000000';
 
+/** The toast region where server actions report their result. */
+function toasts(page: Page) {
+  return page.getByRole('list', { name: 'Notifications' });
+}
+
 /** A titled Panel (a <section> whose header strip carries the title). */
 function panelTitled(page: Page, title: string) {
   return page.locator('section', { has: page.getByRole('heading', { name: title, exact: true }) });
@@ -82,8 +87,11 @@ test.describe('JAVE AI console', () => {
       .getByRole('dialog', { name: 'Post announcement' })
       .getByRole('button', { name: 'Post announcement' })
       .click();
-    await expect(page.getByText(/ANNOUNCEMENT QUEUED/)).toBeVisible();
-    await expect(proposal(page, 'Your proposals', 'Announcement').first()).toContainText('QUEUED');
+    // The REPORT reads the same in the toast and on the card.
+    await expect(toasts(page).getByText(/ANNOUNCEMENT QUEUED/)).toBeVisible();
+    const queued = proposal(page, 'Your proposals', 'Announcement').first();
+    await expect(queued).toContainText('QUEUED');
+    await expect(queued).toContainText(/ANNOUNCEMENT QUEUED/);
   });
 
   test('the ledger shows metadata only, everyone to auditors', async ({ page }) => {

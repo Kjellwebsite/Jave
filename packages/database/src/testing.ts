@@ -174,8 +174,9 @@ async function ensureTemplate(adminUrl: string): Promise<string> {
     await lock`select pg_advisory_lock(${TEMPLATE_LOCK_KEY})`;
     const [existing] = await lock`select 1 from pg_database where datname = ${name}`;
     if (existing) return name;
-    // Templates of other migration sets belong to other checkouts sharing this
-    // server; never drop them here (`pnpm --filter @jave/database test:db:clean`).
+    // Templates of other migration sets (`jave_tpl_<hash>`) may belong to other
+    // checkouts running tests on this server right now: never drop them here.
+    // Operators remove stale ones by hand once no test run uses them.
     const building = `${name}_${randomBytes(4).toString('hex')}`;
     await lock.unsafe(`create database ${building}`);
     const client = quiet(databaseUrl(adminUrl, building), { max: 1 });

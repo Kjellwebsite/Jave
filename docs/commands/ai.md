@@ -24,7 +24,7 @@ text looked like instructions (treated as data), when the answer was cut, and on
 | `/analyze [text]`                   | `canUseAI` | Claims, evidence, gaps and open questions. Modal without argument.                                                                                                                                                        |
 | `/brainstorm [topic] [constraints]` | `canUseAI` | Concrete ideas and how to test the strongest. Modal without arguments.                                                                                                                                                    |
 | `/jave ai-usage`                    | everyone   | Your requests today against the limit. `canViewAnalytics` adds organization totals (aggregates only); `canViewAuditLogs` adds the heaviest members today. Counts only.                                                    |
-| `/jave status`                      | everyone   | Includes the **AI** row: `—` disabled (`AI_PROVIDER=disabled`), `✓` reachable, `✕` down. `provider.health()` is cached for 60 s.                                                                                          |
+| `/jave status`                      | everyone   | Includes the **AI** row: `—` disabled (`AI_PROVIDER=disabled`), `✓` reachable, `✕` down (unreachable, or an invalid AI configuration — the startup log names the variable). `provider.health()` is cached for 60 s.       |
 
 ## Message context menus (right-click a message → Apps)
 
@@ -58,12 +58,21 @@ after a lost response gets the same message back), then calls `ai.recordAnnounce
 (`posted` + message id). A permanent Discord failure (missing channel, missing permissions) or
 the last attempt records `failed` with the reason and dead-letters (`PermanentJobError`).
 
+## When AI is unavailable
+
+`AI_PROVIDER=disabled` (the default), `settings.ai.enabled = false`, or an invalid AI
+configuration (the bot keeps running without a provider; the startup log names the variable,
+never its value) all read the same in Discord: **DISABLED — JAVE AI is currently disabled.**, recorded in
+the ledger as `disabled`. Nothing is sent to a model and nothing is invented. A Discord failure
+while reading a linked message reads **SERVICE UNAVAILABLE**; nothing is sent to the model.
+
 ## Dashboard — `/ai` (`canUseAI`)
 
 - **Overview** — provider, model and reachability (detail and check time for
-  `canViewSystemStatus`; configuration errors name the variable, never the value), the limits,
-  your usage today; organization totals today (`canViewAnalytics`); usage per member today
-  (`canViewAuditLogs`).
+  `canViewSystemStatus`; configuration errors name the variable, never the value), your usage
+  today, the limits, where to use JAVE AI in Discord (the commands and the message menus the
+  viewer can use); organization totals today (`canViewAnalytics`); usage per member today
+  (`canViewAuditLogs`, ties in name order).
 - **Proposals** — _Awaiting your confirmation_ (`canConfirmAIActions`, kinds whose capability you
   hold, other members' drafts), _Your proposals_ with their REPORT, and _Draft with JAVE AI_
   (announcement: `canBroadcast`; mission: `canManageMissions`). CONFIRM and REJECT open a dialog

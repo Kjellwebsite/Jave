@@ -114,6 +114,30 @@ describe('research feature', SUITE, () => {
       expect(await bot.kit.db.select().from(researchItems)).toHaveLength(0);
     });
 
+    it('BREAK: a DOI crafted to escape its code span never renders a masked link', async () => {
+      // Any non-space character is legal in a DOI suffix, so the dashboard form accepts this.
+      const crafted = '10.1234/a`[verify](https://evil.example/login)`b';
+      const { item } = await research.saveResearchItem(
+        bot.kit.as(member.actor),
+        { doi: crafted },
+        { origin: 'manual' },
+      );
+      expect(item.doi).toBe(crafted);
+      const { interaction } = await bot.run({
+        kind: 'slash',
+        name: 'sidus',
+        subcommand: 'view',
+        user: member.user,
+        options: { item: item.id },
+      });
+      const embeds = interaction.lastPayload()!.embeds ?? [];
+      const identifiers = embeds
+        .flatMap((embed) => embed.fields ?? [])
+        .find((embedField) => embedField.name === 'IDENTIFIERS');
+      expect(identifiers?.value).toMatch(/^DOI `[^`]+`$/);
+      expect(identifiers?.value).toContain('[verify](https://evil.example/login)');
+    });
+
     it('BREAK: a duplicate of an item archived by someone else is named, never shown', async () => {
       await saveMessage(reviewer.user);
       const itemId = await savedItemId();

@@ -30,12 +30,7 @@ export function YourUsagePanel({ usage }: { usage: MyUsage }) {
     <Panel title="Your usage today" description="Counted per UTC day, across Discord and here.">
       <div className="space-y-4">
         <p className="flex items-baseline gap-2">
-          <span
-            className={cx(
-              'font-display text-[34px] font-medium leading-none tabular-nums',
-              usage.used === 0 ? 'text-fg-subtle' : 'text-fg',
-            )}
-          >
+          <span className={cx('type-numeral', usage.used === 0 ? 'text-fg-subtle' : 'text-fg')}>
             {formatCount(usage.used)}
           </span>
           <span className="text-body text-fg-subtle">/ {formatCount(usage.limit)} requests</span>

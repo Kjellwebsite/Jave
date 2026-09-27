@@ -40,6 +40,10 @@ const STATUS_COLORS: Readonly<Record<research.ResearchStatus, number>> = {
 };
 
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
+/** Longest identifier shown on a card (core caps DOIs well below this). */
+const IDENTIFIER_MAX = 300;
+/** U+02CB MODIFIER LETTER GRAVE ACCENT: reads like a backtick, never closes a code span. */
+const BACKTICK_LOOKALIKE = '\u02CB';
 
 /**
  * A URL safe to render as a link button: http(s), within Discord's limit and
@@ -84,10 +88,19 @@ function describe(item: Item): string {
   return lines.join('\n');
 }
 
+/**
+ * An identifier as inline code. Markdown is inert inside a code span, so only
+ * a backtick could end it early (a DOI suffix may legally contain one): it is
+ * replaced by a look-alike so the rest can never render as a masked link.
+ */
+export function codeSpan(value: string): string {
+  return `\`${clip(value, IDENTIFIER_MAX).replaceAll('`', BACKTICK_LOOKALIKE)}\``;
+}
+
 function identifiers(item: Item): string | null {
   const parts = [
-    item.doi ? `DOI \`${item.doi}\`` : null,
-    item.arxivId ? `arXiv \`${item.arxivId}\`` : null,
+    item.doi ? `DOI ${codeSpan(item.doi)}` : null,
+    item.arxivId ? `arXiv ${codeSpan(item.arxivId)}` : null,
   ].filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(` ${GLYPH.dot} `) : null;
 }

@@ -16,7 +16,9 @@ Replies are ephemeral.
 | `/sidus review item`           | `canReviewResearch` | Opens the review modal. Never for your own submission.                                                                                                                                                                     |
 
 The **Source** button is shown only for http(s) links that are not Discord links; a Discord CDN
-attachment or message from a private channel is never presented as a public reference.
+attachment or message from a private channel is never presented as a public reference. DOIs and
+arXiv IDs are shown as inline code; a backtick inside one (legal in a DOI suffix) is replaced by a
+look-alike, so an identifier can never end its code span and render as a link or formatting.
 
 ## Message context menu — `Save to Sidus` (`canViewMembers`, good standing)
 
@@ -54,8 +56,11 @@ The research module defines **no `discord.*` jobs**. Its core jobs run in the bo
 ## Dashboard
 
 - `/research` (`canViewMembers`) — search (title, summary, DOI) and filters (status, topic, tag,
-  my submissions), Sidus integration state, **Add reference** (title / DOI / arXiv / link, topic,
-  tags, summary; members in good standing; a duplicate opens the existing item).
+  my submissions), the Sidus integration state (**SIDUS CONFIGURED** — credentials present, not a
+  reachability claim; **SIDUS NOT CONFIGURED**; **SIDUS MISCONFIGURED** — the variable is named
+  to `canViewSystemStatus` on the item page), **Add reference** (title / DOI / arXiv / link,
+  topic, tags, summary; members in good standing; a duplicate opens the existing item). On
+  phones the status folds under the reference.
 - `/research/<id>` — reference (DOI and arXiv links, public source link), summary, Sidus sync
   (status, external id, last push, reason), provenance (submitter, origin message, metadata
   lookup, reviewer, version). Reviewers see the **Review** form (or **Restore** for archived

@@ -189,6 +189,14 @@ describe('AI surfaces: ticket summaries and the request ledger', INTEGRATION_SUI
       await expect(getUsageByUser(kit.as(a))).rejects.toBeInstanceOf(ForbiddenError);
     });
 
+    it('per-member usage ties read in a stable order: by name, then id', async () => {
+      const charlie = await kit.member({ roles: ['verified'], username: 'charlie' });
+      await ask(kit.as(charlie), deps(), { question: 'Four?' });
+      const core = await kit.member({ roles: ['core'] });
+      const usage = await getUsageByUser(kit.as(core));
+      expect(usage.map((u) => u.displayName)).toEqual(['alpha', 'bravo', 'charlie']);
+    });
+
     it('counts per user follow the daily-limit rule', async () => {
       await updateSettings(kit.system, 'ai', { dailyRequestsPerUser: 2 });
       await expect(ask(kit.as(a), deps(), { question: 'Over?' })).rejects.toThrow();

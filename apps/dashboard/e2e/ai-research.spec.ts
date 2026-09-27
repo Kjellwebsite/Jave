@@ -226,9 +226,11 @@ test.describe('research library', () => {
     await openItem(page, SEEDED_PAPERS.sleep);
     await expect(page.getByRole('form', { name: 'Review' })).toHaveCount(0);
     await expect(page.getByTestId('push-sidus')).toHaveCount(0);
-    const response = await page.goto(UNKNOWN_ITEM);
-    expect(response?.status()).toBe(404);
+    // The page streams behind its loading skeleton, so the refusal is the NOT FOUND
+    // view rather than a 404 status: unknown and hidden items look the same.
+    await page.goto(UNKNOWN_ITEM);
     await expect(page.getByText('NOT FOUND')).toBeVisible();
+    await expect(page.getByRole('form', { name: 'Review' })).toHaveCount(0);
     await page.close();
   });
 });

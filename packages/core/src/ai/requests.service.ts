@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, or, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { aiRequests, aiRequestStatus, members } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
@@ -146,7 +146,8 @@ export async function getUsageByUser(
     .leftJoin(members, eq(members.userId, aiRequests.userId))
     .where(gte(aiRequests.createdAt, startOfUtcDay(ctx.clock.now())))
     .groupBy(aiRequests.userId, members.displayName)
-    .orderBy(desc(counted), desc(sql`count(*)`))
+    // Ties read in a stable order (name, then id) so the table does not reshuffle.
+    .orderBy(desc(counted), desc(sql`count(*)`), asc(members.displayName), asc(aiRequests.userId))
     .limit(limit);
   return rows.flatMap((row) => (row.userId ? [{ ...row, userId: row.userId }] : []));
 }

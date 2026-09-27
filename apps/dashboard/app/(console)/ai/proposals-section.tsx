@@ -1,6 +1,6 @@
 import { Inbox, Sparkles } from 'lucide-react';
 import { ai, CAPABILITY_KEYS, type Capability, can, getSettings, userNames } from '@jave/core';
-import { EmptyState, Pagination, Panel } from '@jave/ui';
+import { cx, EmptyState, Pagination, Panel } from '@jave/ui';
 import { DraftForm } from '@/components/ai/draft-form';
 import {
   ProposalCard,
@@ -102,6 +102,7 @@ export async function ProposalsSection({
   });
   const canDraftAnnouncement = can(ctx, 'canBroadcast');
   const canDraftMission = can(ctx, 'canManageMissions');
+  const canDraft = canDraftAnnouncement || canDraftMission;
   const draftingAvailable = settings.enabled && status.state !== 'disabled';
 
   return (
@@ -133,7 +134,12 @@ export async function ProposalsSection({
         </Panel>
       ) : null}
 
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div
+        className={cx(
+          'grid grid-cols-1 items-start gap-6',
+          canDraft && 'xl:grid-cols-[minmax(0,1fr)_380px]',
+        )}
+      >
         <Panel
           title="Your proposals"
           description="What JAVE AI drafted for you, and what happened to it."
@@ -144,7 +150,11 @@ export async function ProposalsSection({
               compact
               icon={Sparkles}
               title="NO PROPOSALS YET"
-              description="Drafts appear here as pending proposals. Nothing runs until someone confirms."
+              description={
+                canDraft
+                  ? 'Draft an announcement or a mission: it waits here as a pending proposal. Nothing runs until someone confirms.'
+                  : 'Proposals JAVE AI drafts for you wait here. Nothing runs until someone confirms.'
+              }
             />
           ) : (
             <div className="divide-y divide-line-subtle">
@@ -172,7 +182,7 @@ export async function ProposalsSection({
           ) : null}
         </Panel>
 
-        {canDraftAnnouncement || canDraftMission ? (
+        {canDraft ? (
           <Panel
             title="Draft with JAVE AI"
             description="The model drafts; JAVE stores a pending proposal with a preview. Nothing executes until a human confirms."

@@ -17,8 +17,10 @@ import {
   RESEARCH_STATUS_TONE,
   REVIEW_STATUSES,
   type ReviewStatus,
+  SIDUS_INTEGRATION_LABELS,
   SIDUS_SYNC_LABELS,
   SIDUS_SYNC_TONE,
+  sidusIntegrationState,
 } from '@/lib/research-labels';
 import { safeExternalUrl } from '@/lib/safe-url';
 import { formatTimestamp } from '@/lib/time';
@@ -69,7 +71,9 @@ export default async function ResearchItemPage({ params }: { params: Promise<{ i
   const tz = viewer.timeZone;
   const own = item.submittedByUserId === ctx.actor.userId;
   const reviewer = can(ctx, 'canReviewResearch');
-  const { sidusConfigured } = getIntegrations();
+  const integrations = getIntegrations();
+  const sidusState = sidusIntegrationState(integrations);
+  const diagnostics = can(ctx, 'canViewSystemStatus');
   const source = publicReference(item.url);
   const message = discordMessageUrl(item.discordMessageUrl);
   const currentReviewStatus = (REVIEW_STATUSES as readonly string[]).includes(item.status)
@@ -155,7 +159,13 @@ export default async function ResearchItemPage({ params }: { params: Promise<{ i
       label: 'LAST PUSH',
       value: item.sidusSyncedAt ? <Mono dim>{formatTimestamp(item.sidusSyncedAt, tz)}</Mono> : '—',
     },
-    { label: 'INTEGRATION', value: sidusConfigured ? 'Connected' : 'Not configured' },
+    {
+      label: 'INTEGRATION',
+      value:
+        diagnostics && integrations.sidusConfigurationError
+          ? `${SIDUS_INTEGRATION_LABELS[sidusState]} — ${integrations.sidusConfigurationError}`
+          : SIDUS_INTEGRATION_LABELS[sidusState],
+    },
   ];
 
   return (

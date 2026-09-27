@@ -3,10 +3,10 @@ import { eq } from 'drizzle-orm';
 import { AIOverloadedError } from '@jave/ai';
 import { aiRequests, members } from '@jave/database';
 import { updateSettings } from '@jave/core';
+import { DiscordActionError } from '../../discord/gateway';
 import { customId } from '../../interactions/custom-id';
 import type { InteractionUser } from '../../interactions/types';
 import type { FakeInteraction } from '../../testing/fake-interaction';
-import { TEST_GUILD_ID } from '../../testing/harness';
 import { paginate, PAGE_CHARS } from './pages';
 import { ExpiringStore } from './store';
 import {
@@ -19,6 +19,7 @@ import {
 
 const CHANNEL_ID = '100000000000000555';
 const HIDDEN_CHANNEL_ID = '100000000000000556';
+const RATE_LIMITED_STATUS = 429;
 
 function buttonIds(interaction: FakeInteraction): string[] {
   return (interaction.lastPayload()?.components ?? []).flatMap((r) =>
@@ -199,7 +200,24 @@ describe('ai feature: answers', SUITE, () => {
     });
     expect(junk.interaction.lastText()).toContain('not a Discord message link');
     expect(t.mock.calls).toHaveLength(1);
-    expect(TEST_GUILD_ID).toBe('100000000000000999');
+  });
+
+  it('BREAK: Discord failing to return a linked message replies calmly and sends nothing', async () => {
+    const seeded = t.bot.gateway.seedMessage({ channelId: CHANNEL_ID, content: 'Launch notes.' });
+    t.bot.gateway.failures.set(
+      'fetchMessageAs',
+      new DiscordActionError('rate limited', RATE_LIMITED_STATUS, false),
+    );
+    const { interaction, outcome } = await t.bot.run({
+      kind: 'slash',
+      name: 'summarize',
+      user,
+      options: { message_link: seeded.url },
+    });
+    expect(outcome.errorId).toBeNull();
+    expect(interaction.lastText()).toContain('SERVICE UNAVAILABLE');
+    expect(interaction.lastText()).toContain('Discord did not return that message');
+    expect(t.mock.calls).toHaveLength(0);
   });
 
   it('/summarize modal accepts text; /analyze and /brainstorm answer', async () => {
@@ -278,6 +296,20 @@ describe('ai feature: answers', SUITE, () => {
   });
 
   describe('failures', () => {
+    it('BREAK: an invalid AI configuration (no provider) reads DISABLED and sends nothing', async () => {
+      t.bot.app.services.ai = undefined;
+      const { interaction } = await t.bot.run({
+        kind: 'slash',
+        name: 'ask',
+        user,
+        options: { question: 'Still there?' },
+      });
+      expect(interaction.lastText()).toContain('DISABLED');
+      expect(t.mock.calls).toHaveLength(0);
+      const [row] = await t.bot.kit.db.select().from(aiRequests);
+      expect(row).toMatchObject({ feature: 'ask', status: 'disabled' });
+    });
+
     it('BREAK: members without canUseAI are refused before anything is sent', async () => {
       const restricted = await t.bot.member({ roles: ['verified'] });
       await t.bot.kit.db

@@ -57,8 +57,6 @@ export class FakeDiscordGateway implements DiscordGateway {
   readonly readableMessages = new Map<string, ReadableMessage>();
   /** channel id → the only user ids allowed to read it (absent: everyone in the guild). */
   readonly channelReaders = new Map<string, Set<string>>();
-  /** `${channelId}:${nonce}` → message id already created with that nonce. */
-  readonly nonces = new Map<string, string>();
   ready = true;
 
   constructor(guildId = '100000000000000999') {
@@ -295,6 +293,8 @@ export class FakeDiscordGateway implements DiscordGateway {
     const existing = this.scheduledEvents.get(eventId);
     if (existing) existing.cancelled = true;
   }
+  /** channelId:nonce → message id, like Discord's enforce_nonce window. */
+  readonly nonces = new Map<string, string>();
   async sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string) {
     this.record('sendMessageOnce', channelId, payload, nonce);
     if (nonce.length === 0 || nonce.length > MESSAGE_NONCE_MAX)

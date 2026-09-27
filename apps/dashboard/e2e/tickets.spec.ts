@@ -234,16 +234,18 @@ test.describe('staff', () => {
     ).toBeVisible();
   });
 
-  test('the AI summary is labelled, stored and honest about a missing provider', async ({
-    page,
-  }) => {
+  test('the AI summary is labelled, stored and refreshed through JAVE AI', async ({ page }) => {
     paths.claimed = await openTicket(page, TICKET_FIXTURES.claimed);
     const panel = page.getByTestId('ai-summary');
     await expect(panel.getByText('AI-GENERATED')).toBeVisible();
     await expect(panel).toContainText('exits with code 137');
-    // This deployment runs without an AI provider: no button pretends otherwise.
-    await expect(panel).toContainText('DISABLED');
-    await expect(page.getByTestId('generate-summary')).toHaveCount(0);
+    // The e2e deployment runs the MOCK / DEVELOPMENT ONLY provider, so a refresh
+    // is offered (a disabled provider reads DISABLED, covered by unit tests).
+    // Nothing was said since the stored summary: core keeps it, no model call.
+    await expect(panel).not.toContainText('DISABLED');
+    await panel.getByTestId('generate-summary').click();
+    await expect(toasts(page)).toContainText('SUMMARY CURRENT');
+    await expect(panel).toContainText('exits with code 137');
   });
 
   test('BREAK: a plain handler cannot export transcripts or act on a colleague’s ticket', async ({

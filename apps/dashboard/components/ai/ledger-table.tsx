@@ -33,6 +33,11 @@ export interface LedgerRow {
 }
 
 const MS_PER_SECOND = 1000;
+const UNKNOWN_MEMBER = 'Unknown member';
+
+function requester(row: LedgerRow): string {
+  return row.requesterName ?? UNKNOWN_MEMBER;
+}
 
 function latency(ms: number): string {
   return ms >= MS_PER_SECOND ? `${(ms / MS_PER_SECOND).toFixed(1)} s` : `${ms} ms`;
@@ -40,15 +45,18 @@ function latency(ms: number): string {
 
 /**
  * The AI request ledger. Auditors (`everyone`) also see who asked and a
- * short prompt fingerprint that reveals repeats, never content.
+ * short prompt fingerprint that reveals repeats, never content. On phones
+ * the time and member fold under the feature, so the row fits.
  */
 export function LedgerTable({ rows, everyone }: { rows: readonly LedgerRow[]; everyone: boolean }) {
   return (
     <Table caption="AI requests" dense>
       <TableHead>
         <tr>
-          <TableHeaderCell>Time</TableHeaderCell>
-          {everyone ? <TableHeaderCell>Member</TableHeaderCell> : null}
+          <TableHeaderCell className="hidden md:table-cell">Time</TableHeaderCell>
+          {everyone ? (
+            <TableHeaderCell className="hidden md:table-cell">Member</TableHeaderCell>
+          ) : null}
           <TableHeaderCell>Feature</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
           <TableHeaderCell className="hidden md:table-cell">Model</TableHeaderCell>
@@ -62,14 +70,14 @@ export function LedgerTable({ rows, everyone }: { rows: readonly LedgerRow[]; ev
       <TableBody>
         {rows.map((row) => (
           <TableRow key={row.id} data-ledger-row={row.feature}>
-            <TableCell>
+            <TableCell className="hidden md:table-cell">
               <Mono dim className="whitespace-nowrap text-[12px]">
                 {row.time}
               </Mono>
             </TableCell>
             {everyone ? (
-              <TableCell>
-                <span className="text-fg">{row.requesterName ?? 'Unknown member'}</span>
+              <TableCell className="hidden md:table-cell">
+                <span className="text-fg">{requester(row)}</span>
               </TableCell>
             ) : null}
             <TableCell>
@@ -77,6 +85,12 @@ export function LedgerTable({ rows, everyone }: { rows: readonly LedgerRow[]; ev
               {row.surface ? (
                 <span className="type-eyebrow ml-2 text-fg-subtle">{row.surface}</span>
               ) : null}
+              <span className="mt-1 block text-small text-fg-subtle md:hidden">
+                <Mono dim className="text-[12px]">
+                  {row.time}
+                </Mono>
+                {everyone ? ` · ${requester(row)}` : null}
+              </span>
             </TableCell>
             <TableCell>
               <StatusBadge

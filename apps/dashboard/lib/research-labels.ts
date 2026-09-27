@@ -47,6 +47,32 @@ export const SIDUS_SYNC_TONE: Readonly<Record<SidusSyncStatus, BadgeTone>> = {
   failed: 'danger',
 };
 
+/**
+ * The deployment's Sidus integration: credentials present, absent, or present
+ * but rejected at startup. "Configured" is not a reachability claim.
+ */
+export type SidusIntegrationState = 'configured' | 'not_configured' | 'misconfigured';
+
+export const SIDUS_INTEGRATION_LABELS: Readonly<Record<SidusIntegrationState, string>> = {
+  configured: 'Sidus configured',
+  not_configured: 'Sidus not configured',
+  misconfigured: 'Sidus misconfigured',
+};
+
+export const SIDUS_INTEGRATION_TONE: Readonly<Record<SidusIntegrationState, BadgeTone>> = {
+  configured: 'success',
+  not_configured: 'neutral',
+  misconfigured: 'warning',
+};
+
+export function sidusIntegrationState(integration: {
+  sidusConfigured: boolean;
+  sidusConfigurationError: string | null;
+}): SidusIntegrationState {
+  if (integration.sidusConfigurationError) return 'misconfigured';
+  return integration.sidusConfigured ? 'configured' : 'not_configured';
+}
+
 export const ENRICHMENT_LABELS = {
   pending: 'Pending',
   enriched: 'Enriched',

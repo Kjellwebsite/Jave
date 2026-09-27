@@ -1,12 +1,15 @@
 import 'server-only';
+import type { DashboardEnv } from '@jave/config';
 import {
   type AIProvider,
+  type AiProviderEnv,
   createProviderFromEnv,
   DISABLED_PROVIDER_NAME,
   DisabledProvider,
+  isAIError,
   MOCK_PROVIDER_NAME,
 } from '@jave/ai';
-import { type ai, research } from '@jave/core';
+import { type ai, type Logger, research } from '@jave/core';
 import { getRuntime } from './runtime';
 
 /**
@@ -50,18 +53,24 @@ type Host = typeof globalThis & {
   [STATUS_KEY]?: { at: number; status: Promise<ProviderStatus> };
 };
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : 'invalid configuration';
-}
+/** Shown when a factory fails in an unexpected way (its message is never echoed). */
+const INVALID_CONFIGURATION = 'invalid configuration';
 
-function createIntegrations(): DashboardIntegrations {
-  const { env, logger } = getRuntime();
+/**
+ * Build the integrations from a parsed environment. Pure apart from logging,
+ * so it is testable without a runtime. Configuration errors name the
+ * variable, never its value.
+ */
+export function integrationsFromEnv(
+  env: AiProviderEnv & Pick<DashboardEnv, 'SIDUS_API_URL' | 'SIDUS_API_KEY'>,
+  logger: Pick<Logger, 'error'>,
+): DashboardIntegrations {
   let provider: AIProvider;
   let aiConfigurationError: string | null = null;
   try {
     provider = createProviderFromEnv(env);
   } catch (error) {
-    aiConfigurationError = messageOf(error);
+    aiConfigurationError = isAIError(error) ? error.message : INVALID_CONFIGURATION;
     logger.error({ reason: aiConfigurationError }, 'AI provider misconfigured; AI disabled');
     provider = new DisabledProvider();
   }
@@ -73,7 +82,9 @@ function createIntegrations(): DashboardIntegrations {
       apiKey: env.SIDUS_API_KEY,
     }).configured;
   } catch (error) {
-    sidusConfigurationError = messageOf(error);
+    // The Sidus client names the variable (SIDUS_API_URL / SIDUS_API_KEY), never its value.
+    sidusConfigurationError = error instanceof Error ? error.message : INVALID_CONFIGURATION;
+    logger.error({ reason: sidusConfigurationError }, 'Sidus misconfigured; sync unavailable');
   }
   return {
     ai: { provider, dailyRequestCeiling: env.AI_DAILY_REQUEST_LIMIT },
@@ -86,7 +97,10 @@ function createIntegrations(): DashboardIntegrations {
 
 export function getIntegrations(): DashboardIntegrations {
   const host = globalThis as Host;
-  host[INTEGRATIONS_KEY] ??= createIntegrations();
+  if (!host[INTEGRATIONS_KEY]) {
+    const { env, logger } = getRuntime();
+    host[INTEGRATIONS_KEY] = integrationsFromEnv(env, logger);
+  }
   return host[INTEGRATIONS_KEY];
 }
 

@@ -33,8 +33,11 @@ import {
   EVIDENCE_LABELS,
   RESEARCH_STATUS_LABELS,
   RESEARCH_STATUS_TONE,
+  SIDUS_INTEGRATION_LABELS,
+  SIDUS_INTEGRATION_TONE,
   SIDUS_SYNC_LABELS,
   SIDUS_SYNC_TONE,
+  sidusIntegrationState,
 } from '@/lib/research-labels';
 import { firstParam, offsetParam, type SearchParams, toQueryString } from '@/lib/search-params';
 import { formatDate } from '@/lib/time';
@@ -88,7 +91,7 @@ export default async function ResearchPage({
     return <RestrictedPage eyebrow="INTELLIGENCE" title="Research" capability="canViewMembers" />;
   const page = result.value;
   const viewer = await loadViewer(ctx);
-  const { sidusConfigured } = getIntegrations();
+  const sidus = sidusIntegrationState(getIntegrations());
   const filtered = Boolean(
     filters.q || filters.status || filters.topic || filters.tag || filters.scope === 'mine',
   );
@@ -112,9 +115,9 @@ export default async function ResearchPage({
               {page.total.toLocaleString('en-US')} {filtered ? 'matching' : 'items'}
             </Mono>
             <StatusBadge
-              tone={sidusConfigured ? 'success' : 'neutral'}
-              quiet={sidusConfigured}
-              label={sidusConfigured ? 'SIDUS CONNECTED' : 'SIDUS NOT CONFIGURED'}
+              tone={SIDUS_INTEGRATION_TONE[sidus]}
+              quiet={sidus === 'configured'}
+              label={SIDUS_INTEGRATION_LABELS[sidus].toUpperCase()}
             />
           </>
         }
@@ -199,7 +202,7 @@ export default async function ResearchPage({
             <TableHead>
               <tr>
                 <TableHeaderCell>Reference</TableHeaderCell>
-                <TableHeaderCell>Status</TableHeaderCell>
+                <TableHeaderCell className="hidden sm:table-cell">Status</TableHeaderCell>
                 <TableHeaderCell className="hidden md:table-cell">Evidence</TableHeaderCell>
                 <TableHeaderCell className="hidden lg:table-cell">Sidus</TableHeaderCell>
                 <TableHeaderCell className="hidden text-right sm:table-cell">Added</TableHeaderCell>
@@ -247,27 +250,33 @@ export default async function ResearchPage({
                           ) : null}
                           {item.topic ? <Badge>{item.topic}</Badge> : null}
                         </span>
+                        <span className="mt-2 block sm:hidden">
+                          <StatusBadge
+                            tone={RESEARCH_STATUS_TONE[item.status]}
+                            label={RESEARCH_STATUS_LABELS[item.status].toUpperCase()}
+                          />
+                        </span>
                       </Link>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <StatusBadge
                         tone={RESEARCH_STATUS_TONE[item.status]}
                         label={RESEARCH_STATUS_LABELS[item.status].toUpperCase()}
                       />
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell className="hidden whitespace-nowrap md:table-cell">
                       <span className="type-eyebrow text-fg-muted">
                         {EVIDENCE_LABELS[item.evidenceLevel]}
                       </span>
                     </TableCell>
-                    <TableCell className="hidden lg:table-cell">
+                    <TableCell className="hidden whitespace-nowrap lg:table-cell">
                       <StatusBadge
                         quiet
                         tone={SIDUS_SYNC_TONE[item.sidusSyncStatus]}
                         label={SIDUS_SYNC_LABELS[item.sidusSyncStatus].toUpperCase()}
                       />
                     </TableCell>
-                    <TableCell className="hidden text-right sm:table-cell">
+                    <TableCell className="hidden whitespace-nowrap text-right sm:table-cell">
                       <Mono dim>{formatDate(item.createdAt, viewer.timeZone)}</Mono>
                     </TableCell>
                   </TableRow>

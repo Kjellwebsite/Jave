@@ -30,7 +30,7 @@ export function DraftForm({
       submitLabel={submitLabel}
       submitVariant="secondary"
       resetOnSuccess
-      aria-label={label}
+      aria-label={submitLabel}
     >
       <FormField name="brief" label={label} description={description} required>
         <Textarea

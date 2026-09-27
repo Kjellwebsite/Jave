@@ -15,7 +15,11 @@ export interface TicketAi {
   deps: ai.AiDeps | null;
 }
 
-export function getTicketAi(): TicketAi {
-  const deps = getIntegrations().ai;
+/** Summaries are available only with a provider other than the disabled one. */
+export function ticketAiFrom(deps: ai.AiDeps): TicketAi {
   return { deps: deps.provider.name === DISABLED_PROVIDER_NAME ? null : deps };
+}
+
+export function getTicketAi(): TicketAi {
+  return ticketAiFrom(getIntegrations().ai);
 }

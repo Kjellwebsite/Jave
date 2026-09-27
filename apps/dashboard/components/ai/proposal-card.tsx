@@ -79,7 +79,9 @@ export function ProposalCard({
       {proposal.outcome ? <p className="text-small text-fg-muted">{proposal.outcome}</p> : null}
       {proposal.status === 'pending' ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-small text-fg-subtle">Expires {proposal.expiresLabel}</p>
+          <p className="text-small text-fg-subtle">
+            Expires <Mono dim>{proposal.expiresLabel}</Mono>
+          </p>
           {decision ? (
             <ProposalActions
               proposalId={proposal.id}

@@ -1,4 +1,5 @@
-import { ai, NotFoundError, ValidationError } from '@jave/core';
+import { ai, ExternalServiceError, NotFoundError, ValidationError } from '@jave/core';
+import { DiscordActionError, type ReadableMessage } from '../../discord/gateway';
 import type { HandlerContext, TargetMessage } from '../../interactions/types';
 
 /** A Discord message link, split into its ids. */
@@ -13,6 +14,8 @@ const MESSAGE_LINK =
 /** Longest link we even try to parse. */
 const MAX_LINK_LENGTH = 200;
 const FALLBACK_AUTHOR = 'member';
+const DISCORD_SERVICE = 'discord';
+const DISCORD_UNAVAILABLE = 'Discord did not return that message. Try again in a moment.';
 
 export function parseMessageLink(link: string): MessageRef | null {
   const trimmed = link.trim();
@@ -71,11 +74,19 @@ export async function readLinkedMessage(
   if (ref.guildId !== h.services.discord.guildId) {
     throw new ValidationError('JAVE reads messages from JAVELIN only.');
   }
-  const message = await h.services.gateway.fetchMessageAs(
-    h.interaction.user.id,
-    ref.channelId,
-    ref.messageId,
-  );
+  let message: ReadableMessage | null;
+  try {
+    message = await h.services.gateway.fetchMessageAs(
+      h.interaction.user.id,
+      ref.channelId,
+      ref.messageId,
+    );
+  } catch (error) {
+    // "Not there / not yours" is already null; anything else is Discord being unavailable.
+    if (!(error instanceof DiscordActionError)) throw error;
+    h.ctx.logger.warn({ code: error.code }, 'fetchMessageAs failed');
+    throw new ExternalServiceError(DISCORD_SERVICE, DISCORD_UNAVAILABLE, !error.permanent);
+  }
   if (!message) throw new NotFoundError('Message');
   const text = messageText(message.content, message.embedsText);
   if (!text) throw new ValidationError('That message has no text JAVE can read.');

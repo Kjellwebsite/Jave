@@ -85,7 +85,7 @@ export function OrgUsagePanel({ usage }: { usage: OrgUsageView }) {
         <Stat label="TOKENS IN" value={usage.inputTokens} hint="Prompt tokens billed" />
         <Stat label="TOKENS OUT" value={usage.outputTokens} hint="Answer tokens billed" />
       </div>
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Panel title="Answered by feature" flush>
           {usage.byFeature.length === 0 ? (
             <EmptyState

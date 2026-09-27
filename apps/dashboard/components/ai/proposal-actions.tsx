@@ -72,7 +72,7 @@ export function ProposalActions({
           action={confirmAction}
           hidden={{ proposalId }}
           trigger={
-            <Button variant="primary" size="sm" iconLeft={Check} data-testid="confirm-proposal">
+            <Button variant="secondary" size="sm" iconLeft={Check} data-testid="confirm-proposal">
               Confirm
             </Button>
           }

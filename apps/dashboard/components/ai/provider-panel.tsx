@@ -8,24 +8,11 @@ export interface ProviderPanelProps {
   model: string;
   /** Operator detail (health text, check time) — only for canViewSystemStatus. */
   diagnostics: { detail: string; checkedAt: string; configurationError: string | null } | null;
-  settings: {
-    enabled: boolean;
-    dailyLimit: number;
-    maxInputChars: number;
-    proposalTtlMinutes: number;
-  };
   isMock: boolean;
 }
 
-/** Which provider answers, whether it is reachable, and the limits every member works within. */
-export function ProviderPanel({
-  state,
-  provider,
-  model,
-  diagnostics,
-  settings,
-  isMock,
-}: ProviderPanelProps) {
+/** Which provider answers and whether it is reachable. */
+export function ProviderPanel({ state, provider, model, diagnostics, isMock }: ProviderPanelProps) {
   const facts: Fact[] = [
     {
       label: 'STATUS',
@@ -39,10 +26,6 @@ export function ProviderPanel({
     },
     { label: 'PROVIDER', value: <Mono>{provider}</Mono> },
     { label: 'MODEL', value: <Mono>{model}</Mono> },
-    { label: 'AI SETTING', value: settings.enabled ? 'Enabled' : 'Disabled in settings' },
-    { label: 'DAILY LIMIT', value: `${formatCount(settings.dailyLimit)} requests per member` },
-    { label: 'INPUT LIMIT', value: `${formatCount(settings.maxInputChars)} characters` },
-    { label: 'PROPOSALS EXPIRE', value: `${settings.proposalTtlMinutes} min after drafting` },
   ];
   if (diagnostics) {
     facts.push(
@@ -73,6 +56,28 @@ export function ProviderPanel({
         ) : null}
         <FactList facts={facts} />
       </div>
+    </Panel>
+  );
+}
+
+export interface AiLimits {
+  enabled: boolean;
+  dailyLimit: number;
+  maxInputChars: number;
+  proposalTtlMinutes: number;
+}
+
+/** The limits every member works within (settings.ai and the deployment ceiling). */
+export function LimitsPanel({ limits }: { limits: AiLimits }) {
+  const facts: Fact[] = [
+    { label: 'AI SETTING', value: limits.enabled ? 'Enabled' : 'Disabled in settings' },
+    { label: 'DAILY LIMIT', value: `${formatCount(limits.dailyLimit)} requests per member` },
+    { label: 'INPUT LIMIT', value: `${formatCount(limits.maxInputChars)} characters` },
+    { label: 'PROPOSALS EXPIRE', value: `${limits.proposalTtlMinutes} min after drafting` },
+  ];
+  return (
+    <Panel title="Limits">
+      <FactList facts={facts} />
     </Panel>
   );
 }

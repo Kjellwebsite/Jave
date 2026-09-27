@@ -28,6 +28,7 @@ import { formatTimestamp } from '@/lib/time';
 import {
   APPROVAL_CONSEQUENCES,
   capabilityLabelFor,
+  MY_VERIFICATIONS_HREF,
   OPENED_BY_LABELS,
   verificationTargetLine,
 } from '@/lib/verification';
@@ -196,7 +197,7 @@ export default async function VerificationDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { ctx } = await requireConsoleContext();
+  const { ctx, actor } = await requireConsoleContext();
   const { id } = await params;
   if (!isUuid(id)) notFound();
   const loaded = await guarded(() => verification.getVerification(ctx, id));
@@ -204,6 +205,11 @@ export default async function VerificationDetailPage({
   const detail = loaded.value;
   const staff = can(ctx, 'canVerifyMembers');
   const access = verification.verificationAccess(ctx, detail);
+  // A skill approval may only grant a rank above the subject's verified one.
+  const grantable =
+    detail.type === 'skill' && access.controls.includes('approve')
+      ? await verification.listGrantableRanks(ctx, { verificationId: detail.id })
+      : null;
   const [viewer, catalog, profile] = await Promise.all([
     loadViewer(ctx),
     loadCatalog(ctx),
@@ -211,8 +217,12 @@ export default async function VerificationDetailPage({
   ]);
   const tz = viewer.timeZone;
   const open = verification.isOpen(detail.status);
-  const tiers = [...catalog.tiers].reverse().map((tier) => tier.code);
+  const nothingToGrant = grantable !== null && grantable.ranks.length === 0;
+  const controls = nothingToGrant
+    ? access.controls.filter((control) => control !== 'approve')
+    : access.controls;
   const blocked = access.blocked && access.blocked !== 'closed' ? access.blocked : null;
+  const ownRecord = detail.subject.memberId === actor.memberId;
   const capabilityLabel = capabilityLabelFor(catalog, detail.facetKey);
   const targetLine = verificationTargetLine(detail, capabilityLabel);
   // What an approval would verify, named for the confirmation dialog.
@@ -237,21 +247,32 @@ export default async function VerificationDetailPage({
           </>
         }
         actions={
-          <Link href="/verification" className={buttonStyles({ variant: 'ghost', size: 'sm' })}>
+          <Link
+            href={ownRecord ? MY_VERIFICATIONS_HREF : '/verification'}
+            className={buttonStyles({ variant: 'ghost', size: 'sm' })}
+          >
             <Icon icon={ArrowLeft} size="sm" />
-            {staff ? 'Queue' : 'My verifications'}
+            {ownRecord ? 'My verifications' : 'Queue'}
           </Link>
         }
       />
 
-      {access.controls.length > 0 ? (
+      {controls.length > 0 ? (
         <VerificationDecisionControls
           verificationId={detail.id}
           reference={detail.reference}
           target={dialogTarget}
           consequence={APPROVAL_CONSEQUENCES[detail.type]}
-          controls={access.controls}
-          skill={detail.type === 'skill' ? { tiers, requested: detail.requestedRank } : null}
+          controls={controls}
+          skill={
+            grantable
+              ? {
+                  tiers: grantable.ranks,
+                  requested: detail.requestedRank,
+                  current: grantable.currentVerifiedRank,
+                }
+              : null
+          }
           limits={{ note: verification.TEXT_LIMITS.note, reason: verification.TEXT_LIMITS.reason }}
           actions={{
             startReview: startVerificationReviewAction,
@@ -263,6 +284,13 @@ export default async function VerificationDetailPage({
       {blocked ? (
         <Callout tone="neutral" title="NO CONTROLS FOR YOU HERE">
           {verification.VERIFICATION_BLOCK_MESSAGES[blocked]}
+        </Callout>
+      ) : null}
+      {nothingToGrant ? (
+        <Callout tone="neutral" title="NOTHING HIGHER TO GRANT">
+          {capabilityLabel ?? detail.targetLabel} is already verified at{' '}
+          {grantable?.currentVerifiedRank ?? '—'}. Approving could not raise it; reject this request
+          instead.
         </Callout>
       ) : null}
 

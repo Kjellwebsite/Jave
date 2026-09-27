@@ -37,6 +37,9 @@ export {
 } from './strategies';
 export { requestVerification } from './request.service';
 export {
+  type GrantableRanks,
+  grantableRanksSchema,
+  listGrantableRanks,
   listTargetCandidates,
   MAX_TARGET_CANDIDATES,
   TARGET_CANDIDATE_TYPES,

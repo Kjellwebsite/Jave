@@ -1,7 +1,7 @@
 import type { APIEmbedField } from 'discord.js';
 import { applications } from '@jave/core';
 import type { ReplyPayload } from '../../interactions/types';
-import { button, field, panel, row, stringSelect } from '../../ui/components';
+import { button, field, linkButton, panel, row, stringSelect } from '../../ui/components';
 import { clip, discordTime, userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
 import { APPLICANT_ACTIONS, applicationsId } from './ids';
@@ -305,25 +305,31 @@ export function renderMissingRequirements(issues: readonly string[]): ReplyPaylo
   };
 }
 
-/** Withdrawal needs a second click; it states what withdrawing costs first. */
-export function renderWithdrawConfirm(status: MyApplication): ReplyPayload {
-  const app = status.application;
-  const draft = app?.status === 'draft';
+/**
+ * Withdrawal needs a second click; it states what withdrawing costs first.
+ * The cost depends on the status, so the confirm button carries the
+ * application and status it was stated for: if either changed by the time
+ * it is clicked, core withdraws nothing and the cost is stated again.
+ * `notice` says why a confirmation is shown again.
+ */
+export function renderWithdrawConfirm(
+  status: MyApplication,
+  app: ApplicantView,
+  notice?: string,
+): ReplyPayload {
+  const draft = app.status === 'draft';
   const cost = status.withdrawalCooldownEndsAt
     ? `You can submit again from ${discordTime(status.withdrawalCooldownEndsAt, 'f')}.`
     : 'You can start again at any time.';
+  const consequence = draft
+    ? 'The draft closes. Staff never saw it.'
+    : 'The application leaves the review queue and closes.';
   return {
     embeds: [
       panel({
         kicker: KICKER,
-        title: draft
-          ? `DISCARD ${app?.number ?? 'DRAFT'}?`
-          : `WITHDRAW ${app?.number ?? ''}?`.trim(),
-        description: `${
-          draft
-            ? 'The draft closes. Staff never saw it.'
-            : 'The application leaves the review queue and closes.'
-        } ${cost}`,
+        title: draft ? `DISCARD ${app.number}?` : `WITHDRAW ${app.number}?`,
+        description: [notice, `${consequence} ${cost}`].filter(Boolean).join('\n\n'),
         color: COLORS.warning,
       }),
     ],
@@ -331,7 +337,7 @@ export function renderWithdrawConfirm(status: MyApplication): ReplyPayload {
       row(
         button(
           draft ? 'Discard draft' : 'Withdraw application',
-          applicationsId(APPLICANT_ACTIONS.withdrawConfirm),
+          applicationsId(APPLICANT_ACTIONS.withdrawConfirm, app.id, app.status),
           'danger',
         ),
         button('Keep it', applicationsId(APPLICANT_ACTIONS.panel)),
@@ -339,4 +345,25 @@ export function renderWithdrawConfirm(status: MyApplication): ReplyPayload {
     ],
     ephemeral: true,
   };
+}
+
+/** A form page cannot be opened because a stored answer is longer than a Discord input. */
+export function renderTooLongToEdit(labels: readonly string[], dashboardUrl: string | null) {
+  return {
+    embeds: [
+      panel({
+        kicker: KICKER,
+        title: 'EDIT IN THE DASHBOARD',
+        description: `${labels.join(', ')} ${labels.length === 1 ? 'is' : 'are'} longer than a Discord form holds (${applications.DISCORD_MODAL_LIMITS.inputChars} characters). Opening the form here would cut ${labels.length === 1 ? 'it' : 'them'} short, so nothing was opened. Edit this page in the dashboard.`,
+        color: COLORS.warning,
+      }),
+    ],
+    components: [
+      row(
+        ...(dashboardUrl ? [linkButton('Open in dashboard', dashboardUrl)] : []),
+        button('Back to application', applicationsId(APPLICANT_ACTIONS.panel)),
+      ),
+    ],
+    ephemeral: true,
+  } satisfies ReplyPayload;
 }

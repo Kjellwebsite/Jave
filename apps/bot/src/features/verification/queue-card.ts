@@ -74,8 +74,14 @@ export function renderQueueCard(card: QueueCard, publicUrl: string | undefined):
   };
 }
 
-function isUnknownMessage(error: unknown): boolean {
-  return error instanceof DiscordActionError && error.code === RESTJSONErrorCodes.UnknownMessage;
+const GONE_CODES: ReadonlySet<number | string | null> = new Set([
+  RESTJSONErrorCodes.UnknownMessage,
+  RESTJSONErrorCodes.UnknownChannel,
+]);
+
+/** The recorded card no longer exists: its message or its whole channel was deleted. */
+function isGone(error: unknown): boolean {
+  return error instanceof DiscordActionError && GONE_CODES.has(error.code);
 }
 
 function asJobError(error: unknown): unknown {
@@ -88,7 +94,9 @@ function asJobError(error: unknown): unknown {
  * `discord.verification.queue_card` — keeps exactly one fresh card per
  * verification: render, edit or post, then report through core's
  * compare-and-set; loop while another run won the race or the card went
- * stale, at most QUEUE_CARD_MAX_RENDERS times, then retry later.
+ * stale, at most QUEUE_CARD_MAX_RENDERS times, then retry later. A card
+ * whose message or channel was deleted is reposted in the configured queue
+ * channel, and core records where it now lives.
  */
 export function queueCardJobHandler(services: BotServices): JobHandler {
   return async (ctx, payload, job) => {
@@ -99,41 +107,45 @@ export function queueCardJobHandler(services: BotServices): JobHandler {
       const card = await verification.getQueueCard(ctx, id);
       if (!card.channelId) return { skipped: 'no queue channel' };
       const message = renderQueueCard(card, ctx.config.publicUrl);
-      let messageId: string | null = null;
+      let shown: { channelId: string; messageId: string } | null = null;
       let posted = false;
       try {
         if (card.messageId) {
           try {
             await services.gateway.editMessage(card.channelId, card.messageId, message);
-            messageId = card.messageId;
+            shown = { channelId: card.channelId, messageId: card.messageId };
           } catch (error) {
-            if (!isUnknownMessage(error)) throw error;
+            if (!isGone(error)) throw error;
           }
         }
-        if (!messageId) {
+        if (!shown) {
+          // A lost card goes to the queue channel configured now; with none, cards are off.
+          const channelId = card.messageId ? card.configuredChannelId : card.channelId;
+          if (!channelId) return { skipped: 'no queue channel' };
           const sent = await services.gateway.sendMessageOnce(
-            card.channelId,
+            channelId,
             message,
             `${QUEUE_CARD_NONCE_PREFIX}${job.id}r${render}`,
           );
-          messageId = sent.messageId;
+          shown = { channelId: sent.channelId, messageId: sent.messageId };
           posted = true;
         }
       } catch (error) {
         throw asJobError(error);
       }
+      const { channelId, messageId } = shown;
       const report = await verification.markQueueCardPosted(ctx, {
         verificationId: id,
-        channelId: card.channelId,
+        channelId,
         messageId,
         previousMessageId: card.messageId,
         revision: card.revision,
       });
       if (!report.recorded && posted) {
         await services.gateway
-          .deleteMessage(card.channelId, messageId, 'JAVE: duplicate verification card')
+          .deleteMessage(channelId, messageId, 'JAVE: duplicate verification card')
           .catch((error: unknown) => {
-            if (!isUnknownMessage(error)) throw asJobError(error);
+            if (!isGone(error)) throw asJobError(error);
           });
       }
       if (report.recorded && !report.stale) {

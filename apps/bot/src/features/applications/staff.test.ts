@@ -237,6 +237,51 @@ describe('applications — review cards and staff actions', () => {
     expect(viewed).toHaveLength(1);
   });
 
+  it('BREAK: the private view offers each reviewer only the controls they can use', async () => {
+    const core = await bot.member({ roles: ['core'] });
+    await applications.startReview(bot.kit.as(core.actor), { applicationId });
+    await applications.reviewApplication(bot.kit.as(core.actor), {
+      applicationId,
+      recommendation: 'accept',
+      score: 4,
+    });
+    await bot.drain();
+    // The shared channel card shows every action the state allows.
+    expect(buttonLabels((await card()).payload)).toEqual([
+      'REVIEW',
+      'INTERVIEW',
+      'ACCEPT',
+      'REJECT',
+      'VIEW DETAILS',
+      'OPEN IN DASHBOARD',
+    ]);
+    const openAs = async (person: Person) =>
+      (
+        await bot.run({
+          kind: 'select',
+          name: customId('applications', 'pick'),
+          user: person.user,
+          values: [applicationId],
+        })
+      ).interaction.lastPayload();
+    // OPERATIONS reviews but does not decide: no interview, accept or reject.
+    const operations = await bot.member({ roles: ['operations'] });
+    expect(buttonLabels(await openAs(operations))).toEqual(['REVIEW', 'OPEN IN DASHBOARD']);
+    expect(buttonLabels(await openAs(core))).toEqual([
+      'REVIEW',
+      'INTERVIEW',
+      'ACCEPT',
+      'REJECT',
+      'OPEN IN DASHBOARD',
+    ]);
+    // Nothing shown was refused, so nothing was written as a denied attempt.
+    const denied = await bot.kit.db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.action, 'access.denied'));
+    expect(denied).toHaveLength(0);
+  });
+
   it('rejection runs through confirm and modal, and keeps the reason internal', async () => {
     const decider = await bot.member({ roles: ['core'] });
     await applications.reviewApplication(bot.kit.as(decider.actor), {

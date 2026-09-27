@@ -11,6 +11,7 @@ import { renderQueueCard } from './queue-card';
 import { createProject } from './testing/fixtures';
 
 const QUEUE_CHANNEL = '400000000000000002';
+const NEW_QUEUE_CHANNEL = '400000000000000003';
 const FLOW_TIMEOUT_MS = 60_000;
 
 interface Person {
@@ -138,6 +139,49 @@ describe('verification — queue card job', { timeout: FLOW_TIMEOUT_MS }, () => 
     const current = await row();
     expect(current.queueMessageId).not.toBe(first);
     expect(payloadText(await cardPayload())).toContain('IN REVIEW');
+  });
+
+  it('moves the card to the new queue channel when its channel was deleted', async () => {
+    const first = await row();
+    expect(first.queueChannelId).toBe(QUEUE_CHANNEL);
+    // An admin deletes the queue channel and configures a replacement.
+    await updateSettings(bot.kit.system, 'channels', { verificationQueue: NEW_QUEUE_CHANNEL });
+    bot.gateway.failures.set(
+      'editMessage',
+      new DiscordActionError('edit message failed: Unknown Channel', 10003, true),
+    );
+    const verifier = await bot.member({ roles: ['operations'] });
+    await bot.run({ kind: 'button', name: buttonId('claim'), user: verifier.user });
+    await bot.drain();
+    const last = (await cardJobs()).at(-1)!;
+    expect(last.status).toBe('completed');
+    const posts = bot.gateway.callsTo('sendMessageOnce');
+    expect(posts.at(-1)!.args[0]).toBe(NEW_QUEUE_CHANNEL);
+    const moved = await row();
+    expect(moved.queueChannelId).toBe(NEW_QUEUE_CHANNEL);
+    expect(moved.queueMessageId).not.toBe(first.queueMessageId);
+    expect(payloadText(await cardPayload())).toContain('IN REVIEW');
+    // Later changes edit the moved card in place.
+    await verification.decideVerification(bot.kit.as(verifier.actor), {
+      verificationId,
+      decision: 'approve',
+      note: 'Confirmed on the repository.',
+    });
+    await bot.drain();
+    expect(bot.gateway.callsTo('editMessage').at(-1)!.args[0]).toBe(NEW_QUEUE_CHANNEL);
+    expect(payloadText(await cardPayload())).toContain('APPROVED');
+  });
+
+  it('completes without posting when the card is gone and no queue channel is set', async () => {
+    await updateSettings(bot.kit.system, 'channels', { verificationQueue: undefined });
+    bot.gateway.messages.delete((await row()).queueMessageId!);
+    const verifier = await bot.member({ roles: ['operations'] });
+    await bot.run({ kind: 'button', name: buttonId('claim'), user: verifier.user });
+    await bot.drain();
+    expect(bot.gateway.callsTo('sendMessageOnce')).toHaveLength(1);
+    const last = (await cardJobs()).at(-1)!;
+    expect(last.status).toBe('completed');
+    expect(last.result).toEqual({ skipped: 'no queue channel' });
   });
 
   it('dead-letters on a permanent Discord failure', async () => {

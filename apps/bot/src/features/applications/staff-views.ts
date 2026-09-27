@@ -18,6 +18,7 @@ import { dashboardApplicationPath, personLine, tallyLine } from './review-card';
 
 type StaffView = applications.StaffApplicationView;
 type ReviewCard = applications.ReviewCard;
+type StaffAction = applications.StaffAction;
 
 const ANSWER_CHARS = 700;
 const LINKS_CHARS = 700;
@@ -52,14 +53,14 @@ function historyLines(view: StaffView): string {
     .join('\n');
 }
 
-function actionRows(card: ReviewCard | null) {
-  if (!card || card.actions.length === 0) return [];
+function actionRows(applicationId: string, actions: readonly StaffAction[]) {
+  if (actions.length === 0) return [];
   return [
     row(
-      ...card.actions.map((action) =>
+      ...actions.map((action) =>
         button(
           STAFF_ACTION_LABELS[action],
-          cardActionId(action, card.applicationId),
+          cardActionId(action, applicationId),
           STAFF_ACTION_STYLES[action],
         ),
       ),
@@ -70,11 +71,13 @@ function actionRows(card: ReviewCard | null) {
 /**
  * The full staff view, privately. Holds references and the internal
  * decision reason, so it is only ever an ephemeral reply to a holder of
- * canViewApplications (core authorizes and audits the read).
+ * canViewApplications (core authorizes and audits the read). `actions` are
+ * the controls this viewer can use now: the card's actions for the state,
+ * narrowed to the viewer's capabilities, so no button shown always fails.
  */
 export function renderStaffDetails(
   view: StaffView,
-  card: ReviewCard | null,
+  actions: readonly StaffAction[],
   publicUrl: string | undefined,
 ): ReplyPayload {
   const overview: APIEmbedField[] = [
@@ -153,7 +156,10 @@ export function renderStaffDetails(
         footer: 'Private to you. This read is recorded in the audit log.',
       }),
     ]),
-    components: [...actionRows(card), ...(url ? [row(linkButton('Open in dashboard', url))] : [])],
+    components: [
+      ...actionRows(view.id, actions),
+      ...(url ? [row(linkButton('Open in dashboard', url))] : []),
+    ],
     ephemeral: true,
   };
 }

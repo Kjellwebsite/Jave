@@ -19,8 +19,11 @@ export interface VerificationDecisionControlsProps {
   /** What an approval changes for this type. */
   consequence: string;
   controls: readonly VerificationControlName[];
-  /** Skill approvals: the ranks a verifier may grant, highest first, and the requested one. */
-  skill: { tiers: readonly string[]; requested: string | null } | null;
+  /**
+   * Skill approvals: the ranks an approval may grant (above the subject's
+   * verified rank, highest first), the requested one and the current one.
+   */
+  skill: { tiers: readonly string[]; requested: string | null; current: string | null } | null;
   /** core's verification TEXT_LIMITS for the decision note and the revocation reason. */
   limits: { note: number; reason: number };
   actions: { startReview: FormAction; decide: FormAction; revoke: FormAction };
@@ -73,12 +76,16 @@ export function VerificationDecisionControls({
             <FormField
               name="grantedRank"
               label="Rank to grant"
-              description={`Requested ${skill.requested ?? '—'}. Must be above the current verified rank.`}
+              description={`Requested ${skill.requested ?? '—'}. ${skill.current ? `Verified ${skill.current} now; only higher ranks are listed.` : 'Not verified yet.'}`}
               required
             >
               <NativeSelect
                 name="grantedRank"
-                defaultValue={skill.requested ?? skill.tiers[0] ?? ''}
+                defaultValue={
+                  skill.requested && skill.tiers.includes(skill.requested)
+                    ? skill.requested
+                    : (skill.tiers.at(-1) ?? '')
+                }
                 options={skill.tiers.map((tier) => ({ value: tier, label: tier }))}
               />
             </FormField>

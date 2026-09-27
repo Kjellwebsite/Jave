@@ -28,6 +28,8 @@ type Control = verification.VerificationControl;
 export const QUEUE_PAGE_SIZE = 10;
 const OPEN: readonly Status[] = verification.OPEN_STATUSES;
 const OPTION_TEXT_CHARS = 100;
+/** Discord caps a modal label's description at 100 characters. */
+const LABEL_DESCRIPTION_CHARS = 100;
 
 export const DECISION_FIELDS = { note: 'note', grantedRank: 'grantedRank' } as const;
 export const REVOKE_FIELDS = { reason: 'reason' } as const;
@@ -107,23 +109,39 @@ async function decisionModal(
     );
   const labels = [note];
   if (approve && detail.type === 'skill') {
-    const catalog = await loadCatalog(h.ctx);
+    // Only ranks above the subject's verified rank: anything else is refused.
+    const [catalog, grantable] = await Promise.all([
+      loadCatalog(h.ctx),
+      verification.listGrantableRanks(h.ctx, { verificationId: detail.id }),
+    ]);
+    if (grantable.ranks.length === 0) {
+      throw new InvalidStateError(
+        `${detail.reference}: already verified at ${grantable.currentVerifiedRank ?? '—'}. There is no higher rank to grant; reject it instead.`,
+      );
+    }
+    const current = grantable.currentVerifiedRank;
     labels.unshift(
       new LabelBuilder()
         .setLabel('Rank to grant')
         .setDescription(
-          `Requested ${detail.requestedRank ?? '—'}. Must be above the current verified rank.`,
+          clip(
+            `Requested ${detail.requestedRank ?? '—'}. ${current ? `Verified ${current} now; only higher ranks are listed.` : 'Not verified yet.'}`,
+            LABEL_DESCRIPTION_CHARS,
+          ),
         )
         .setStringSelectMenuComponent(
           new StringSelectMenuBuilder()
             .setCustomId(DECISION_FIELDS.grantedRank)
             .setRequired(true)
             .addOptions(
-              [...catalog.tiers].reverse().map((tier) => ({
-                label: tier.code,
-                value: tier.code,
-                description: clip(tier.description, OPTION_TEXT_CHARS),
-                default: tier.code === detail.requestedRank,
+              grantable.ranks.map((code) => ({
+                label: code,
+                value: code,
+                description: clip(
+                  catalog.tiers.find((tier) => tier.code === code)?.description ?? code,
+                  OPTION_TEXT_CHARS,
+                ),
+                default: code === detail.requestedRank,
               })),
             ),
         ),

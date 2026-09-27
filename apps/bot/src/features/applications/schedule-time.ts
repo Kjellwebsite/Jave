@@ -1,9 +1,11 @@
 /**
  * Parses the interview time staff type into a Discord modal. Accepts exact
- * forms (ISO 8601, `2026-10-02 18:00`, optionally with `UTC` or an offset)
- * and a few natural ones (`tomorrow 18:00`, `fri 17:30`, `in 3 days`,
- * `6pm`). Times without an explicit zone are read in the staff member's
- * configured time zone. Pure: no I/O, `now` is injected.
+ * forms (ISO 8601, `2026-10-02 18:00`) and a few natural ones
+ * (`tomorrow 18:00`, `fri 17:30`, `in 3 days`, `6pm`). Any form with a
+ * clock time may end in `UTC`, `GMT`, `Z` or an offset such as `+02:00`;
+ * without one it is read in the staff member's configured time zone, and
+ * with one, `today`, `tomorrow` and weekdays are days in that zone too.
+ * Pure: no I/O, `now` is injected.
  */
 
 const MINUTE_MS = 60_000;
@@ -65,6 +67,18 @@ interface ClockTime {
   hour: number;
   minute: number;
 }
+
+type CalendarDay = Pick<WallTime, 'year' | 'month' | 'day'>;
+
+/** Where a time without a date is read: the staff member's IANA zone, or an offset they typed. */
+type ReadingZone = { kind: 'named'; timeZone: string } | { kind: 'offset'; offsetMs: number };
+
+/** `Z`, `UTC`, `GMT` or `±HH:MM` / `±HHMM` at the end of the input. */
+const ZONE_SUFFIX_SOURCE = String.raw`z|utc|gmt|[+-]\d{2}:?\d{2}`;
+const TRAILING_ZONE = new RegExp(String.raw`^(.*?)\s*(${ZONE_SUFFIX_SOURCE})$`);
+/** Offsets beyond this do not exist on Earth (UTC+14 is the easternmost). */
+const MAX_OFFSET_HOURS = 14;
+const MAX_MINUTE = 59;
 
 /** The zone if the runtime knows it, else UTC. */
 export function safeTimeZone(timeZone: string): string {
@@ -131,7 +145,7 @@ function isValidDate(year: number, month: number, day: number): boolean {
 }
 
 function isValidClock(hour: number, minute: number): boolean {
-  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= MAX_MINUTE;
 }
 
 /** `18:00`, `9:30`, `6pm`, `6:30 pm`. */
@@ -157,21 +171,41 @@ function parseZoneSuffix(text: string | undefined): number | null | undefined {
   if (!match) return null;
   const hours = Number(match[2]);
   const minutes = Number(match[3]);
-  if (hours > 14 || minutes > 59) return null;
+  if (hours > MAX_OFFSET_HOURS || minutes > MAX_MINUTE) return null;
   const sign = match[1] === '-' ? -1 : 1;
   return sign * (hours * HOUR_MS + minutes * MINUTE_MS);
 }
 
-function addDays(wall: Pick<WallTime, 'year' | 'month' | 'day'>, days: number) {
+function addDays(wall: CalendarDay, days: number): CalendarDay {
   const date = new Date(Date.UTC(wall.year, wall.month - 1, wall.day) + days * DAY_MS);
   return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() };
 }
 
+/** The calendar day it is at `instant` in the reading zone. */
+function todayIn(instant: number, zone: ReadingZone): CalendarDay {
+  if (zone.kind === 'named') return wallClock(instant, zone.timeZone);
+  const shifted = new Date(instant + zone.offsetMs);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+  };
+}
+
+/** The instant a wall-clock time in the reading zone denotes. */
+function instantIn(wall: WallTime, zone: ReadingZone): Date {
+  if (zone.kind === 'named') return zonedToUtc(wall, zone.timeZone);
+  return new Date(
+    Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute) - zone.offsetMs,
+  );
+}
+
+const ABSOLUTE = new RegExp(
+  String.raw`^(\d{4})-(\d{2})-(\d{2})(?:[t\s]+(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?)?\s*(${ZONE_SUFFIX_SOURCE})?$`,
+);
+
 function parseAbsolute(text: string, timeZone: string): Date | null {
-  const match =
-    /^(\d{4})-(\d{2})-(\d{2})(?:[t\s]+(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?)?\s*(z|utc|gmt|[+-]\d{2}:?\d{2})?$/.exec(
-      text,
-    );
+  const match = ABSOLUTE.exec(text);
   if (!match) return null;
   const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
   if (match[4] === undefined) return null;
@@ -195,14 +229,32 @@ function parseRelative(text: string, now: Date): Date | null {
   return new Date(now.getTime() + amount * unit);
 }
 
-function parseDayAndClock(text: string, now: Date, timeZone: string): Date | null {
-  const match = /^(?:([a-z]+)\s+)?(?:at\s+)?(.+)$/.exec(text.replace(/^at\s+/, ''));
+/** Splits a trailing zone off natural input; `zone` is null when it names no valid offset. */
+function splitZone(
+  text: string,
+  timeZone: string,
+): { rest: string; zone: ReadingZone | null } | null {
+  const match = TRAILING_ZONE.exec(text);
+  if (!match || match[1] === undefined || match[1] === '')
+    return { rest: text, zone: { kind: 'named', timeZone } };
+  // The zone must follow a clock: `18:00 utc`, `6pm+02:00`, never a bare word.
+  if (!/[\dm]$/.test(match[1])) return null;
+  const offsetMs = parseZoneSuffix(match[2]);
+  if (offsetMs === null || offsetMs === undefined) return { rest: match[1], zone: null };
+  return { rest: match[1], zone: { kind: 'offset', offsetMs } };
+}
+
+function parseDayAndClock(input: string, now: Date, timeZone: string): Date | null {
+  const split = splitZone(input, timeZone);
+  if (!split?.zone) return null;
+  const { rest, zone } = split;
+  const match = /^(?:([a-z]+)\s+)?(?:at\s+)?(.+)$/.exec(rest.replace(/^at\s+/, ''));
   if (!match) return null;
   const clock = parseClock(match[2] ?? '');
   if (!clock) return null;
-  const today = wallClock(now.getTime(), timeZone);
+  const today = todayIn(now.getTime(), zone);
   const word = match[1];
-  const at = (days: number) => zonedToUtc({ ...addDays(today, days), ...clock }, timeZone);
+  const at = (days: number) => instantIn({ ...addDays(today, days), ...clock }, zone);
   if (word === undefined) {
     const sameDay = at(0);
     return sameDay.getTime() > now.getTime() ? sameDay : at(1);

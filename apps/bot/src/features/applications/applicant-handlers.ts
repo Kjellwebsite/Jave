@@ -1,17 +1,28 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { applications, InvalidStateError, loadCatalog, ValidationError } from '@jave/core';
+import {
+  applications,
+  ConflictError,
+  InvalidStateError,
+  loadCatalog,
+  ValidationError,
+} from '@jave/core';
 import type { CommandDefinition, HandlerContext, ReplyPayload } from '../../interactions/types';
 import { button, row, success } from '../../ui/components';
 import { discordTime } from '../../ui/format';
-import { applicationModal, fieldsForPage } from './applicant-modals';
+import { applicationModal, fieldsForPage, oversizedFields } from './applicant-modals';
 import {
   type DomainOption,
   renderApplicantPanel,
   renderApplicantStatus,
   renderMissingRequirements,
+  renderTooLongToEdit,
   renderWithdrawConfirm,
 } from './applicant-views';
-import { APPLICANT_ACTIONS, applicationsId, parseModalPage } from './ids';
+import { dashboardLink } from './dashboard-link';
+import { APPLICANT_ACTIONS, applicationsId, parseModalPage, parseOpenStatus } from './ids';
+
+/** The applicant's self-service page in the dashboard. */
+const DASHBOARD_APPLICATION_PATH = '/me/application';
 
 const REQUIREMENT_KEYS = new Set(Object.keys(applications.REQUIREMENT_MESSAGES));
 
@@ -81,20 +92,41 @@ async function submit(h: HandlerContext): Promise<void> {
   }
 }
 
-async function withdraw(h: HandlerContext): Promise<void> {
+/** States what withdrawing the open application costs now; `notice` says why it is shown again. */
+async function withdraw(h: HandlerContext, notice?: string): Promise<void> {
   const status = await applications.getMyApplication(h.ctx);
   const app = status.application;
   if (!app || !applications.isOpenStatus(app.status)) {
     await present(h, renderApplicantPanel(status, await loadDomains(h)));
     return;
   }
-  await present(h, renderWithdrawConfirm(status));
+  await present(h, renderWithdrawConfirm(status, app, notice));
 }
 
-async function confirmWithdraw(h: HandlerContext): Promise<void> {
-  const before = await applications.getMyApplication(h.ctx);
-  const withdrawn = await applications.withdrawApplication(h.ctx);
-  const wasDraft = before.application?.status === 'draft';
+/**
+ * `withdraw_confirm:<applicationId>:<status>` — withdraws only what the
+ * confirmation stated a cost for. A confirm without that state (rendered by
+ * an older build) or one that went stale states the current cost instead.
+ */
+async function confirmWithdraw(h: HandlerContext, args: readonly string[]): Promise<void> {
+  const [expectedApplicationId] = args;
+  const expectedStatus = parseOpenStatus(args[1]);
+  if (!expectedApplicationId || !expectedStatus) {
+    await withdraw(h, 'Confirm again: this is what withdrawing costs now.');
+    return;
+  }
+  let withdrawn: applications.ApplicantApplicationView;
+  try {
+    withdrawn = await applications.withdrawApplication(h.ctx, {
+      expectedApplicationId,
+      expectedStatus,
+    });
+  } catch (error) {
+    if (!(error instanceof ConflictError)) throw error;
+    await withdraw(h, error.userMessage);
+    return;
+  }
+  const wasDraft = expectedStatus === 'draft';
   const after = await applications.getMyApplication(h.ctx);
   const next = after.cooldownEndsAt
     ? `You can submit again from ${discordTime(after.cooldownEndsAt, 'f')}.`
@@ -117,6 +149,16 @@ async function editPage(h: HandlerContext, pageArg: string | undefined): Promise
   const page = parseModalPage(pageArg);
   if (!page) throw new ValidationError('Unknown form page.');
   const draft = await openDraft(h);
+  const oversized = oversizedFields(page, draft);
+  if (oversized.length > 0) {
+    await h.respond(
+      renderTooLongToEdit(
+        oversized.map((entry) => entry.label),
+        dashboardLink(h.ctx.config.publicUrl, DASHBOARD_APPLICATION_PATH),
+      ),
+    );
+    return;
+  }
   await h.interaction.showModal(applicationModal(page, draft));
 }
 
@@ -187,7 +229,7 @@ export async function handleApplicantComponent(
       await withdraw(h);
       return true;
     case APPLICANT_ACTIONS.withdrawConfirm:
-      await confirmWithdraw(h);
+      await confirmWithdraw(h, args);
       return true;
     default:
       return false;

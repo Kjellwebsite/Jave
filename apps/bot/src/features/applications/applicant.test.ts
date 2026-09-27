@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { applications as applicationsTable, memberRoles } from '@jave/database';
-import { activeRoles, applications, updateSettings } from '@jave/core';
+import { activeRoles, applications, updateSettings, type UserActor } from '@jave/core';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
 import { customId } from '../../interactions/custom-id';
 import type { InteractionUser } from '../../interactions/types';
-import { buttonId, buttonLabels, modalInputIds, modalOf, selectControl } from './testing/helpers';
+import {
+  buttonId,
+  buttonLabels,
+  controls,
+  modalInputIds,
+  modalOf,
+  selectControl,
+} from './testing/helpers';
 
 const ANSWERS = {
   motivation: 'I want to ship flight software with people who hold a higher bar than I do.',
@@ -18,12 +25,14 @@ const ANSWERS = {
 describe('applications — applicant flow', () => {
   let bot: BotHarness;
   let user: InteractionUser;
+  let actor: UserActor;
   let memberId: string;
 
   beforeEach(async () => {
     bot = await createBotHarness();
     const created = await bot.member({ username: 'nova' });
     user = created.user;
+    actor = created.actor;
     memberId = created.actor.memberId!;
   });
   afterEach(async () => {
@@ -204,12 +213,113 @@ describe('applications — applicant flow', () => {
     });
     expect(confirm.interaction.lastText()).toContain('DISCARD APP-0001?');
     expect(confirm.interaction.lastText()).toContain('You can start again at any time.');
-    const done = await bot.run({
+    const [row] = await bot.kit.db.select().from(applicationsTable);
+    const discard = buttonId(confirm.interaction.lastPayload(), 'Discard draft');
+    expect(discard).toBe(customId('applications', 'withdraw_confirm', row!.id, 'draft'));
+    const done = await bot.run({ kind: 'button', name: discard, user });
+    expect(done.interaction.lastText()).toContain('DRAFT DISCARDED — APP-0001');
+  });
+
+  it('BREAK: a confirmation that went stale restates the cost instead of withdrawing', async () => {
+    await startDraft();
+    await saveAnswers(ANSWERS);
+    await bot.run({
+      kind: 'select',
+      name: customId('applications', 'domain'),
+      user,
+      values: ['mind'],
+    });
+    await bot.run({ kind: 'button', name: customId('applications', 'submit'), user });
+    const confirm = await bot.run({
+      kind: 'button',
+      name: customId('applications', 'withdraw'),
+      user,
+    });
+    const staleButton = buttonId(confirm.interaction.lastPayload(), 'Withdraw application');
+    // A reviewer claims it between the confirmation and the click: the cost rises.
+    const [row] = await bot.kit.db.select().from(applicationsTable);
+    const reviewer = await bot.member({ roles: ['operations'] });
+    await applications.startReview(bot.kit.as(reviewer.actor), { applicationId: row!.id });
+
+    const stale = await bot.run({ kind: 'button', name: staleButton, user });
+    expect(stale.interaction.responses[0]!.type).toBe('update');
+    const text = stale.interaction.lastText();
+    expect(text).toContain('WITHDRAW APP-0001?');
+    expect(text).toContain(
+      'changed since you confirmed: it is now in review. Nothing was withdrawn.',
+    );
+    const [still] = await bot.kit.db.select().from(applicationsTable);
+    expect(still!.status).toBe('review');
+
+    // The restated confirmation carries the new state and withdraws when clicked.
+    const fresh = buttonId(stale.interaction.lastPayload(), 'Withdraw application');
+    expect(fresh).toBe(customId('applications', 'withdraw_confirm', row!.id, 'review'));
+    const done = await bot.run({ kind: 'button', name: fresh, user });
+    expect(done.interaction.lastText()).toContain('APPLICATION WITHDRAWN — APP-0001');
+  });
+
+  it('BREAK: a stale "discard draft" cannot withdraw a draft submitted elsewhere', async () => {
+    await startDraft();
+    await saveAnswers(ANSWERS);
+    await bot.run({
+      kind: 'select',
+      name: customId('applications', 'domain'),
+      user,
+      values: ['life'],
+    });
+    const confirm = await bot.run({
+      kind: 'button',
+      name: customId('applications', 'withdraw'),
+      user,
+    });
+    const discard = buttonId(confirm.interaction.lastPayload(), 'Discard draft');
+    // Submitted from the dashboard while the Discord confirmation stayed open.
+    await applications.submitApplication(bot.kit.as(actor));
+    const stale = await bot.run({ kind: 'button', name: discard, user });
+    expect(stale.interaction.lastText()).toContain('it is now submitted. Nothing was withdrawn.');
+    expect(stale.interaction.lastText()).toContain('WITHDRAW APP-0001?');
+    expect(stale.interaction.lastText()).toContain('You can submit again from');
+    const [row] = await bot.kit.db.select().from(applicationsTable);
+    expect(row!.status).toBe('submitted');
+
+    // A confirm without the state it was stated for never withdraws either.
+    const bare = await bot.run({
       kind: 'button',
       name: customId('applications', 'withdraw_confirm'),
       user,
     });
-    expect(done.interaction.lastText()).toContain('DRAFT DISCARDED — APP-0001');
+    expect(bare.interaction.lastText()).toContain('Confirm again');
+    expect((await bot.kit.db.select().from(applicationsTable))[0]!.status).toBe('submitted');
+  });
+
+  it('BREAK: an answer too long for a Discord input is never cut short by a prefill', async () => {
+    await startDraft();
+    // Written before the stored-length cap: 10 links of 560 characters once encoded.
+    const links = Array.from(
+      { length: 10 },
+      (_, i) => `https://example.org/${i}${'%D0%BF'.repeat(90)}`,
+    );
+    await bot.kit.db.update(applicationsTable).set({ evidenceLinks: links });
+    const refused = await bot.run({
+      kind: 'button',
+      name: customId('applications', 'edit', 1),
+      user,
+    });
+    expect(refused.interaction.responses.some((r) => r.type === 'modal')).toBe(false);
+    const text = refused.interaction.lastText();
+    expect(text).toContain('EDIT IN THE DASHBOARD');
+    expect(text).toContain('Evidence links is longer than a Discord form holds (4000 characters)');
+    const link = controls(refused.interaction.lastPayload()).find((c) => c.type === 'link');
+    expect(link?.url).toBe('https://jave.test/me/application');
+    const [row] = await bot.kit.db.select().from(applicationsTable);
+    expect(row!.evidenceLinks).toEqual(links);
+    // The other page still opens.
+    const references = await bot.run({
+      kind: 'button',
+      name: customId('applications', 'edit', 2),
+      user,
+    });
+    expect(modalOf(references.interaction).custom_id).toBe('applications:save:2');
   });
 
   it('shows eligibility and closed applications calmly', async () => {
@@ -301,9 +411,10 @@ describe('applications — applicant flow', () => {
       user: intruder.user,
     });
     expect(edit.interaction.lastText()).toContain('There is no draft to edit.');
+    const [victim] = await bot.kit.db.select().from(applicationsTable);
     const withdraw = await bot.run({
       kind: 'button',
-      name: customId('applications', 'withdraw_confirm'),
+      name: customId('applications', 'withdraw_confirm', victim!.id, 'draft'),
       user: intruder.user,
     });
     expect(withdraw.interaction.lastText()).toContain('NOT FOUND');

@@ -32,10 +32,12 @@ import type { VerificationStatus, VerificationType } from './types';
  *     system context. It returns everything to render, including
  *     `channelId`, `messageId` and `revision`.
  *  3. If `channelId` is null, complete without acting (queue channel unset).
- *  4. If `messageId` is set, edit that message in `channelId`; if Discord
- *     answers Unknown Message, post a new one instead. Otherwise post a new
- *     message in `channelId`. When posting, send `nonce` = `vc` + job id and
- *     `enforce_nonce: true` so a retried job does not post twice.
+ *  4. If `messageId` is set, edit that message in `channelId`. If Discord
+ *     answers Unknown Message or Unknown Channel (the card or its channel was
+ *     deleted), post a new card in `configuredChannelId` instead, or complete
+ *     without acting when that is null. Otherwise post a new message in
+ *     `channelId`. When posting, send `nonce` = `vc` + job id (+ render
+ *     index) and `enforce_nonce: true` so a retried job does not post twice.
  *  5. Render with `panel()`: title `${reference} — ${typeLabel}`, the status
  *     label, subject display name + handle, target label, claim, evidence
  *     count, requested / expires timestamps and the assigned verifier.
@@ -43,8 +45,10 @@ import type { VerificationStatus, VerificationType } from './types';
  *     `userText()`. Send with `allowedMentions: { parse: [] }`. Evidence URLs
  *     and decision notes stay in the dashboard — never on the card.
  *  6. Report with `markQueueCardPosted(ctx, { verificationId, channelId,
- *     messageId, previousMessageId, revision })`, where `previousMessageId`
- *     and `revision` are the values step 2 returned. The result says:
+ *     messageId, previousMessageId, revision })`, where `channelId` is the
+ *     channel the card now lives in (a reposted card moves there), and
+ *     `previousMessageId` and `revision` are the values step 2 returned.
+ *     The result says:
  *     - `recorded: false` — another run's card is on record. If you posted a
  *       new message in step 4, delete it (ignore Unknown Message). Go to 2.
  *     - `recorded: true, stale: true` — the verification changed after your
@@ -90,6 +94,11 @@ export interface QueueCard {
   decidedAt: Date | null;
   /** Channel to post in: the existing card's channel, else the configured queue channel. */
   channelId: string | null;
+  /**
+   * The configured queue channel. A card whose message or channel is gone is
+   * reposted here, so replacing the queue channel moves open cards to it.
+   */
+  configuredChannelId: string | null;
   /** Existing card message to edit, if any. Echo it back as `previousMessageId`. */
   messageId: string | null;
   /** Fingerprint of everything rendered. Echo it back to markQueueCardPosted. */
@@ -104,7 +113,7 @@ export interface QueueCardReport {
   stale: boolean;
 }
 
-type CardContent = Omit<QueueCard, 'channelId' | 'messageId' | 'revision'>;
+type CardContent = Omit<QueueCard, 'channelId' | 'configuredChannelId' | 'messageId' | 'revision'>;
 
 /** Enqueue a card refresh for the verification's current state (no-op when cards are off). */
 export async function enqueueQueueCard(
@@ -186,6 +195,7 @@ async function loadQueueCard(ctx: ServiceContext, id: string): Promise<QueueCard
   return {
     ...content,
     channelId: v.queueChannelId ?? channels.verificationQueue ?? null,
+    configuredChannelId: channels.verificationQueue ?? null,
     messageId: v.queueMessageId,
     revision: cardRevision(content),
   };

@@ -28,6 +28,25 @@ describe('parseScheduleTime', () => {
     expect(iso('tomorrow 18:00', 'America/New_York')).toBe('2026-03-06T23:00:00.000Z');
   });
 
+  it('reads a zone suffix on natural forms too, as the modal promises', () => {
+    // Thursday 12:00 UTC is 13:00 in Berlin.
+    expect(iso('tomorrow 18:00 UTC', 'Europe/Berlin')).toBe('2026-03-06T18:00:00.000Z');
+    expect(iso('fri 17:30 +02:00', 'Europe/Berlin')).toBe('2026-03-06T15:30:00.000Z');
+    expect(iso('today 20:00 gmt', 'America/New_York')).toBe('2026-03-05T20:00:00.000Z');
+    expect(iso('6pm Z', 'Asia/Tokyo')).toBe('2026-03-05T18:00:00.000Z');
+    // 07:00 there now, so 9:15 is still ahead today.
+    expect(iso('at 9:15 am -0500')).toBe('2026-03-05T14:15:00.000Z');
+    expect(iso('18:00+02:00')).toBe('2026-03-05T16:00:00.000Z');
+    // "tomorrow" is the next day in the zone given: Friday 00:30 in Tokyo already.
+    expect(
+      parseScheduleTime(
+        'tomorrow 10:00 +09:00',
+        new Date('2026-03-05T15:30:00.000Z'),
+        'UTC',
+      )?.toISOString(),
+    ).toBe('2026-03-07T01:00:00.000Z');
+  });
+
   it('reads relative offsets', () => {
     expect(iso('in 3 days')).toBe('2026-03-08T12:00:00.000Z');
     expect(iso('in 90 minutes')).toBe('2026-03-05T13:30:00.000Z');
@@ -56,6 +75,11 @@ describe('parseScheduleTime', () => {
       'in 99999 days',
       '<@123456789012345678> 18:00',
       `tomorrow ${'9'.repeat(80)}`,
+      'tomorrow utc',
+      'fri 17:30 +15:00',
+      'tomorrow 18:00 CEST',
+      'in 3 days utc',
+      'utc',
     ]) {
       expect(parseScheduleTime(input, NOW, 'UTC'), input).toBeNull();
     }

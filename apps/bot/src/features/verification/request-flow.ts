@@ -1,5 +1,17 @@
-import { LabelBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
-import { loadCatalog, ValidationError, verification } from '@jave/core';
+import {
+  LabelBuilder,
+  ModalBuilder,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+} from 'discord.js';
+import {
+  listEvidence,
+  loadCatalog,
+  requireMember,
+  ValidationError,
+  verification,
+} from '@jave/core';
 import type {
   AutocompleteChoice,
   HandlerContext,
@@ -22,11 +34,21 @@ import {
 } from './ids';
 import { NO_TARGET_COPY, TYPE_DESCRIPTIONS } from './labels';
 
-/** Modal fields. Three links keep the form short; the dashboard takes more. */
+/**
+ * Modal fields: the claim, up to three new links, and a select of evidence
+ * the member already added (profile claims, earlier requests). Five
+ * components, Discord's modal maximum; together they stay within
+ * MAX_EVIDENCE_PER_VERIFICATION.
+ */
 export const REQUEST_FIELDS = {
   claim: 'claim',
   evidence: ['evidence1', 'evidence2', 'evidence3'],
+  existing: 'existing',
 } as const;
+
+/** Existing evidence one request may attach: what the new links leave of the per-request cap. */
+export const MAX_EXISTING_EVIDENCE =
+  verification.MAX_EVIDENCE_PER_VERIFICATION - REQUEST_FIELDS.evidence.length;
 
 const KICKER = 'VERIFICATION REQUEST';
 const OPTION_TEXT_CHARS = 100;
@@ -162,8 +184,69 @@ function titleFor(ref: TargetRef): string {
   );
 }
 
-/** Step 3: claim and evidence. */
-export function requestModal(ref: TargetRef): ModalPayload {
+/** One piece of the member's own evidence, as the request modal offers it. */
+export interface EvidenceOption {
+  id: string;
+  title: string;
+  url: string | null;
+  kind: string;
+  facetKey: string | null;
+}
+
+/**
+ * The member's own evidence a request can attach: never rejected items (a
+ * verifier already found them unconvincing); for a skill, evidence for that
+ * capability first; newest first otherwise. Core re-checks ownership.
+ */
+async function attachableEvidence(h: HandlerContext, ref: TargetRef): Promise<EvidenceOption[]> {
+  const rows = await listEvidence(h.ctx, requireMember(h.ctx).memberId);
+  const facetKey = ref.type === 'skill' ? ref.facetKey : null;
+  const usable = rows.filter((row) => row.status !== 'rejected');
+  const relevant = facetKey ? usable.filter((row) => row.facetKey === facetKey) : [];
+  const rest = usable.filter((row) => !relevant.includes(row));
+  return [...relevant, ...rest].slice(0, LIMITS.selectOptions).map((row) => ({
+    id: row.id,
+    title: row.title,
+    url: row.url,
+    kind: row.kind,
+    facetKey: row.facetKey,
+  }));
+}
+
+function existingEvidenceLabel(options: readonly EvidenceOption[]): LabelBuilder {
+  return new LabelBuilder()
+    .setLabel('Evidence you already added')
+    .setDescription(
+      `Optional. Up to ${MAX_EXISTING_EVIDENCE}, from your claims and earlier requests.`,
+    )
+    .setStringSelectMenuComponent(
+      new StringSelectMenuBuilder()
+        .setCustomId(REQUEST_FIELDS.existing)
+        .setPlaceholder('Attach existing evidence')
+        .setRequired(false)
+        .setMinValues(0)
+        .setMaxValues(Math.min(options.length, MAX_EXISTING_EVIDENCE))
+        .addOptions(
+          options.map((option) => ({
+            label: clip(option.title, OPTION_TEXT_CHARS),
+            value: option.id,
+            description: clip(
+              option.url ? evidenceTitle(option.url) : option.kind.toUpperCase(),
+              OPTION_TEXT_CHARS,
+            ),
+          })),
+        ),
+    );
+}
+
+/**
+ * Step 3: claim and evidence. `existing` is the member's own evidence to
+ * offer; without any, the select is left out (Discord needs one option).
+ */
+export function requestModal(
+  ref: TargetRef,
+  existing: readonly EvidenceOption[] = [],
+): ModalPayload {
   const evidence = REQUEST_FIELDS.evidence.map((id, index) =>
     new LabelBuilder()
       .setLabel(`Evidence link ${index + 1}`)
@@ -191,6 +274,7 @@ export function requestModal(ref: TargetRef): ModalPayload {
             .setMaxLength(verification.TEXT_LIMITS.claim),
         ),
       ...evidence,
+      ...(existing.length > 0 ? [existingEvidenceLabel(existing)] : []),
     )
     .toJSON();
 }
@@ -216,7 +300,7 @@ export async function continueRequest(
     await present(h, await rankPanel(h, ref.facetKey));
     return;
   }
-  await h.interaction.showModal(requestModal(ref));
+  await h.interaction.showModal(requestModal(ref, await attachableEvidence(h, ref)));
 }
 
 async function present(h: HandlerContext, payload: ReplyPayload): Promise<void> {
@@ -254,6 +338,8 @@ export async function submitRequest(h: HandlerContext, args: readonly string[]):
     target: toRequestTarget(ref),
     claim: claim || undefined,
     evidence: links.map((url) => ({ title: evidenceTitle(url), url })),
+    // Ids from the select route only; core attaches evidence the member owns, or refuses.
+    evidenceIds: [...modal.select(REQUEST_FIELDS.existing)],
   });
   const rankNote = created.requestedRank ? ` at ${created.requestedRank}` : '';
   await h.respond({

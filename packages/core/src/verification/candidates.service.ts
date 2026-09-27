@@ -12,11 +12,14 @@ import {
   verifications,
 } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
+import { ValidationError } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
-import { loadCatalog, rankOrdinal } from '../identity/ranks';
-import { requireMember } from '../permissions/authorize';
+import { loadCatalog, type RankTier, rankOrdinal } from '../identity/ranks';
+import { authorize, requireMember } from '../permissions/authorize';
+import { loadVerification } from './repository';
 import { OPEN_STATUSES, targetKeys } from './rules';
 import { strategyFor } from './strategies';
+import { currentVerifiedRank } from './strategies/skill';
 import type { VerificationType } from './types';
 
 /**
@@ -183,6 +186,19 @@ async function trialCandidates(ctx: ServiceContext, memberId: string): Promise<R
   }));
 }
 
+/**
+ * Tier codes strictly above `current`, highest first: what a skill request
+ * may ask for, and what an approval may grant (the skill strategy refuses
+ * anything at or below the verified rank).
+ */
+function ranksAbove(tiers: readonly RankTier[], current: string | null): string[] {
+  const floor = rankOrdinal(tiers, current);
+  return [...tiers]
+    .reverse()
+    .filter((tier) => tier.ordinal > floor)
+    .map((tier) => tier.code);
+}
+
 async function skillCandidates(ctx: ServiceContext, memberId: string): Promise<RawCandidate[]> {
   const catalog = await loadCatalog(ctx);
   const rows = await ctx.db
@@ -193,11 +209,9 @@ async function skillCandidates(ctx: ServiceContext, memberId: string): Promise<R
     .from(memberCapabilities)
     .where(eq(memberCapabilities.memberId, memberId));
   const verified = new Map(rows.map((row) => [row.facetKey, row.verifiedRank]));
-  const tiersHighFirst = [...catalog.tiers].reverse();
   return catalog.facets.flatMap((facet) => {
     const current = verified.get(facet.key) ?? null;
-    const floor = rankOrdinal(catalog.tiers, current);
-    const ranks = tiersHighFirst.filter((tier) => tier.ordinal > floor).map((tier) => tier.code);
+    const ranks = ranksAbove(catalog.tiers, current);
     if (ranks.length === 0) return [];
     const domain = catalog.domains.find((entry) => entry.key === facet.domainKey);
     return [
@@ -255,4 +269,35 @@ export async function listTargetCandidates(
       detail: candidate.detail,
       ranks: candidate.ranks ?? [],
     }));
+}
+
+export const grantableRanksSchema = z.object({ verificationId: z.uuid() }).strict();
+
+export interface GrantableRanks {
+  /** The subject's verified rank for the capability now; null when not verified. */
+  currentVerifiedRank: string | null;
+  /** Ranks an approval may grant (above the current verified rank), highest first. */
+  ranks: string[];
+}
+
+/**
+ * The ranks approving a skill verification could grant right now, so a
+ * verifier is only offered ranks decideVerification accepts. Empty when the
+ * subject already holds the top rank. Verifiers only; decideVerification
+ * re-checks under a lock when the decision is made.
+ */
+export async function listGrantableRanks(
+  ctx: ServiceContext,
+  input: z.input<typeof grantableRanksSchema>,
+): Promise<GrantableRanks> {
+  const { verificationId } = parseInput(grantableRanksSchema, input);
+  await authorize(ctx, 'canVerifyMembers', { type: 'verification', id: verificationId });
+  const verification = await loadVerification(ctx, verificationId);
+  if (verification.type !== 'skill' || !verification.facetKey)
+    throw new ValidationError('Only a skill verification grants a rank.');
+  const [catalog, current] = await Promise.all([
+    loadCatalog(ctx),
+    currentVerifiedRank(ctx, verification.subjectMemberId, verification.facetKey),
+  ]);
+  return { currentVerifiedRank: current, ranks: ranksAbove(catalog.tiers, current) };
 }

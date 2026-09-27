@@ -1,6 +1,7 @@
 import {
   applications,
   authorize,
+  can,
   type Capability,
   getMyPreferences,
   getSettings,
@@ -143,14 +144,22 @@ export async function openDecisionForm(
   await h.interaction.showModal(decisionModal(decision, card.applicationId, card.number));
 }
 
-/** VIEW DETAILS: the full staff view, privately. */
+/**
+ * The card's actions this viewer can use: the state offers them and the
+ * viewer holds each one's capability (the same gate prepare() applies).
+ */
+export function usableActions(h: HandlerContext, offered: readonly StaffAction[]): StaffAction[] {
+  return offered.filter((action) => can(h.ctx, ACTION_CAPABILITY[action]));
+}
+
+/** VIEW DETAILS: the full staff view, privately, with only the controls this viewer can use. */
 export async function showDetails(
   h: HandlerContext,
   applicationId: string | undefined,
 ): Promise<void> {
   const view = await applications.getApplication(h.ctx, { applicationId: applicationId ?? '' });
   const card = await applications.getReviewCard(h.ctx, { applicationId: view.id });
-  await h.respond(renderStaffDetails(view, card, h.ctx.config.publicUrl));
+  await h.respond(renderStaffDetails(view, usableActions(h, card.actions), h.ctx.config.publicUrl));
 }
 
 export async function submitReview(

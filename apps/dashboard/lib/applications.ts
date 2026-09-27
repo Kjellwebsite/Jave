@@ -1,6 +1,7 @@
 import type { applications } from '@jave/core';
 import type { BadgeTone } from '@jave/ui';
 import { formEnum, formString } from './form-data';
+import { formatTimestamp } from './time';
 
 /** Client-safe copy and form parsing for the application pages. */
 
@@ -116,6 +117,23 @@ export const DRAFT_TEXT_FIELDS: readonly Exclude<FormFieldKey, 'domainKey'>[] = 
   'references',
   'referralCode',
 ];
+
+/** The draft form's intent field: set to DRAFT_SUBMIT_INTENT by the Submit confirmation. */
+export const DRAFT_INTENT_FIELD = 'intent';
+export const DRAFT_SUBMIT_INTENT = 'submit';
+
+/** Hidden fields binding a withdrawal to the application and status its cost was stated for. */
+export const WITHDRAW_EXPECTATION_FIELDS = {
+  applicationId: 'applicationId',
+  status: 'expectedStatus',
+} as const;
+
+/** What withdrawing costs now, stated before the click (and again when it changed). */
+export function withdrawalCostLine(cooldownEndsAt: Date | null, timeZone: string): string {
+  return cooldownEndsAt
+    ? `You could submit again from ${formatTimestamp(cooldownEndsAt, timeZone)} ${timeZone}.`
+    : 'You can start again at any time.';
+}
 
 /**
  * The draft patch a submitted form describes. Every field is sent, so an

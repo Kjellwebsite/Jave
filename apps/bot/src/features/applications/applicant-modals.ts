@@ -32,7 +32,7 @@ function currentValue(app: ApplicantView, key: applications.ApplicationFormField
     case 'portfolioUrl':
       return app.portfolioUrl ?? '';
     case 'evidenceLinks':
-      return app.evidenceLinks.join('\n');
+      return app.evidenceLinks.join(applications.EVIDENCE_LINK_SEPARATOR);
     case 'references':
       return app.references ?? '';
     case 'referralCode':
@@ -42,20 +42,37 @@ function currentValue(app: ApplicantView, key: applications.ApplicationFormField
   }
 }
 
+function inputLimit(entry: FormField): number {
+  return Math.min(entry.maxLength, applications.DISCORD_MODAL_LIMITS.inputChars);
+}
+
+/**
+ * Fields of a page whose stored answer is longer than its modal input.
+ * Core keeps every stored answer within its input, so this only catches
+ * data written before a cap tightened; such a page must not open, because
+ * a truncated prefill would be saved back over the full answer.
+ */
+export function oversizedFields(page: ModalPage, app: ApplicantView): FormField[] {
+  return fieldsForPage(page).filter(
+    (entry) => currentValue(app, entry.key).length > inputLimit(entry),
+  );
+}
+
 /**
  * One page of the application form, prefilled with the draft. Every input is
- * optional so a partial save works; submission checks completeness.
+ * optional so a partial save works; submission checks completeness. Check
+ * oversizedFields first: a prefill is never cut short.
  */
 export function applicationModal(page: ModalPage, app: ApplicantView): ModalPayload {
   const labels = fieldsForPage(page).map((entry) => {
-    const limit = Math.min(entry.maxLength, applications.DISCORD_MODAL_LIMITS.inputChars);
+    const limit = inputLimit(entry);
     const input = new TextInputBuilder()
       .setCustomId(entry.key)
       .setStyle(entry.input === 'paragraph' ? TextInputStyle.Paragraph : TextInputStyle.Short)
       .setMaxLength(limit)
       .setRequired(false)
       .setPlaceholder(clip(entry.placeholder, applications.DISCORD_MODAL_LIMITS.placeholderChars));
-    const value = currentValue(app, entry.key).slice(0, limit);
+    const value = currentValue(app, entry.key);
     // An empty prefill is omitted: the placeholder shows instead.
     if (value) input.setValue(value);
     return new LabelBuilder()

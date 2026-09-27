@@ -93,6 +93,11 @@ export const VERIFICATION_SCOPE_LABELS: Readonly<Record<VerificationScope, strin
   unassigned: 'Unassigned',
 };
 
+/** `/verification?subject=me`: the viewer's own verifications, for verifiers too. */
+export const MY_VERIFICATIONS_SUBJECT = 'me';
+/** Every verification about the viewer, decided ones included (their notes stay readable). */
+export const MY_VERIFICATIONS_HREF = `/verification?subject=${MY_VERIFICATIONS_SUBJECT}&status=all`;
+
 /** What an identity approval does; its stored target label is only the subject's handle. */
 export const IDENTITY_TARGET_LINE = 'Identity · grants VERIFIED';
 

@@ -13,6 +13,7 @@ import {
   DAY,
   resolveUserActor,
   type ServiceContext,
+  setVerifiedRank,
   syncDiscordUser,
   systemActor,
   grantRoleUnchecked,
@@ -219,6 +220,14 @@ async function seedVerifications(system: ServiceContext, staff: Record<string, S
   });
 
   const aiko = await person(system, PEOPLE.aiko);
+  const aikoMember = aiko.actor.kind === 'user' ? aiko.actor.memberId! : '';
+  // Already verified at C: an approval can only grant B or higher.
+  await setVerifiedRank(staff.core!, {
+    memberId: aikoMember,
+    facetKey: 'create.technical',
+    rank: 'C',
+    reason: 'Fixture: evaluated in a build trial.',
+  });
   await verification.requestVerification(aiko, {
     target: { type: 'skill', facetKey: 'create.technical', requestedRank: 'A' },
     claim: 'Designed and shipped the flight computer for a student rocket, end to end.',
@@ -227,7 +236,6 @@ async function seedVerifications(system: ServiceContext, staff: Record<string, S
       { title: 'Launch report', url: 'https://example.org/launch-report' },
     ],
   });
-  const aikoMember = aiko.actor.kind === 'user' ? aiko.actor.memberId! : '';
   const [contribution] = await system.db
     .insert(contributions)
     .values({

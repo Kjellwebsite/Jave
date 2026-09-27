@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestKit, type TestKit } from '../testing';
 import { setVerifiedRank } from '../identity/capabilities.service';
 import { ForbiddenError, UnauthenticatedError, ValidationError } from '../kernel/errors';
-import { decideVerification, listTargetCandidates, requestVerification } from './index';
+import {
+  decideVerification,
+  listGrantableRanks,
+  listTargetCandidates,
+  requestVerification,
+} from './index';
 import {
   addProjectMember,
   createContribution,
@@ -82,6 +87,54 @@ describe('verification target candidates', KIT_TEST_OPTIONS, () => {
 
     const filtered = await listTargetCandidates(kit.as(member), { type: 'skill', search: 'RESE' });
     expect(filtered.map((c) => c.targetId)).toEqual(['mind.research']);
+  });
+
+  it('offers verifiers only the ranks an approval can grant', async () => {
+    const member = await kit.member({ roles: ['trial'] });
+    const evaluator = await kit.member({ roles: ['core'] });
+    const verifier = await kit.member({ roles: ['core'] });
+    const request = await requestVerification(kit.as(member), {
+      target: { type: 'skill', facetKey: 'create.technical', requestedRank: 'A' },
+    });
+    expect(await listGrantableRanks(kit.as(verifier), { verificationId: request.id })).toEqual({
+      currentVerifiedRank: null,
+      ranks: ['S', 'A', 'B', 'C', 'D', 'E', 'F'],
+    });
+    // Verified at B by another route while the request is open.
+    await setVerifiedRank(kit.as(evaluator), {
+      memberId: member.memberId!,
+      facetKey: 'create.technical',
+      rank: 'B',
+      reason: 'Evaluated in a trial.',
+    });
+    const grantable = await listGrantableRanks(kit.as(verifier), { verificationId: request.id });
+    expect(grantable).toEqual({ currentVerifiedRank: 'B', ranks: ['S', 'A'] });
+    // Every offered rank is one decideVerification accepts.
+    const decided = await decideVerification(kit.as(verifier), {
+      verificationId: request.id,
+      decision: 'approve',
+      grantedRank: grantable.ranks.at(-1),
+      note: 'The compiler passes the conformance suite.',
+    });
+    expect(decided.grantedRank).toBe('A');
+  });
+
+  it('BREAK: grantable ranks are for verifiers, and for skill verifications only', async () => {
+    const member = await kit.member({ roles: ['trial'] });
+    const ops = await kit.member({ roles: ['operations'] });
+    const skill = await requestVerification(kit.as(member), {
+      target: { type: 'skill', facetKey: 'mind.research', requestedRank: 'A' },
+    });
+    const identity = await requestVerification(kit.as(member), { target: { type: 'identity' } });
+    await expect(
+      listGrantableRanks(kit.as(member), { verificationId: skill.id }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(
+      listGrantableRanks(kit.as(ops), { verificationId: identity.id }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      listGrantableRanks(kit.as(ops), { verificationId: 'not-a-uuid' }),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 
   it('hides targets with an open request, and approved single-approval targets', async () => {

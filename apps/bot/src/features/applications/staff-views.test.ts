@@ -64,7 +64,11 @@ function maximalView(): applications.StaffApplicationView {
 
 describe('staff views', () => {
   it('keeps the maximal staff view inside Discord’s embed budget', () => {
-    const payload = renderStaffDetails(maximalView(), null, 'https://jave.test');
+    const payload = renderStaffDetails(
+      maximalView(),
+      ['start_review', 'review', 'schedule_interview', 'accept', 'reject'],
+      'https://jave.test',
+    );
     expect(totalEmbedLength(payload.embeds!)).toBeLessThanOrEqual(EMBED_TOTAL_CHARS);
     for (const embed of payload.embeds!)
       for (const f of embed.fields ?? []) expect(f.value.length).toBeLessThanOrEqual(1024);

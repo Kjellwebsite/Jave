@@ -35,6 +35,7 @@ import { firstParam, offsetParam, type SearchParams, toQueryString } from '@/lib
 import { formatDate, formatRelative } from '@/lib/time';
 import {
   capabilityLabelFor,
+  MY_VERIFICATIONS_SUBJECT,
   VERIFICATION_SCOPE_LABELS,
   VERIFICATION_SCOPES,
   VERIFICATION_STATUS_FILTER_LABELS,
@@ -63,6 +64,8 @@ const filterSchema = z.object({
     .catch(undefined),
   scope: z.enum(VERIFICATION_SCOPES).catch('all'),
   sort: z.enum(QUEUE_SORTS).catch('oldest'),
+  /** `me`: only verifications about the viewer (a verifier's own requests). */
+  subject: z.enum([MY_VERIFICATIONS_SUBJECT]).optional().catch(undefined),
 });
 
 export default async function VerificationPage({
@@ -71,15 +74,22 @@ export default async function VerificationPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { ctx, actor } = await requireConsoleContext();
-  const staff = can(ctx, 'canVerifyMembers');
-  if (!staff && !actor.memberId)
+  const verifier = can(ctx, 'canVerifyMembers');
+  if (!verifier && !actor.memberId)
     return <RestrictedPage eyebrow="PEOPLE" title="Verification" capability="canVerifyMembers" />;
   const params = await searchParams;
+  const subject =
+    firstParam(params.subject) === MY_VERIFICATIONS_SUBJECT && actor.memberId
+      ? MY_VERIFICATIONS_SUBJECT
+      : undefined;
+  // The queue for verifiers; everyone's own requests otherwise, or when asked for.
+  const staff = verifier && !subject;
   const filters = filterSchema.parse({
     status: firstParam(params.status) || undefined,
     type: firstParam(params.type) || undefined,
     scope: firstParam(params.scope) || undefined,
     sort: firstParam(params.sort) || (staff ? undefined : 'newest'),
+    subject,
   });
   const offset = offsetParam(params.offset);
   const type = VERIFICATION_TYPES.find((candidate) => candidate === filters.type);
@@ -89,6 +99,7 @@ export default async function VerificationPage({
       verification.listVerifications(ctx, {
         status: verificationStatusesFor(filters.status),
         type,
+        subjectMemberId: verifier && subject ? (actor.memberId ?? undefined) : undefined,
         assignedToMe: staff && filters.scope === 'mine' ? true : undefined,
         unassigned: staff && filters.scope === 'unassigned' ? true : undefined,
         sort: filters.sort,
@@ -106,13 +117,24 @@ export default async function VerificationPage({
     verificationTargetLine(item, capabilityLabelFor(catalog, item.facetKey));
   const now = ctx.clock.now();
   const defaultSort = staff ? 'oldest' : 'newest';
-  const filtered = Boolean(filters.status !== 'open' || filters.type || filters.scope !== 'all');
+  const filtered = Boolean(
+    filters.status !== 'open' || filters.type || (staff && filters.scope !== 'all'),
+  );
+  // Every status widens the default view; only the other filters can hide what exists.
+  const everyStatus = filters.status === 'all';
+  const narrowed = Boolean(
+    (filters.status !== 'open' && !everyStatus) ||
+    filters.type ||
+    (staff && filters.scope !== 'all'),
+  );
   const query = {
     status: filters.status === 'open' ? undefined : filters.status,
     type: filters.type,
-    scope: filters.scope === 'all' ? undefined : filters.scope,
+    scope: !staff || filters.scope === 'all' ? undefined : filters.scope,
     sort: filters.sort === defaultSort ? undefined : filters.sort,
+    subject: filters.subject,
   };
+  const basePath = subject ? `/verification?subject=${MY_VERIFICATIONS_SUBJECT}` : '/verification';
   const columns = staff ? STAFF_COLUMNS : MEMBER_COLUMNS;
   const tiles = counts
     ? [
@@ -146,16 +168,27 @@ export default async function VerificationPage({
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="PEOPLE"
-        title="Verification"
+        eyebrow={staff ? 'PEOPLE' : 'ACCOUNT'}
+        title={staff ? 'Verification' : 'My verifications'}
         description={
           staff
             ? 'Claims moving from CLAIMED to VERIFIED. Nobody verifies themselves; a request opened by staff needs a second verifier.'
-            : 'Your requests to move a claim from CLAIMED to VERIFIED. Open one in Discord with /verify request.'
+            : 'Your requests to move a claim from CLAIMED to VERIFIED, with each verifier’s note. Open one in Discord with /verify request.'
+        }
+        actions={
+          verifier ? (
+            <Link
+              href={subject ? '/verification' : `/verification?subject=${MY_VERIFICATIONS_SUBJECT}`}
+              className={buttonStyles({ variant: 'ghost', size: 'sm' })}
+            >
+              {subject ? 'Verification queue' : 'My verifications'}
+            </Link>
+          ) : undefined
         }
         meta={
           <Mono dim>
-            {page.total.toLocaleString('en-US')} {filtered ? 'matching' : 'open'}
+            {page.total.toLocaleString('en-US')}{' '}
+            {narrowed ? 'matching' : everyStatus ? 'in total' : 'open'}
           </Mono>
         }
       />
@@ -184,6 +217,7 @@ export default async function VerificationPage({
           aria-label="Filter verifications"
           className="border-b border-line-subtle p-4"
         >
+          {subject ? <input type="hidden" name="subject" value={subject} /> : null}
           <Toolbar
             className={cx(
               'grid grid-cols-2 gap-2.5',
@@ -229,7 +263,7 @@ export default async function VerificationPage({
                 Apply
               </Button>
               {filtered ? (
-                <Link href="/verification" className={buttonStyles({ variant: 'ghost' })}>
+                <Link href={basePath} className={buttonStyles({ variant: 'ghost' })}>
                   Reset
                 </Link>
               ) : null}
@@ -237,19 +271,21 @@ export default async function VerificationPage({
           </Toolbar>
         </form>
 
-        {page.total === 0 && !filtered ? (
+        {page.total === 0 && !narrowed ? (
           <EmptyState
             icon={ShieldCheck}
-            title={staff ? 'QUEUE CLEAR' : 'NO OPEN REQUESTS'}
+            title={
+              staff ? 'QUEUE CLEAR' : everyStatus ? 'NO VERIFICATIONS YET' : 'NO OPEN REQUESTS'
+            }
             description={
               staff
                 ? 'No verification is waiting. New requests appear here and in the queue channel.'
                 : 'Put a claim forward in Discord with /verify request. A verifier who is not you decides.'
             }
             action={
-              staff ? undefined : (
+              staff || everyStatus ? undefined : (
                 <Link
-                  href="/verification?status=all"
+                  href={`/verification${toQueryString({ subject: filters.subject, status: 'all' })}`}
                   className={buttonStyles({ variant: 'secondary', size: 'sm' })}
                 >
                   Show closed requests
@@ -282,7 +318,7 @@ export default async function VerificationPage({
                   title="NO MATCHES"
                   description="No verification matches these filters."
                   action={
-                    <Link href="/verification" className={buttonStyles({ size: 'sm' })}>
+                    <Link href={basePath} className={buttonStyles({ size: 'sm' })}>
                       Clear filters
                     </Link>
                   }

@@ -1,4 +1,4 @@
-import type { applications } from '@jave/core';
+import { applications } from '@jave/core';
 import { customId } from '../../interactions/custom-id';
 
 /**
@@ -52,4 +52,9 @@ export function parseModalPage(value: string | undefined): ModalPage | null {
 
 export function parseDecision(value: string | undefined): Decision | null {
   return DECISIONS.find((decision) => decision === value) ?? null;
+}
+
+/** An open status carried by a confirm button (the state its stated cost was computed for). */
+export function parseOpenStatus(value: string | undefined): applications.ApplicationStatus | null {
+  return applications.OPEN_STATUSES.find((status) => status === value) ?? null;
 }

@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DRAFT_INTENT_FIELD,
+  DRAFT_SUBMIT_INTENT,
   draftPatchFrom,
   parseApplicationNumber,
   recommendationFrom,
   scoreFrom,
   statusesFor,
+  withdrawalCostLine,
 } from './applications';
 import { fromDatetimeLocal, toDatetimeLocal } from './datetime-local';
 import {
   capabilityLabelFor,
   IDENTITY_TARGET_LINE,
+  MY_VERIFICATIONS_HREF,
   verificationStatusesFor,
   verificationTargetLine,
 } from './verification';
@@ -39,7 +43,14 @@ describe('application page helpers', () => {
 
   it('builds a full draft patch so emptied fields clear', () => {
     expect(
-      draftPatchFrom(form({ domainKey: 'create', motivation: 'Ship it.', status: 'accepted' })),
+      draftPatchFrom(
+        form({
+          domainKey: 'create',
+          motivation: 'Ship it.',
+          status: 'accepted',
+          [DRAFT_INTENT_FIELD]: DRAFT_SUBMIT_INTENT,
+        }),
+      ),
     ).toEqual({
       domainKey: 'create',
       motivation: 'Ship it.',
@@ -50,6 +61,18 @@ describe('application page helpers', () => {
       references: '',
       referralCode: '',
     });
+  });
+
+  it('states what withdrawing costs in the viewer’s zone', () => {
+    const at = new Date('2026-10-28T09:00:00.000Z');
+    expect(withdrawalCostLine(at, 'Europe/Oslo')).toBe(
+      'You could submit again from 2026-10-28 10:00 Europe/Oslo.',
+    );
+    expect(withdrawalCostLine(null, 'UTC')).toBe('You can start again at any time.');
+  });
+
+  it('links a member’s own verifications, decided ones included', () => {
+    expect(MY_VERIFICATIONS_HREF).toBe('/verification?subject=me&status=all');
   });
 
   it('BREAK: review inputs outside the allowed values are dropped', () => {

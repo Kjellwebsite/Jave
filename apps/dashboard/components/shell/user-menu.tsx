@@ -2,7 +2,15 @@
 
 import Link from 'next/link';
 import { useRef } from 'react';
-import { ChevronDown, ExternalLink, LogOut, SlidersHorizontal, UserRound } from 'lucide-react';
+import {
+  ChevronDown,
+  ExternalLink,
+  FileText,
+  LogOut,
+  ShieldCheck,
+  SlidersHorizontal,
+  UserRound,
+} from 'lucide-react';
 import {
   Avatar,
   DropdownMenu,
@@ -14,6 +22,7 @@ import {
   Icon,
   RoleBadge,
 } from '@jave/ui';
+import { MY_VERIFICATIONS_HREF } from '@/lib/verification';
 import { signOutAction } from '@/server/actions/auth';
 import type { Viewer } from '@/server/data/viewer';
 
@@ -52,6 +61,18 @@ export function UserMenu({ viewer }: { viewer: Viewer }) {
             <Link href="/me">
               <Icon icon={UserRound} />
               My profile
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/me/application">
+              <Icon icon={FileText} />
+              My application
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href={MY_VERIFICATIONS_HREF}>
+              <Icon icon={ShieldCheck} />
+              My verifications
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>

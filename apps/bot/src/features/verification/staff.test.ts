@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { auditLogs, memberCapabilities, verifications } from '@jave/database';
-import { type UserActor, verification } from '@jave/core';
+import { setVerifiedRank, type UserActor, verification } from '@jave/core';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
 import { customId } from '../../interactions/custom-id';
 import type { InteractionUser } from '../../interactions/types';
@@ -125,6 +125,45 @@ describe('verification — staff queue and decisions', { timeout: FLOW_TIMEOUT_M
     expect(own).not.toContain('theo');
     // No verifier controls for the subject: only the link to their own record.
     expect(buttonLabels(mine.interaction.lastPayload())).toEqual(['OPEN IN DASHBOARD']);
+  });
+
+  it('skill approvals list only ranks above the subject’s verified rank', async () => {
+    const evaluator = await bot.member({ roles: ['core'] });
+    await setVerifiedRank(bot.kit.as(evaluator.actor), {
+      memberId: subject.actor.memberId!,
+      facetKey: 'create.technical',
+      rank: 'B',
+      reason: 'Evaluated in a trial.',
+    });
+    const created = await verification.requestVerification(bot.kit.as(subject.actor), {
+      target: { type: 'skill', facetKey: 'create.technical', requestedRank: 'A' },
+    });
+    const form = await bot.run({
+      kind: 'button',
+      name: customId('verification', 'approve', created.id),
+      user: evaluator.user,
+    });
+    const modal = modalOf(form.interaction);
+    const text = JSON.stringify(modal);
+    expect(text).toContain('Verified B now; only higher ranks are listed.');
+    const values = [...text.matchAll(/"value":"([A-Z])"/g)].map((match) => match[1]);
+    expect(values).toEqual(['S', 'A']);
+
+    // Verified at S elsewhere while the request waited: nothing is left to grant.
+    await setVerifiedRank(bot.kit.as(evaluator.actor), {
+      memberId: subject.actor.memberId!,
+      facetKey: 'create.technical',
+      rank: 'S',
+      reason: 'Shipped a compiler.',
+    });
+    const stale = await bot.run({
+      kind: 'button',
+      name: customId('verification', 'approve', created.id),
+      user: evaluator.user,
+    });
+    expect(stale.interaction.responses.some((r) => r.type === 'modal')).toBe(false);
+    expect(stale.interaction.lastText()).toContain('already verified at S');
+    expect(stale.interaction.lastText()).toContain('reject it instead');
   });
 
   it('skill approvals ask for the rank to grant; evaluators may grant another one', async () => {

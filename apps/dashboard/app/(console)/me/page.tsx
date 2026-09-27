@@ -25,6 +25,7 @@ import { PreferencesForm } from '@/components/me/preferences-form';
 import { ProfileForm } from '@/components/me/profile-form';
 import { NextLink } from '@/components/next-link';
 import { firstParam, type SearchParams } from '@/lib/search-params';
+import { MY_VERIFICATIONS_HREF } from '@/lib/verification';
 import { timeZoneOptions } from '@/lib/time';
 import { requireConsoleContext, type UserContext } from '@/server/context';
 import { claimRankAction, updatePreferencesAction, updateProfileAction } from './actions';
@@ -183,6 +184,9 @@ export default async function MePage({ searchParams }: { searchParams: Promise<S
           <>
             <Link href="/me/application" className={buttonStyles({ variant: 'ghost' })}>
               My application
+            </Link>
+            <Link href={MY_VERIFICATIONS_HREF} className={buttonStyles({ variant: 'ghost' })}>
+              My verifications
             </Link>
             {handle ? (
               <Link href={`/p/${handle}`} className={buttonStyles({ variant: 'secondary' })}>

@@ -49,7 +49,10 @@ function interviewValue(): string {
 }
 
 test.describe('applicant self-service', () => {
-  test('a member drafts, submits and withdraws an application', async ({ page }) => {
+  test('a member drafts, submits unsaved edits and withdraws an application', async ({
+    page,
+    browser,
+  }) => {
     await signInFresh(page, 'member');
     await page.goto('/me');
     await page.getByRole('link', { name: 'My application' }).click();
@@ -65,7 +68,19 @@ test.describe('applicant self-service', () => {
     const missing = page.getByRole('list', { name: 'Missing before submission' });
     await expect(missing).toContainText('Choose a primary domain.');
     await expect(missing).toContainText('Motivation needs at least 30 characters.');
-    await expect(page.getByRole('button', { name: 'Submit application' })).toHaveCount(0);
+
+    // Submitting an incomplete draft saves it and says what is missing.
+    await page.getByLabel('Experience').fill('Two years on a student cubesat team.');
+    await page.getByRole('button', { name: 'Submit application' }).click();
+    const confirmSubmit = page.getByRole('dialog', { name: 'Submit application' });
+    await expect(confirmSubmit).toContainText('The answers in the form are saved');
+    await confirmSubmit.getByRole('button', { name: 'Submit application' }).click();
+    await expect(
+      page.getByText(/Draft saved, not submitted\. Choose a primary domain\./),
+    ).toBeVisible();
+    await expect(confirmSubmit).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByLabel('Experience')).toHaveValue('Two years on a student cubesat team.');
 
     // BREAK: a script URL is refused and nothing is stored.
     await page.getByLabel('Evidence links').fill('javascript:alert(1)');
@@ -89,13 +104,21 @@ test.describe('applicant self-service', () => {
     await save.click();
     await expect(page.getByText('DRAFT SAVED — ready to submit.')).toBeVisible();
 
+    // An edit made after the last save is part of the submission, not lost.
+    await page
+      .getByLabel('Projects')
+      .fill('Rewrote the attitude-control loop; flown on two missions.');
     await page.getByRole('button', { name: 'Submit application' }).click();
     const submit = page.getByRole('dialog', { name: 'Submit application' });
     await submit.getByRole('button', { name: 'Submit application' }).click();
-    await expect(page.getByText(/APPLICATION SUBMITTED — APP-\d{4}/)).toBeVisible();
+    const submitted = page.getByText(/APPLICATION SUBMITTED — APP-\d{4}/);
+    await expect(submitted).toBeVisible();
+    const number = /APP-\d{4}/.exec((await submitted.textContent()) ?? '')?.[0] ?? '';
+    expect(number).toMatch(/^APP-\d{4}$/);
 
     const answers = page.locator('section', { hasText: 'Your answers' });
     await expect(answers).toContainText('<b>I build</b> flight software');
+    await expect(answers).toContainText('flown on two missions');
     await expect(answers.locator('b')).toHaveCount(0);
     await expect(page.getByText('SUBMITTED').first()).toBeVisible();
 
@@ -103,10 +126,46 @@ test.describe('applicant self-service', () => {
     const withdraw = page.getByRole('dialog', { name: 'Withdraw application' });
     await expect(withdraw).toContainText('You could submit again from');
     await withdraw.getByLabel('Reason').fill('Applying next season with a finished project.');
+
+    // BREAK: before the click, a reviewer claims it, which raises the cost of withdrawing.
+    const staff = await browser.newContext();
+    const staffPage = await staff.newPage();
+    await signInAs(staffPage, 'founder');
+    await staffPage.goto(await recordHref(staffPage, `/applications?number=${number}`, number));
+    await staffPage.getByRole('button', { name: 'Claim' }).click();
+    await staffPage
+      .getByRole('dialog', { name: 'Claim for review' })
+      .getByRole('button', { name: 'Claim application' })
+      .click();
+    await expect(staffPage.getByText(`CLAIMED — ${number}. It is assigned to you.`)).toBeVisible();
+    await staff.close();
+
+    // The stale confirmation withdraws nothing and states the new cost instead.
     await withdraw.getByRole('button', { name: 'Withdraw application' }).click();
-    await expect(page.getByText(/WITHDRAWN — APP-\d{4}\. You can submit again from/)).toBeVisible();
+    await expect(withdraw).toContainText(
+      `${number} changed since you confirmed: it is now in review. Nothing was withdrawn.`,
+    );
+    await expect(withdraw).toContainText('Confirm again to withdraw.');
+    await expect(page.getByText('A reviewer is working on it.')).toBeVisible();
+
+    // The dialog now carries the new state; confirming again withdraws.
+    await withdraw.getByRole('button', { name: 'Withdraw application' }).click();
+    await expect(
+      page.getByText(new RegExp(`WITHDRAWN — ${number}\\. You can submit again from`)),
+    ).toBeVisible();
     await expect(page.getByText('Withdrawn. You can start a new application.')).toBeVisible();
     await expect(page.getByText('COOLDOWN')).toBeVisible();
+  });
+
+  test('members reach their verifications from their profile', async ({ page }) => {
+    await signInFresh(page, 'member');
+    await page.goto('/me');
+    await page.getByRole('link', { name: 'My verifications' }).click();
+    await page.waitForURL(/\/verification\?subject=me&status=all/);
+    await expect(page.getByRole('heading', { level: 1, name: 'My verifications' })).toBeVisible();
+    await page.getByRole('button', { name: /Account menu/ }).click();
+    await expect(page.getByRole('menuitem', { name: 'My verifications' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'My application' })).toBeVisible();
   });
 
   test('BREAK: members get no staff pages', async ({ page }) => {
@@ -235,6 +294,9 @@ test.describe('verification queue', () => {
     await page.getByRole('button', { name: 'Approve' }).click();
     const approve = page.getByRole('dialog', { name: 'Approve' });
     await expect(approve.getByLabel('Rank to grant')).toHaveValue('A');
+    // Verified C already: only ranks an approval can grant are offered.
+    await expect(approve.getByLabel('Rank to grant').locator('option')).toHaveText(['S', 'A', 'B']);
+    await expect(approve).toContainText('Verified C now; only higher ranks are listed.');
     await approve.getByLabel('Rank to grant').selectOption('B');
     await approve
       .getByLabel('Decision note')

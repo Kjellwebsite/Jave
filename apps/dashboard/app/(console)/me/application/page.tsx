@@ -16,7 +16,6 @@ import {
 } from '@jave/ui';
 import {
   StartApplicationButton,
-  SubmitApplicationDialog,
   WithdrawApplicationDialog,
 } from '@/components/applications/applicant-actions';
 import {
@@ -26,13 +25,14 @@ import {
   StatusTimeline,
 } from '@/components/applications/application-parts';
 import { DraftForm } from '@/components/applications/draft-form';
+import { withdrawalCostLine } from '@/lib/applications';
 import { formatTimestamp } from '@/lib/time';
 import { requireConsoleContext } from '@/server/context';
 import { loadViewer } from '@/server/data/viewer';
 import {
   saveDraftAction,
   startApplicationAction,
-  submitApplicationAction,
+  submitDraftAction,
   withdrawApplicationAction,
 } from './actions';
 
@@ -84,7 +84,7 @@ function Readiness({ app }: { app: ApplicantView }) {
     return (
       <p className="flex items-start gap-2 text-small text-fg-muted">
         <Icon icon={CircleCheck} className="mt-0.5 text-success" />
-        Every requirement is met.
+        Every requirement is met in the saved draft.
       </p>
     );
   }
@@ -98,12 +98,6 @@ function Readiness({ app }: { app: ApplicantView }) {
       ))}
     </ul>
   );
-}
-
-function cooldownLine(status: MyApplication, timeZone: string): string {
-  return status.withdrawalCooldownEndsAt
-    ? `You could submit again from ${formatTimestamp(status.withdrawalCooldownEndsAt, timeZone)} ${timeZone}.`
-    : 'You can start again at any time.';
 }
 
 function Timeline({ app, timeZone }: { app: ApplicantView; timeZone: string }) {
@@ -200,13 +194,14 @@ export default async function MyApplicationPage() {
   const open = app && applications.isOpenStatus(app.status) ? app : null;
 
   if (open?.status === 'draft') {
+    const canSubmit = status.applicationsOpen && status.eligible && !status.cooldownEndsAt;
     return (
       <div className="space-y-8">
         <Header />
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <Panel
             title={`${open.number} — draft`}
-            description="Private to you. Save as often as you like; submit when every requirement is met."
+            description="Private to you. Save as often as you like. Submitting saves the form first, then sends it."
           >
             <DraftForm
               fields={applications.APPLICATION_FORM_FIELDS}
@@ -217,11 +212,13 @@ export default async function MyApplicationPage() {
                 experience: open.experience ?? '',
                 projects: open.projects ?? '',
                 portfolioUrl: open.portfolioUrl ?? '',
-                evidenceLinks: open.evidenceLinks.join('\n'),
+                evidenceLinks: open.evidenceLinks.join(applications.EVIDENCE_LINK_SEPARATOR),
                 references: open.references ?? '',
                 referralCode: open.referralCode ?? '',
               }}
-              action={saveDraftAction}
+              actions={{ save: saveDraftAction, submit: submitDraftAction }}
+              number={open.number}
+              canSubmit={canSubmit}
             />
           </Panel>
           <div className="space-y-6 lg:sticky lg:top-20">
@@ -234,13 +231,21 @@ export default async function MyApplicationPage() {
                     prepare the draft until then.
                   </Callout>
                 ) : null}
-                {open.readiness.ready && !status.cooldownEndsAt ? (
-                  <SubmitApplicationDialog number={open.number} action={submitApplicationAction} />
+                {!status.applicationsOpen ? (
+                  <Callout tone="neutral" title="APPLICATIONS PAUSED">
+                    Submissions are closed for now. The draft keeps until they reopen.
+                  </Callout>
+                ) : null}
+                {canSubmit ? (
+                  <p className="text-small text-fg-subtle">
+                    Submit application sends the form as it stands; unsaved edits are saved first.
+                  </p>
                 ) : null}
                 <WithdrawApplicationDialog
+                  applicationId={open.id}
+                  status={open.status}
                   number={open.number}
-                  draft
-                  cost="You can start again at any time."
+                  cost={withdrawalCostLine(status.withdrawalCooldownEndsAt, tz)}
                   reasonMaxLength={applications.APPLICATION_FIELD_LIMITS.withdrawReason}
                   action={withdrawApplicationAction}
                 />
@@ -277,9 +282,10 @@ export default async function MyApplicationPage() {
                   </div>
                 ) : null}
                 <WithdrawApplicationDialog
+                  applicationId={open.id}
+                  status={open.status}
                   number={open.number}
-                  draft={false}
-                  cost={cooldownLine(status, tz)}
+                  cost={withdrawalCostLine(status.withdrawalCooldownEndsAt, tz)}
                   reasonMaxLength={applications.APPLICATION_FIELD_LIMITS.withdrawReason}
                   action={withdrawApplicationAction}
                 />

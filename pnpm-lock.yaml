@@ -121,6 +121,9 @@ importers:
 
   apps/dashboard:
     dependencies:
+      '@jave/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@jave/brand':
         specifier: workspace:*
         version: link:../../packages/brand

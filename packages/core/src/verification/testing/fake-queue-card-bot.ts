@@ -59,11 +59,14 @@ export function fakeQueueCardHandler(channel: FakeQueueChannel): JobHandler {
       const card = await getQueueCard(ctx, verificationId);
       if (!card.channelId) return { skipped: 'no_channel' };
       const edited = card.messageId ? await channel.edit(card.messageId, card.revision) : false;
+      // A lost card is reposted in the configured channel (step 4).
+      const channelId = edited || !card.messageId ? card.channelId : card.configuredChannelId;
+      if (!channelId) return { skipped: 'no_channel' };
       const messageId =
         edited && card.messageId ? card.messageId : await channel.post(card.revision);
       const report = await markQueueCardPosted(ctx, {
         verificationId,
-        channelId: card.channelId,
+        channelId,
         messageId,
         previousMessageId: card.messageId,
         revision: card.revision,

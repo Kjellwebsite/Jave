@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { notificationDeliveries, securityEvents, users } from '@jave/database';
+import { jobs, notificationDeliveries, securityEvents, users } from '@jave/database';
+import { claimJobs } from '../jobs/queue';
 import { createTestKit, type TestKit } from '../testing';
 import { InvalidStateError, ValidationError } from '../kernel/errors';
 import type { UserActor } from '../permissions/actor';
@@ -199,6 +200,37 @@ describe('security events', () => {
       ).rejects.toBeInstanceOf(InvalidStateError);
     });
 
+    it('a review while the card edit is running makes that edit run again', async () => {
+      const view = await raise();
+      await markSecurityAlertPosted(kit.system, {
+        securityEventId: view.id,
+        channelId: ALERT_CHANNEL_ID,
+        messageId: '330000000000000002',
+      });
+      await reviewSecurityEvent(kit.as(moderator), {
+        securityEventId: view.id,
+        status: 'acknowledged',
+      });
+      // A worker claims the edit and renders the card as ACKNOWLEDGED…
+      const edit = (await jobsOfType(kit, DISCORD_MODERATION_ALERT_JOB)).find(
+        (job) => moderationAlertPayloadSchema.parse(job.payload).mode === 'update',
+      );
+      const [running] = await claimJobs(kit.db, {
+        workerId: 'bot-1',
+        limit: 1,
+        now: kit.clock.now(),
+        ids: [edit!.id],
+      });
+      expect(running).toBeDefined();
+      // …when another moderator dismisses the event: the edit must not be dropped.
+      await reviewSecurityEvent(kit.as(moderator), {
+        securityEventId: view.id,
+        status: 'dismissed',
+      });
+      const [row] = await kit.db.select().from(jobs).where(eq(jobs.id, running!.id));
+      expect(row).toMatchObject({ status: 'running', rerunRequested: true });
+    });
+
     it('marks the event actioned when a moderator acts on it', async () => {
       const view = await raise();
       await quarantineMember(kit.as(moderator), {
@@ -256,7 +288,8 @@ describe('security events', () => {
         'MODERATOR',
         'TIMESTAMP',
       ]);
-      expect(card.fields.find((f) => f.label === 'MODERATOR')?.value).toBe('AUTOMOD');
+      // Unreviewed: the card names the source that raised it (a system caller here).
+      expect(card.fields.find((f) => f.label === 'MODERATOR')?.value).toBe('SYSTEM');
       expect(card.fields.find((f) => f.label === 'EVIDENCE')?.value).toContain('discord.gg/abc');
     });
   });

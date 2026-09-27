@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ServiceContext } from '../kernel/context';
-import { enqueueJob } from '../jobs/queue';
+import { type EnqueueOptions, enqueueJob } from '../jobs/queue';
 import {
   DISCORD_AUDIT_REASON_MAX,
   DISCORD_MESSAGE_MAX,
@@ -211,7 +211,7 @@ export async function enqueueDiscordJob<S extends z.ZodType>(
   ctx: ServiceContext,
   contract: { type: string; payload: S },
   payload: z.input<S>,
-  options: { dedupeKey?: string; maxAttempts?: number } = {},
+  options: Pick<EnqueueOptions, 'dedupeKey' | 'maxAttempts' | 'rerunIfRunning'> = {},
 ): Promise<number | null> {
   const data = contract.payload.parse(payload) as Record<string, unknown>;
   return enqueueJob(ctx, contract.type, data, options);

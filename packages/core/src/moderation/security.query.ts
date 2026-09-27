@@ -19,6 +19,7 @@ import { canSeeSubject, visibleSubjectCondition } from './targets';
 import { getSettings } from '../settings/settings.service';
 import {
   buildSecurityAlertCard,
+  isRiskScored,
   type SecurityActionKey,
   type SecurityAlertCard,
   type SecurityEventStatusKey,
@@ -35,6 +36,8 @@ export interface SecurityEventView {
   reference: string;
   user: CasePerson | null;
   riskScore: number;
+  /** False for a report nobody assessed: show NOT SCORED (staff judgement), never low risk. */
+  riskScored: boolean;
   trigger: SecurityTriggerKey;
   source: SecuritySourceKey;
   evidence: SecurityEvidence;
@@ -64,6 +67,7 @@ function eventQuery(ctx: ServiceContext) {
         discordId: users.discordId,
         username: users.username,
         displayName: users.displayName,
+        isBot: users.isBot,
       },
       reporter: {
         id: reporterUser.id,
@@ -85,7 +89,7 @@ function eventQuery(ctx: ServiceContext) {
 }
 
 type EventRow = Awaited<ReturnType<ReturnType<typeof eventQuery>['where']>>[number];
-type PersonRow = EventRow['subject'];
+type PersonRow = EventRow['reporter'];
 
 const person = (row: PersonRow): CasePerson | null =>
   row ? { userId: row.id, discordId: row.discordId, name: row.displayName ?? row.username } : null;
@@ -98,6 +102,7 @@ function toView(row: EventRow): SecurityEventView {
     reference: securityReference(event.number),
     user: person(row.subject),
     riskScore: event.riskScore,
+    riskScored: isRiskScored(event),
     trigger: event.trigger,
     source: event.source,
     evidence: event.evidence,
@@ -196,10 +201,16 @@ export async function getSecurityAlertCard(
     casesForSecurityEvent(ctx, id),
   ]);
   const subject = person(row.subject);
-  const moderator = person(row.reviewer) ?? person(row.reporter);
+  // Reviewer only: the card lives in a shared channel, and a member's report
+  // stays confidential there (the dashboard shows the reporter to staff).
+  const moderator = person(row.reviewer);
   return buildSecurityAlertCard({
     event: row.event,
-    subject: subject && { discordId: subject.discordId, name: subject.name },
+    subject: subject && {
+      discordId: subject.discordId,
+      name: subject.name,
+      isBot: row.subject?.isBot ?? false,
+    },
     moderator: moderator && { discordId: moderator.discordId, name: moderator.name },
     quarantineRiskScore: settings.quarantineRiskScore,
     timeoutSeconds: cases.find((c) => c.action === 'timeout')?.durationSeconds ?? null,

@@ -22,6 +22,7 @@ export * from './events/catalog';
 export * from './events/bus';
 export * from './jobs/queue';
 export * from './jobs/worker';
+export * from './jobs/admin.service';
 export * from './settings/schemas';
 export * from './settings/settings.service';
 export * from './notifications/catalog';

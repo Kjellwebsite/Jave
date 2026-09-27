@@ -2,6 +2,7 @@ import type { JobHandlerMap } from '@jave/core';
 import type {
   IncomingMessage,
   JoinedMember,
+  MessageBulkDeletion,
   MessageDeletion,
   MessageUpdate,
 } from '../gateway-events/types';
@@ -26,4 +27,5 @@ export interface BotFeature {
   onMemberJoin?: (services: BotServices, member: JoinedMember) => Promise<void>;
   onMemberLeave?: (services: BotServices, userId: string) => Promise<void>;
   onInvitesChanged?: (services: BotServices) => Promise<void>;
+  onMessageDeleteBulk?: (services: BotServices, deletion: MessageBulkDeletion) => Promise<void>;
 }

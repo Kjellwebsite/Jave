@@ -5,6 +5,7 @@ import {
   type LucideIcon,
   ScrollText,
   Settings2,
+  Swords,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -39,7 +40,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/ranking', label: 'Ranking', icon: ChartNoAxesColumn, capability: 'canViewMembers' },
     ],
   },
-  { label: 'OPERATIONS', items: [] },
+  {
+    label: 'OPERATIONS',
+    items: [{ href: '/trials', label: 'Trials', icon: Swords, capability: 'canManageTrials' }],
+  },
   { label: 'SUPPORT & SAFETY', items: [] },
   { label: 'INTELLIGENCE', items: [] },
   {

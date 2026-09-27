@@ -10,8 +10,16 @@ import {
 } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
 import type { ServiceContext } from '../kernel/context';
-import { ConflictError, DisabledError, ForbiddenError, NotFoundError } from '../kernel/errors';
+import {
+  ConflictError,
+  DisabledError,
+  ForbiddenError,
+  InvalidStateError,
+  NotFoundError,
+} from '../kernel/errors';
 import { activeRoles } from '../identity/users.service';
+import { systemActor } from '../permissions/actor';
+import { isSelf } from '../permissions/authorize';
 import { isStaffRole } from '../permissions/roles';
 import { settingsSchemas } from '../settings/schemas';
 import {
@@ -160,6 +168,23 @@ export async function operativeIneligibility(
   return null;
 }
 
+/** The trial still accepts the role and the operative is still eligible. */
+export async function assertRoleStillRunnable(
+  ctx: ServiceContext,
+  role: Pick<RoleRecord, 'trialId' | 'teamId' | 'operativeMemberId'>,
+): Promise<TrialContext> {
+  const trial = await loadTrial(ctx, role.trialId);
+  const blocker = trialBlocker(trial);
+  if (blocker) throw new InvalidStateError(blocker);
+  const ineligible = await operativeIneligibility(ctx, {
+    trialId: role.trialId,
+    teamId: role.teamId,
+    memberId: role.operativeMemberId,
+  });
+  if (ineligible) throw new InvalidStateError(ineligible);
+  return trial;
+}
+
 export async function findRole(ctx: ServiceContext, roleId: string): Promise<RoleRecord | null> {
   const [row] = await ctx.db.select().from(adversarialRoles).where(eq(adversarialRoles.id, roleId));
   return row ?? null;
@@ -204,17 +229,35 @@ export async function transitionRole(
   return row;
 }
 
+/** Actor recorded in the shared audit log for what an operative does before the reveal. */
+export const OPERATIVE_AUDIT_REASON = 'adversarial.operative';
+
+/**
+ * The context to audit an action on a role with. The shared audit log is
+ * readable with canViewAuditLogs — including by staff competing in the trial —
+ * so an action by the operative is recorded under a pseudonymous system actor:
+ * the log must not reveal who holds a role. The role row (canManageAdversarial,
+ * non-participants only) names the operative, and the reveal entry names them
+ * in the log itself, so every entry stays attributable to those entitled to know.
+ */
+export function roleAuditContext(ctx: ServiceContext, operativeMemberId: string): ServiceContext {
+  if (!isSelf(ctx.actor, operativeMemberId)) return ctx;
+  return { ...ctx, actor: systemActor(OPERATIVE_AUDIT_REASON) };
+}
+
 /**
  * Non-disclosure: callers who may not see a role get exactly the answer a
- * missing role gets. The attempt is still audited durably.
+ * missing role gets. The attempt is still audited durably (pseudonymously
+ * when the caller is the role's own operative, e.g. while quarantined).
  */
 export async function denyAsNotFound(
   ctx: ServiceContext,
   roleId: string,
   operation: string,
+  role: Pick<RoleRecord, 'operativeMemberId'> | null = null,
 ): Promise<never> {
   await recordAudit(
-    ctx,
+    role ? roleAuditContext(ctx, role.operativeMemberId) : ctx,
     {
       action: 'access.denied',
       targetType: AUDIT_TARGET_ROLE,

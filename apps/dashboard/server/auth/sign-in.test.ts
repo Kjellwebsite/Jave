@@ -22,7 +22,7 @@ const DEV_LOGIN = {
 
 /** Makes every audit insert fail, as a lost connection or full disk would mid-transaction. */
 async function breakAuditStore(): Promise<void> {
-  await kit.database.pg.exec(`
+  await kit.database.exec(`
     create function test_fail_audit() returns trigger language plpgsql as $$
     begin raise exception 'audit store unavailable'; end $$;
     create trigger test_fail_audit before insert on audit_logs

@@ -19,6 +19,7 @@ import {
   ROLE_STATUS_LABELS,
   ROLE_STATUS_TONE,
 } from '@/lib/trial-labels';
+import { observationSubjects, observationTriggers } from '@/lib/adversarial-options';
 import { formatTimestamp } from '@/lib/time';
 import type { FormAction } from '../../forms/action-form';
 import { ConfirmActionDialog } from '../../forms/confirm-action-dialog';
@@ -43,7 +44,7 @@ export interface RoleCardProps {
   role: adversarial.RoleDetail;
   /** Participant names by member id (observation subjects). */
   names: ReadonlyMap<string, string>;
-  /** Members of the role's team, for attributing an observation (staff-only). */
+  /** Members of the role's team, for attributing an observation (never the operative). */
   subjects: readonly { memberId: string; displayName: string }[];
   /** The trial has ended (evaluating, completed or cancelled): reveals are possible. */
   trialOver: boolean;
@@ -98,6 +99,9 @@ export function RoleCard({
   const awaitingReveal = adversarial.isAwaitingReveal(record);
   const observing = adversarial.acceptsObservations(record);
   const abortable = adversarial.ABORTABLE_STATUSES.includes(record.status);
+  // Only what the service accepts: approved triggers, and never the operative as the subject.
+  const linkableTriggers = observationTriggers(role.triggers);
+  const observableSubjects = observationSubjects(subjects, record.operativeMemberId);
 
   const timeline: TimelineItem[] = role.observations.map((observation) => ({
     id: observation.id,
@@ -384,26 +388,24 @@ export function RoleCard({
                 label: outcomeLabels[key],
               }))}
             />
-            {role.triggers.length > 0 ? (
+            {linkableTriggers.length > 0 ? (
               <SelectField
                 name="triggerId"
                 label="Trigger"
+                description="Approved triggers only."
                 defaultValue=""
                 placeholder="Not tied to a trigger"
-                options={role.triggers.map((trigger) => ({
-                  value: trigger.id,
-                  label: trigger.label,
-                }))}
+                options={linkableTriggers}
               />
             ) : null}
-            {subjects.length > 0 ? (
+            {observableSubjects.length > 0 ? (
               <SelectField
                 name="subjectMemberId"
                 label="Participant"
                 description="Optional. Staff-only; the team debrief never names anyone."
                 defaultValue=""
                 placeholder="The team as a whole"
-                options={subjects.map((subject) => ({
+                options={observableSubjects.map((subject) => ({
                   value: subject.memberId,
                   label: subject.displayName,
                 }))}

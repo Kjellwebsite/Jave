@@ -3,6 +3,7 @@ import { type EvaluationTeam, EvaluationPanel } from '@/components/trials/evalua
 import { type ResultRowData, ResultsPanel } from '@/components/trials/results-panel';
 import type { OutcomeKey } from '@/lib/trial-labels';
 import { formatTimestamp } from '@/lib/time';
+import { scoreTargets } from '@/lib/trial-scoring';
 import type { UserContext } from '@/server/context';
 import type { Viewer } from '@/server/data/viewer';
 import { guarded } from '@/server/guard';
@@ -39,48 +40,25 @@ export function EvaluationTab({
   for (const row of view.results?.rows ?? [])
     if (row.teamId && !teamScore.has(row.teamId)) teamScore.set(row.teamId, row.teamScore);
 
-  const teams: EvaluationTeam[] = view.teams.map((team) => {
-    const mineFor = (memberId: string | null) =>
-      team.evaluations.find(
-        (evaluation) =>
-          evaluation.evaluatorUserId === viewer.userId && evaluation.memberId === memberId,
-      );
-    const previous = (memberId: string | null) => {
-      const mine = mineFor(memberId);
-      return mine ? { scores: mine.scores, notes: mine.notes } : null;
-    };
-    return {
-      id: team.id,
-      name: team.name,
-      latestVersion: team.submissions[0]?.version ?? null,
-      latestLate: team.submissions[0]?.isLate ?? false,
-      teamScore: teamScore.get(team.id) ?? null,
-      evaluations: team.evaluations.map((evaluation) => ({
-        id: evaluation.id,
-        evaluatorName: evaluation.evaluatorName ?? 'evaluator',
-        mine: evaluation.evaluatorUserId === viewer.userId,
-        targetLabel: evaluation.memberId
-          ? (names.get(evaluation.memberId) ?? 'participant')
-          : 'Team',
-        individual: evaluation.memberId !== null,
-        scores: evaluation.scores,
-        overallScore: evaluation.overallScore,
-        notes: evaluation.notes,
-        updatedAt: formatTimestamp(evaluation.updatedAt, viewer.timeZone),
-      })),
-      targets: [
-        { value: `team:${team.id}`, label: `${team.name} — team`, previous: previous(null) },
-        ...team.members
-          // Nobody scores themselves; the service refuses it anyway.
-          .filter((member) => member.memberId !== viewer.memberId)
-          .map((member) => ({
-            value: `member:${member.memberId}`,
-            label: `${member.displayName} — individual`,
-            previous: previous(member.memberId),
-          })),
-      ],
-    };
-  });
+  const teams: EvaluationTeam[] = view.teams.map((team) => ({
+    id: team.id,
+    name: team.name,
+    latestVersion: team.submissions[0]?.version ?? null,
+    latestLate: team.submissions[0]?.isLate ?? false,
+    teamScore: teamScore.get(team.id) ?? null,
+    evaluations: team.evaluations.map((evaluation) => ({
+      id: evaluation.id,
+      evaluatorName: evaluation.evaluatorName ?? 'evaluator',
+      mine: evaluation.evaluatorUserId === viewer.userId,
+      targetLabel: evaluation.memberId ? (names.get(evaluation.memberId) ?? 'participant') : 'Team',
+      individual: evaluation.memberId !== null,
+      scores: evaluation.scores,
+      overallScore: evaluation.overallScore,
+      notes: evaluation.notes,
+      updatedAt: formatTimestamp(evaluation.updatedAt, viewer.timeZone),
+    })),
+    targets: scoreTargets(team, viewer),
+  }));
 
   return (
     <EvaluationPanel
@@ -139,6 +117,7 @@ export async function ResultsTab({
         facetLabel: result.facetKey ? (facetLabel.get(result.facetKey) ?? result.facetKey) : null,
         recommendedRank: result.recommendedRank,
         rankApplied: false,
+        appliedRank: null,
         rankOptions: [],
       }));
     }
@@ -159,6 +138,7 @@ export async function ResultsTab({
         facetLabel: result.facetKey ? (facetLabel.get(result.facetKey) ?? result.facetKey) : null,
         recommendedRank: result.recommendedRank,
         rankApplied: result.rankApplied,
+        appliedRank: result.appliedRank,
         rankOptions: result.rankApplied ? [] : ranksUpTo(catalog, result.recommendedRank),
       };
     });

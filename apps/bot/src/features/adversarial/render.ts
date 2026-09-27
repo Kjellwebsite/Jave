@@ -5,6 +5,7 @@ import { field, panel } from '../../ui/components';
 import { discordTime, userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
 import { packEmbeds, safeChunks, splitText } from '../trials/render/text';
+import { operativeControls } from './controls';
 
 type BriefingView = adversarial.BriefingView;
 type DebriefView = adversarial.DebriefView;
@@ -105,9 +106,17 @@ export function briefingEmbeds(view: BriefingView): APIEmbed[] {
   ];
 }
 
-/** The briefing as DM messages, in order. */
+/**
+ * The briefing as messages, in order, with the operative's controls (RED
+ * FLAG, trigger select) under the last one — the DM carries them too, since
+ * JAVE never reads direct messages.
+ */
 export function briefingMessages(view: BriefingView): MessagePayload[] {
-  return packEmbeds(briefingEmbeds(view)).map((embeds) => ({ embeds }));
+  const messages = packEmbeds(briefingEmbeds(view));
+  return messages.map((embeds, index) => ({
+    embeds,
+    components: index === messages.length - 1 ? operativeControls(view) : undefined,
+  }));
 }
 
 /** The STOP notice: fixed title and body, never the abort reason. */

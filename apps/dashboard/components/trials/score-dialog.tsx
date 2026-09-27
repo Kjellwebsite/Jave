@@ -7,6 +7,7 @@ import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 import { TRIAL_LIMITS } from '@/lib/trial-limits';
+import type { ScoreTarget } from '@/lib/trial-scoring';
 
 export interface ScoreCriterion {
   key: string;
@@ -16,13 +17,7 @@ export interface ScoreCriterion {
   weightPercent: number;
 }
 
-export interface ScoreTarget {
-  /** `team:<id>` or `member:<id>`. */
-  value: string;
-  label: string;
-  /** The viewer's earlier evaluation of this target, if any. */
-  previous: { scores: Record<string, number>; notes: string | null } | null;
-}
+export type { ScoreTarget };
 
 export interface ScoreDialogProps {
   trialId: string;

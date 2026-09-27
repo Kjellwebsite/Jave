@@ -99,7 +99,12 @@ export interface InteractionContext {
   defer(options: { ephemeral: boolean }): Promise<void>;
   editReply(payload: ReplyPayload): Promise<void>;
   followUp(payload: ReplyPayload): Promise<void>;
-  /** Components only: replace the message the component is attached to. */
+  /**
+   * The interaction came from a message: a button, a select, or a modal opened
+   * from one of them. Only then can update() replace that message.
+   */
+  readonly fromMessage: boolean;
+  /** Replace the message the interaction came from (requires `fromMessage`). */
   update(payload: ReplyPayload): Promise<void>;
   deferUpdate(): Promise<void>;
   showModal(modal: ModalPayload): Promise<void>;

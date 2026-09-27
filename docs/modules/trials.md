@@ -180,7 +180,9 @@ at most what it measured (a higher rank is an evaluator decision through
 from identity), and stores `rankHistoryId` on the result. Applies once per
 result; never lowers or repeats a verified rank (a lower recommendation is
 refused — evaluators can still use `setVerifiedRank` directly). Self-application
-is refused and audited.
+is refused and audited. Views report both `recommendedRank` and `appliedRank`
+(the rank history's `toRank`, joined through `rankHistoryId`) — surfaces show the
+rank that was granted, never the recommendation in its place.
 
 ## Capabilities
 
@@ -407,12 +409,15 @@ view | apply | withdraw | submit | status | briefing | manage`, `/team`, the
   staff control panel (state-dependent controls, each confirmed; random / manual
   selection; balanced / random assignment with a seed; the scheduled-start
   _passed_ prompt; quick evaluation for rubrics of ≤ 4 criteria), and one job
-  handler per `discord.trials.*` contract.
+  handler per `discord.trials.*` contract. Refresh and the staff modals update the
+  message they came from instead of stacking copies; public cards and team-channel
+  posts are never edited by a member's press.
 - **Dashboard** (`apps/dashboard/app/(console)/trials`): `/trials` (states,
   readouts, countdowns), `/trials/new` (from a template or custom, rubric editor
   with weights), `/trials/templates` (CRUD, starters), `/trials/[id]` with Overview,
   Participants, Teams (seeded preview = assignment), Submissions, Evaluation (score
-  grid and dialog), Results (publish, explicit per-member rank consequence) and the
+  grid and dialog — only teams that submitted can be scored), Results (publish,
+  explicit per-member rank consequence showing the granted `appliedRank`) and the
   staff-only Adversarial tab. `previewTeams` (dry run of `assignTeams`) exists for
   the Teams preview.
 - Every surface calls these services as the acting user; custom ids and forms

@@ -128,7 +128,10 @@ describe('trials: staff control panel', SUITE, () => {
       name: customId('trials', 'sel-random', trialId),
       user: manager!.user,
       modalText: { count: '3', seed: 'draw-1' },
+      fromMessage: true,
     });
+    // Opened from the panel: the panel itself is replaced, never stacked.
+    expect(drawn.interaction.responses.map((r) => r.type)).toEqual(['update']);
     expect(drawn.interaction.lastText()).toContain('3 drawn from 4 eligible applicants');
     expect(drawn.interaction.lastText()).toContain('draw-1');
 
@@ -189,8 +192,20 @@ describe('trials: staff control panel', SUITE, () => {
       name: customId('trials', 'extend', trialId),
       user: manager!.user,
       modalText: { minutes: '30', reason: 'Venue power cut for twenty minutes.' },
+      fromMessage: true,
     });
+    expect(extend.interaction.responses.map((r) => r.type)).toEqual(['update']);
     expect(extend.interaction.lastText()).toContain('DEADLINE EXTENDED');
+    // A refused modal leaves the panel alone and answers privately.
+    const refused = await bot.run({
+      kind: 'modal',
+      name: customId('trials', 'extend', trialId),
+      user: manager!.user,
+      modalText: { minutes: 'soon', reason: 'Venue power cut for twenty minutes.' },
+      fromMessage: true,
+    });
+    expect(refused.interaction.responses.map((r) => r.type)).toEqual(['reply']);
+    expect(refused.interaction.lastText()).toContain('whole number');
   });
 
   it('a scheduled start that already passed is called out, with START on the panel', async () => {

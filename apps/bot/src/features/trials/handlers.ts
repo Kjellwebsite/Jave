@@ -6,6 +6,7 @@ import {
   isPickPurpose,
   MEMBER_ACTIONS,
   type PickPurpose,
+  REFERENCE,
   STAFF_ACTIONS,
   TRIALS_NS,
 } from './ids';
@@ -16,6 +17,7 @@ import {
   executeWithdraw,
   openApplyModal,
   openSubmitModal,
+  openTrialInPlace,
   requireTrialId,
   showStatus,
   showTeams,
@@ -82,6 +84,8 @@ export const trialComponents: ComponentHandler = {
     switch (action) {
       case MEMBER_ACTIONS.view:
         return showTrial(h, trialId);
+      case MEMBER_ACTIONS.open:
+        return openTrialInPlace(h, trialId, args[1] === REFERENCE.shown);
       case MEMBER_ACTIONS.apply:
         return openApplyModal(h, trialId);
       case MEMBER_ACTIONS.submit:

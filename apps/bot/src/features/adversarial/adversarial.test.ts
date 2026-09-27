@@ -9,6 +9,7 @@ import {
 } from '@jave/database';
 import { adversarial, trials, updateSettings } from '@jave/core';
 import { DiscordActionError } from '../../discord/gateway';
+import type { IncomingMessage } from '../../gateway-events/types';
 import { customId } from '../../interactions/custom-id';
 import type { FakeInteraction } from '../../testing/fake-interaction';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
@@ -128,6 +129,46 @@ function shape(interaction: FakeInteraction): string {
   );
 }
 
+/** A channel of the server that belongs to no team. */
+const GENERAL_CHANNEL = '930000000000000099';
+
+function stopWordMessage(
+  bot: BotHarness,
+  channelId: string,
+  author: Person,
+  content: string,
+): IncomingMessage {
+  return {
+    id: '930000000000000001',
+    channelId,
+    guildId: bot.gateway.guildId,
+    parentChannelId: null,
+    isThread: false,
+    author: {
+      id: author.user.id,
+      username: author.user.username,
+      globalName: null,
+      avatar: null,
+      bot: false,
+    },
+    authorRoleIds: [],
+    content,
+    mentionCount: 0,
+    mentionsEveryone: false,
+    attachments: [],
+    createdAt: bot.kit.clock.now(),
+    url: 'https://discord.com/channels/x',
+  };
+}
+
+async function alertsFor(bot: BotHarness, person: Person) {
+  const rows = await bot.kit.db
+    .select()
+    .from(notifications)
+    .where(eq(notifications.recipientUserId, person.actor.userId));
+  return rows.filter((n) => n.type === 'adversarial.alert');
+}
+
 async function roleRow(bot: BotHarness, roleId: string) {
   const [row] = await bot.kit.db
     .select()
@@ -160,6 +201,13 @@ describe('adversarial: Discord surface', SUITE, () => {
     ])
       expect(briefing).toContain(section);
     expect(briefing).toContain('FICTIONAL DATA ONLY');
+    // JAVE never reads DMs: the stop control travels with the briefing, under its last message.
+    const withControls = dms.filter((dm) => JSON.stringify(dm.payload.components ?? []).length > 2);
+    expect(withControls).toHaveLength(1);
+    expect(JSON.stringify(withControls[0]!.payload)).toContain('STOP PROTOCOL');
+    expect(JSON.stringify(withControls[0]!.payload.components)).toContain(
+      customId('adversarial', 'redflag', ex.roleId),
+    );
     // Nothing adversarial ever reaches a channel before the reveal.
     const channelPosts = JSON.stringify(bot.gateway.callsTo('sendMessage').map((c) => c.args[1]));
     expect(channelPosts).not.toMatch(/BRIEFING|OPERATIVE|RED FLAG|SANDBOX|adversarial/i);
@@ -286,6 +334,35 @@ describe('adversarial: Discord surface', SUITE, () => {
     expect(again.interaction.lastText()).toContain('already stopped');
   });
 
+  it('RED FLAG pressed in the briefing DM stops the exercise; nobody else can use a DM press', async () => {
+    const ex = await exercise(bot);
+    const inDm = (person: Person) =>
+      bot.run({
+        kind: 'button',
+        name: customId('adversarial', 'redflag', ex.roleId),
+        user: person.user,
+        guildId: null,
+      });
+    const teammate = await inDm(ex.teammate);
+    expect(JSON.stringify(teammate.interaction.lastPayload())).toBe(
+      JSON.stringify(noBriefingReply()),
+    );
+    expect((await roleRow(bot, ex.roleId)).status).toBe('active');
+
+    const pressed = await inDm(ex.operative);
+    expect(pressed.outcome.outcome).toBe('ok');
+    expect(pressed.interaction.lastText()).toContain('EXERCISE STOPPED');
+    await bot.drain();
+    const role = await roleRow(bot, ex.roleId);
+    expect(role).toMatchObject({ status: 'aborted', stopNoticeDelivery: 'sent' });
+    expect(role.redFlagRaisedByUserId).toBe(ex.operative.actor.userId);
+    const alerts = await bot.kit.db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.recipientUserId, ex.authorizer.actor.userId));
+    expect(alerts.some((n) => n.type === 'adversarial.alert')).toBe(true);
+  });
+
   it('operative marks a planned trigger as carried out from the briefing', async () => {
     const ex = await exercise(bot, { withTrigger: true });
     const briefing = await bot.run({
@@ -391,40 +468,50 @@ describe('adversarial: Discord surface', SUITE, () => {
     expect(JSON.stringify(toParticipants)).not.toMatch(ADVERSARIAL_TELLS);
   });
 
-  it('stop word in the team channel stops the exercise silently; elsewhere it does nothing', async () => {
+  it('stop word: a participant’s words alert managers and stop nothing; nothing is posted', async () => {
     expect(mentionsStopWord('ok RED FLAG now')).toBe(true);
     expect(mentionsStopWord('red-flag')).toBe(true);
     expect(mentionsStopWord('redflagged')).toBe(false);
     expect(mentionsStopWord('the red flags we saw')).toBe(false);
     const ex = await exercise(bot);
     const posted = bot.gateway.callsTo('sendMessage').length;
-    const message = (channelId: string, author: Person, content: string) => ({
-      id: '930000000000000001',
-      channelId,
-      guildId: bot.gateway.guildId,
-      parentChannelId: null,
-      isThread: false,
-      author: {
-        id: author.user.id,
-        username: author.user.username,
-        globalName: null,
-        avatar: null,
-        bot: false,
-      },
-      authorRoleIds: [],
-      content,
-      mentionCount: 0,
-      mentionsEveryone: false,
-      attachments: [],
-      createdAt: bot.kit.clock.now(),
-      url: 'https://discord.com/channels/x',
-    });
-    await bot.app.events.message(message('930000000000000099', ex.teammate, 'RED FLAG'));
+    const team = new Set([ex.operative, ex.teammate].map((person) => person.actor.discordId));
+    const dmsToTeam = () => bot.gateway.dms.filter((dm) => team.has(dm.userId)).length;
+    const dmsBefore = dmsToTeam();
+    // Red Flag Hunt vocabulary, and the detection a team should make.
+    await bot.app.events.message(
+      stopWordMessage(bot, ex.teamChannelId, ex.teammate, 'found a red flag in the access policy'),
+    );
+    await bot.app.events.message(
+      stopWordMessage(bot, ex.teamChannelId, ex.teammate, 'red flag — someone asked for the key'),
+    );
     await bot.settle();
     expect((await roleRow(bot, ex.roleId)).status).toBe('active');
-    await bot.app.events.message(message(ex.teamChannelId, ex.teammate, 'wait — red flag, stop'));
+    expect(bot.gateway.callsTo('sendMessage')).toHaveLength(posted);
+    // No STOP for the operative, nothing for the team; only managers hear of it (by DM).
+    expect(dmsToTeam()).toBe(dmsBefore);
+    expect(
+      bot.gateway.dms.some(
+        (dm) =>
+          dm.userId === ex.planner.actor.discordId &&
+          JSON.stringify(dm.payload).includes('STOP WORD IN CHAT'),
+      ),
+    ).toBe(true);
+    const alerts = await alertsFor(bot, ex.planner);
+    expect(alerts.map((a) => a.title)).toEqual([expect.stringMatching(/^STOP WORD IN CHAT/)]);
+    expect(await alertsFor(bot, ex.teammate)).toEqual([]);
+    expect(await alertsFor(bot, ex.operative)).toEqual([]);
+  });
+
+  it('stop word: the operative typing it anywhere in the server stops the exercise, attributed to them', async () => {
+    const ex = await exercise(bot);
+    const posted = bot.gateway.callsTo('sendMessage').length;
+    await bot.app.events.message(stopWordMessage(bot, GENERAL_CHANNEL, ex.operative, 'RED FLAG'));
     await bot.settle();
-    expect((await roleRow(bot, ex.roleId)).status).toBe('aborted');
+    const role = await roleRow(bot, ex.roleId);
+    expect(role.status).toBe('aborted');
+    expect(role.redFlagRaisedByUserId).toBe(ex.operative.actor.userId);
+    expect(role.abortReason).toContain('typed in chat by the operative');
     expect(bot.gateway.callsTo('sendMessage')).toHaveLength(posted);
     expect(
       bot.gateway.dms.some(
@@ -432,6 +519,38 @@ describe('adversarial: Discord surface', SUITE, () => {
           dm.userId === ex.operative.actor.discordId && JSON.stringify(dm.payload).includes('STOP'),
       ),
     ).toBe(true);
+    const [alert] = await alertsFor(bot, ex.authorizer);
+    expect(alert!.body).toContain('typed in chat by the operative');
+    expect(alert!.body).not.toContain('by staff');
+  });
+
+  it('stop word: adversarial staff in the team channel (or a thread of it) stop the exercise', async () => {
+    const ex = await exercise(bot);
+    await bot.app.events.message(stopWordMessage(bot, GENERAL_CHANNEL, ex.planner, 'RED FLAG'));
+    await bot.settle();
+    expect((await roleRow(bot, ex.roleId)).status).toBe('active');
+    await bot.app.events.message({
+      ...stopWordMessage(bot, '930000000000000077', ex.planner, 'RED FLAG'),
+      isThread: true,
+      parentChannelId: ex.teamChannelId,
+    });
+    await bot.settle();
+    const role = await roleRow(bot, ex.roleId);
+    expect(role.status).toBe('aborted');
+    expect(role.redFlagRaisedByUserId).toBe(ex.planner.actor.userId);
+    expect(role.abortReason).toContain('typed in chat by staff');
+  });
+
+  it('BREAK: messages from bots, other guilds or without the words never reach core', async () => {
+    const ex = await exercise(bot);
+    const base = stopWordMessage(bot, ex.teamChannelId, ex.operative, 'RED FLAG');
+    await bot.app.events.message({ ...base, author: { ...base.author, bot: true } });
+    await bot.app.events.message({ ...base, guildId: '100000000000000111' });
+    await bot.app.events.message({ ...base, guildId: null });
+    await bot.app.events.message({ ...base, content: 'the red flags we saw' });
+    await bot.settle();
+    expect((await roleRow(bot, ex.roleId)).status).toBe('active');
+    expect(await alertsFor(bot, ex.planner)).toEqual([]);
   });
 
   it('BREAK: an undeliverable STOP on the last attempt raises a critical alert', async () => {

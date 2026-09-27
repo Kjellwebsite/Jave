@@ -64,12 +64,19 @@ async function panelPayload(
   return controlPanel(view, abilities(h), { dashboardUrl: dashboardUrl(h, trialId), notice });
 }
 
-/** Update the panel in place when the click came from it; otherwise answer with a fresh one. */
-async function showPanel(h: HandlerContext, trialId: string, notice?: APIEmbed): Promise<void> {
-  const payload = await panelPayload(h, trialId, notice);
-  if (h.interaction.kind === 'button' || h.interaction.kind === 'select')
-    await h.interaction.update(payload);
+/**
+ * Replace the panel in place when the interaction came from it (a button, a
+ * select, or a modal opened from one); otherwise answer with a fresh one.
+ * Staff controls only ever sit on ephemeral panels, so this never edits a
+ * public message.
+ */
+async function presentPanel(h: HandlerContext, payload: ReplyPayload): Promise<void> {
+  if (h.interaction.fromMessage) await h.interaction.update(payload);
   else await h.respond(payload);
+}
+
+async function showPanel(h: HandlerContext, trialId: string, notice?: APIEmbed): Promise<void> {
+  await presentPanel(h, await panelPayload(h, trialId, notice));
 }
 
 /** /trial manage without a trial: a picker of every trial, running ones first. */
@@ -251,14 +258,12 @@ export async function submitRandomSelection(h: HandlerContext, trialId: string):
     count: requiredWholeNumber(modal.text(FIELDS.count), 'How many'),
     seed: modal.text(FIELDS.seed).trim() || undefined,
   });
-  await h.respond(
-    await panelPayload(
-      h,
-      trialId,
-      success(
-        'Participants selected',
-        `${result.selectedMemberIds.length} drawn from ${result.poolSize} eligible applicants ${GLYPH.dot} seed \`${result.seed}\``,
-      ),
+  await showPanel(
+    h,
+    trialId,
+    success(
+      'Participants selected',
+      `${result.selectedMemberIds.length} drawn from ${result.poolSize} eligible applicants ${GLYPH.dot} seed \`${result.seed}\``,
     ),
   );
 }
@@ -273,11 +278,13 @@ export async function submitAssignment(h: HandlerContext, trialId: string): Prom
     seed: modal.text(FIELDS.seed).trim() || undefined,
   });
   const view = await trials.getTrialForStaff(h.ctx, { trialId });
-  const payload = controlPanel(view, abilities(h), {
-    dashboardUrl: dashboardUrl(h, trialId),
-    notice: assignmentNotice(result, view),
-  });
-  await h.respond(payload);
+  await presentPanel(
+    h,
+    controlPanel(view, abilities(h), {
+      dashboardUrl: dashboardUrl(h, trialId),
+      notice: assignmentNotice(result, view),
+    }),
+  );
 }
 
 export async function submitExtension(h: HandlerContext, trialId: string): Promise<void> {
@@ -287,12 +294,10 @@ export async function submitExtension(h: HandlerContext, trialId: string): Promi
     minutes: requiredWholeNumber(modal.text(FIELDS.minutes), 'Minutes'),
     reason: modal.text(FIELDS.reason),
   });
-  await h.respond(
-    await panelPayload(
-      h,
-      trialId,
-      success('Deadline extended', `${view.ref} — competitors are notified of the new deadline.`),
-    ),
+  await showPanel(
+    h,
+    trialId,
+    success('Deadline extended', `${view.ref} — competitors are notified of the new deadline.`),
   );
 }
 
@@ -301,14 +306,12 @@ export async function submitCancellation(h: HandlerContext, trialId: string): Pr
     trialId,
     reason: h.interaction.modal.text(FIELDS.reason),
   });
-  await h.respond(
-    await panelPayload(
-      h,
-      trialId,
-      success(
-        'Trial cancelled',
-        `${view.ref} — stakeholders are notified; team channels become read-only.`,
-      ),
+  await showPanel(
+    h,
+    trialId,
+    success(
+      'Trial cancelled',
+      `${view.ref} — stakeholders are notified; team channels become read-only.`,
     ),
   );
 }

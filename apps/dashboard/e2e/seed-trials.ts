@@ -16,6 +16,7 @@ import {
   createContext,
   DAY,
   grantRoleUnchecked,
+  loadCatalog,
   type OrgRole,
   resolveUserActor,
   type ServiceContext,
@@ -408,12 +409,18 @@ export async function seedTrialFixtures(databaseUrl: string): Promise<void> {
         scores: scores[index]!,
         notes: 'Scored against the published rubric.',
       });
-    await trials.publishResults(operations, { trialId: completed.id });
-    // The first passing competitor gets the consequence; the teammate's stays pending.
+    const published = await trials.publishResults(operations, { trialId: completed.id });
+    // The first passing competitor gets the consequence — deliberately one tier
+    // below the recommendation, so the Results tab must show the granted rank —
+    // and the teammate's stays pending.
     const [firstWinner] = completedTeams.teams[0]!.memberIds;
+    const recommended = published.results.find((r) => r.memberId === firstWinner)?.recommendedRank;
+    const tiers = (await loadCatalog(system)).tiers;
+    const ceiling = tiers.findIndex((tier) => tier.code === recommended);
     await trials.applyRankConsequence(core, {
       trialId: completed.id,
       memberId: firstWinner!,
+      rank: ceiling > 0 ? tiers[ceiling - 1]!.code : undefined,
       reason: 'Published trial result, primary facet.',
     });
 

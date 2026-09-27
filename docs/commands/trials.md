@@ -16,16 +16,16 @@ channels.
 
 ### `/trial`
 
-| Subcommand         | Who                                                | What it does                                                                                                                                                                                                                     |
-| ------------------ | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list`             | any member                                         | Recruiting and running trials (drafts never), an **Open a trial** select, and an **APPLY · TRIAL-0042** button for every trial the member may apply to right now (core decides per trial).                                       |
-| `view [trial]`     | any member                                         | One trial as the member may see it: state, clock (`<t:…:F>` / `<t:…:R>`), their participation, team, submissions and result. The brief and rubric appear only for competitors once the trial is live. Without `trial`: a picker. |
-| `apply [trial]`    | TRIAL, VERIFIED or staff in good standing          | Opens the **statement** modal (20–1500 characters). Without `trial`: one APPLY button per open trial. When applying is not possible it says why instead of opening a form (already holding a place, closed, not eligible).       |
-| `withdraw [trial]` | a member holding a place, before the start         | Confirmation first (**CONFIRM WITHDRAWAL**), then the place is released and the team channel re-synced. Staff cannot re-apply after withdrawing.                                                                                 |
-| `submit [trial]`   | a member of a team, while submissions are open     | The **team submission** modal, prefilled with the team's latest version: summary + one http(s) link per line (≤ 10). The title says **LATE** inside the late window; the description names the version it becomes.               |
-| `status`           | any member                                         | Every trial the member took part in: state, team, deadline countdown, submission version, result — with an **Open a trial** select.                                                                                              |
-| `briefing`         | anyone (answers only the operative)                | The caller's own confidential briefing, else the same **NO BRIEFING** answer for everyone. See [adversarial.md](./adversarial.md).                                                                                               |
-| `manage [trial]`   | `canManageTrials` or `canEvaluateTrials`, no stake | The **trial control panel** (below). Without `trial`: a picker of every trial, running ones first.                                                                                                                               |
+| Subcommand         | Who                                                | What it does                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list`             | any member                                         | Recruiting and running trials (drafts never), an **Open a trial** select, and an **APPLY · TRIAL-0042** button for every trial the member may apply to right now (core decides per trial).                                                                                                                                                                              |
+| `view [trial]`     | any member                                         | One trial as the member may see it: first the live view — state, clock (`<t:…:F>` / `<t:…:R>`), their participation, team, submission and result — with the member's buttons (APPLY / SUBMIT / WITHDRAW / **REFRESH**), then the brief and rubric (only for competitors once the trial is live). **REFRESH** updates the live view in place. Without `trial`: a picker. |
+| `apply [trial]`    | TRIAL, VERIFIED or staff in good standing          | Opens the **statement** modal (20–1500 characters). Without `trial`: one APPLY button per open trial. When applying is not possible it says why instead of opening a form (already holding a place, closed, not eligible).                                                                                                                                              |
+| `withdraw [trial]` | a member holding a place, before the start         | Confirmation first (**CONFIRM WITHDRAWAL**), then the place is released and the team channel re-synced. Staff cannot re-apply after withdrawing.                                                                                                                                                                                                                        |
+| `submit [trial]`   | a member of a team, while submissions are open     | The **team submission** modal, prefilled with the team's latest version: summary + one http(s) link per line (≤ 10). The title says **LATE** inside the late window; the description names the version it becomes.                                                                                                                                                      |
+| `status`           | any member                                         | Every trial the member took part in: state, team, deadline countdown, submission version, result — with an **Open a trial** select.                                                                                                                                                                                                                                     |
+| `briefing`         | anyone (answers only the operative)                | The caller's own confidential briefing, else the same **NO BRIEFING** answer for everyone. See [adversarial.md](./adversarial.md).                                                                                                                                                                                                                                      |
+| `manage [trial]`   | `canManageTrials` or `canEvaluateTrials`, no stake | The **trial control panel** (below). Without `trial`: a picker of every trial, running ones first.                                                                                                                                                                                                                                                                      |
 
 `trial` autocompletes only trials the caller may see; a typed `TRIAL-0042`, `#42`, `42`
 or exact title resolves the same way. Anything else is NOT FOUND.
@@ -35,7 +35,8 @@ or exact title resolves the same way. Anything else is NOT FOUND.
 Any member. For every team the member is on (teams set, live or in evaluation): team
 name and state, the private channel (`<#channel>`), the deadline (`<t:…:F>` ·
 `<t:…:R>`) or the start, the roster with the lead, and — once live — the first lines of
-the brief. Buttons: **SUBMIT** (when open) and **TRIAL**.
+the brief. Buttons: **SUBMIT** (when open) and **TRIAL** (the trial view replaces that
+team panel, with the brief below it).
 
 ### User context menu: **Trial Record**
 
@@ -76,6 +77,10 @@ capability and conflict of interest.
   (reproducible). `assignTeams` reports the scheduled start: _scheduled_ → "starts
   automatically <t:…:R>"; **passed** → "The scheduled start has passed. Start it by
   hand now" with START on the panel; none → "press START when the teams are ready".
+- **Modals update the panel.** RANDOM draw, ASSIGN TEAMS, EXTEND DEADLINE and CANCEL
+  are opened from the panel; on success the panel itself is replaced with the result on
+  top (never a second stale panel). A refused modal leaves the panel as it was and
+  answers privately.
 - **EVALUATE** (quick evaluation): a team select (latest version, LATE flag, your
   existing score), then a modal with one 0–10 field per criterion (prefilled with your
   earlier scores) and notes. Only for rubrics with **≤ 4 criteria** (a Discord modal
@@ -83,22 +88,23 @@ capability and conflict of interest.
 
 ## Buttons, selects and modals
 
-| Custom id                                                                        | Surface                          | Handler (as the clicking user)                                                                                                       |
-| -------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `trials:apply:<trialId>` (→ modal `trials:apply:<trialId>`)                      | APPLY (card, list)               | Statement modal → `applyToTrial`.                                                                                                    |
-| `trials:view:<trialId>`                                                          | VIEW / TRIAL                     | `getTrialForParticipant`.                                                                                                            |
-| `trials:pick:<purpose>`                                                          | trial pickers                    | view · apply · submit · withdraw · manage the picked trial.                                                                          |
-| `trials:withdraw:<id>` → `trials:withdraw-yes:<id>`                              | WITHDRAW → CONFIRM WITHDRAWAL    | `withdraw`.                                                                                                                          |
-| `trials:submit:<trialId>` (→ modal)                                              | SUBMIT (/team, brief post, view) | Prefilled modal → `submit`.                                                                                                          |
-| `trials:status` · `trials:team`                                                  | shortcuts                        | `myTrials`.                                                                                                                          |
-| `trials:panel:<id>`                                                              | REFRESH / BACK / CONTROL PANEL   | `getTrialForStaff`.                                                                                                                  |
-| `trials:ask:<op>:<id>` → `trials:run:<op>:<id>`                                  | confirmed operations             | `openRecruitment` · `startTrial` · `closeSubmissions` · `reprovisionTeams` · `publishResults` (`publish-incomplete` = acknowledged). |
-| `trials:cancel:<id>` (→ modal)                                                   | CANCEL WITH REASON               | `cancelTrial`.                                                                                                                       |
-| `trials:sel-random:<id>` (→ modal)                                               | SELECT — RANDOM                  | `selectParticipants({ mode: 'random', count, seed })`.                                                                               |
-| `trials:sel-manual:<id>` → `trials:sel-pick:<id>`                                | SELECT — MANUAL → multi-select   | `selectParticipants({ mode: 'manual' })` (replaces the selection).                                                                   |
-| `trials:assign:<id>` (→ modal)                                                   | ASSIGN / REASSIGN TEAMS          | `assignTeams`.                                                                                                                       |
-| `trials:extend:<id>` (→ modal)                                                   | EXTEND DEADLINE                  | `extendDeadline`.                                                                                                                    |
-| `trials:eval:<id>` → `trials:eval-team:<id>` → modal `trials:eval:<id>:<teamId>` | EVALUATE                         | `evaluate` (team target).                                                                                                            |
+| Custom id                                                                        | Surface                           | Handler (as the clicking user)                                                                                                                                                         |
+| -------------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trials:apply:<trialId>` (→ modal `trials:apply:<trialId>`)                      | APPLY (card, list)                | Statement modal → `applyToTrial`.                                                                                                                                                      |
+| `trials:view:<trialId>`                                                          | VIEW (card) / STATUS (brief post) | `getTrialForParticipant` — a new private view; a public card or team-channel post is never edited by a member's press.                                                                 |
+| `trials:open:<trialId>:<0\|1>`                                                   | REFRESH / TRIAL / VIEW TRIAL      | Only on the member's own ephemeral messages: the live view **replaces** that message; the brief and rubric follow only when the flag says they are not already below it (`1` = shown). |
+| `trials:pick:<purpose>`                                                          | trial pickers                     | view · apply · submit · withdraw · manage the picked trial.                                                                                                                            |
+| `trials:withdraw:<id>` → `trials:withdraw-yes:<id>`                              | WITHDRAW → CONFIRM WITHDRAWAL     | `withdraw`.                                                                                                                                                                            |
+| `trials:submit:<trialId>` (→ modal)                                              | SUBMIT (/team, brief post, view)  | Prefilled modal → `submit`.                                                                                                                                                            |
+| `trials:status` · `trials:team`                                                  | shortcuts                         | `myTrials`.                                                                                                                                                                            |
+| `trials:panel:<id>`                                                              | REFRESH / BACK / CONTROL PANEL    | `getTrialForStaff`.                                                                                                                                                                    |
+| `trials:ask:<op>:<id>` → `trials:run:<op>:<id>`                                  | confirmed operations              | `openRecruitment` · `startTrial` · `closeSubmissions` · `reprovisionTeams` · `publishResults` (`publish-incomplete` = acknowledged).                                                   |
+| `trials:cancel:<id>` (→ modal)                                                   | CANCEL WITH REASON                | `cancelTrial`.                                                                                                                                                                         |
+| `trials:sel-random:<id>` (→ modal)                                               | SELECT — RANDOM                   | `selectParticipants({ mode: 'random', count, seed })`.                                                                                                                                 |
+| `trials:sel-manual:<id>` → `trials:sel-pick:<id>`                                | SELECT — MANUAL → multi-select    | `selectParticipants({ mode: 'manual' })` (replaces the selection).                                                                                                                     |
+| `trials:assign:<id>` (→ modal)                                                   | ASSIGN / REASSIGN TEAMS           | `assignTeams`.                                                                                                                                                                         |
+| `trials:extend:<id>` (→ modal)                                                   | EXTEND DEADLINE                   | `extendDeadline`.                                                                                                                                                                      |
+| `trials:eval:<id>` → `trials:eval-team:<id>` → modal `trials:eval:<id>:<teamId>` | EVALUATE                          | `evaluate` (team target).                                                                                                                                                              |
 
 Custom ids route; they never authorize. A non-UUID or unknown action answers
 **EXPIRED — This control is no longer active.**; every handler calls core as the
@@ -155,12 +161,16 @@ Tabs of `/trials/[id]`:
   late work judged not penalised, missing work is INCOMPLETE never FAIL); per team a
   score grid of every evaluation (team and individual) with per-criterion scores,
   weights and weighted totals; **Score** dialog (team or one member, 0–10 per
-  criterion, live weighted preview, notes) while evaluating.
+  criterion, live weighted preview, notes) while evaluating — only for teams that
+  submitted: a team without a submission reads "No submission — INCOMPLETE. Nothing to
+  score." and has no Score control (the service refuses it and each of its members).
 - **Results** — live preview while evaluating (NOT YET SCORED warning; PUBLISH with an
   explicit "publish anyway, marking them incomplete" acknowledgement), then the
   published record sorted by outcome. **Apply** per passing member (`canModifyRanks`,
   never yourself): a confirmation with the rank (the recommendation or lower) and an
-  optional note. Never automatic; applies once.
+  optional note. Never automatic; applies once. Once applied, the VERIFIED plate shows
+  the rank actually granted (from rank history), with "recommended X" beside it when
+  the evaluator chose lower.
 - **Adversarial** — only with `canManageAdversarial`; see [adversarial.md](./adversarial.md).
 
 Every mutation is a Server Action through `runAction` (same-origin check, live

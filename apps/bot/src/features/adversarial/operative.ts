@@ -1,23 +1,10 @@
-import type { APISelectMenuOption } from 'discord.js';
 import { adversarial, isUuid, NotFoundError } from '@jave/core';
-import { customId } from '../../interactions/custom-id';
 import type { ComponentHandler, HandlerContext, ReplyPayload } from '../../interactions/types';
-import { button, panel, row, stringSelect } from '../../ui/components';
-import { clip, userText } from '../../ui/format';
+import { panel } from '../../ui/components';
+import { userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
-import { packEmbeds } from '../trials/render/text';
-import { briefingEmbeds, SANDBOX_MARK } from './render';
-
-export const ADVERSARIAL_NS = 'adversarial';
-
-/**
- * Operative controls. RED FLAG is a single press, never behind a
- * confirmation: the stop protocol says the exercise ends immediately.
- */
-export const OPERATIVE_ACTIONS = {
-  redFlag: 'redflag',
-  fireTrigger: 'fire',
-} as const;
+import { ADVERSARIAL_NS, OPERATIVE_ACTIONS } from './controls';
+import { briefingMessages, SANDBOX_MARK } from './render';
 
 const TRIGGER_LABEL_MAX = 100;
 const RED_FLAG_NOTE = 'Raised by the operative from Discord.';
@@ -41,48 +28,9 @@ export function noBriefingReply(): ReplyPayload {
   };
 }
 
-function operativeControls(entry: adversarial.MyBriefing): ReplyPayload['components'] {
-  const { briefing } = entry;
-  if (briefing.status !== 'briefed' && briefing.status !== 'active') return undefined;
-  const rows: NonNullable<ReplyPayload['components']> = [];
-  const open = briefing.exerciseActive ? briefing.triggers.filter((t) => !t.firedAt) : [];
-  if (open.length > 0) {
-    const options: APISelectMenuOption[] = open.map((trigger) => ({
-      // Select labels are plain text: no markdown to escape, mentions never render.
-      label: clip(trigger.label, TRIGGER_LABEL_MAX),
-      value: trigger.id,
-      description: 'Mark as carried out',
-    }));
-    rows.push(
-      row(
-        stringSelect(
-          customId(ADVERSARIAL_NS, OPERATIVE_ACTIONS.fireTrigger, briefing.roleId),
-          'Mark a trigger as carried out',
-          options,
-        ),
-      ),
-    );
-  }
-  rows.push(
-    row(
-      button(
-        `${adversarial.STOP_WORD} — stop now`,
-        customId(ADVERSARIAL_NS, OPERATIVE_ACTIONS.redFlag, briefing.roleId),
-        'danger',
-      ),
-    ),
-  );
-  return rows;
-}
-
 /** Messages for one briefing: every section, controls under the last message. */
 function briefingReplies(entry: adversarial.MyBriefing): ReplyPayload[] {
-  const messages = packEmbeds(briefingEmbeds(entry.briefing));
-  return messages.map((embeds, index) => ({
-    embeds,
-    components: index === messages.length - 1 ? operativeControls(entry) : undefined,
-    ephemeral: true,
-  }));
+  return briefingMessages(entry.briefing).map((message) => ({ ...message, ephemeral: true }));
 }
 
 /** /trial briefing — the caller's own confidential briefings, privately. */

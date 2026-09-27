@@ -4,7 +4,7 @@ import type { HandlerContext, ReplyPayload } from '../../interactions/types';
 import { button, panel, row, stringSelect, success } from '../../ui/components';
 import { clip, discordTime, userText } from '../../ui/format';
 import { COLORS, GLYPH, LIMITS } from '../../ui/theme';
-import { MEMBER_ACTIONS, type PickPurpose, trialsId } from './ids';
+import { MEMBER_ACTIONS, type PickPurpose, REFERENCE, trialsId } from './ids';
 import { applyModal, submitModal } from './modals';
 import { deadlineLine } from './render/cards';
 import { ONGOING_STATUSES, PARTICIPANT_LABEL, STATUS_LABEL } from './render/labels';
@@ -41,9 +41,31 @@ export async function respondAll(h: HandlerContext, replies: readonly ReplyPaylo
   for (const reply of rest) await h.interaction.followUp(reply);
 }
 
+/** A new private view of the trial (commands, pickers, public cards and team-channel posts). */
 export async function showTrial(h: HandlerContext, trialId: string): Promise<void> {
   const view = await trials.getTrialForParticipant(h.ctx, { trialId });
   await respondAll(h, participantReplies(view));
+}
+
+/**
+ * Refresh (or open) the trial from the member's own ephemeral message: the
+ * live view replaces that message instead of stacking a copy; the brief and
+ * rubric follow only when they are not already below it.
+ */
+export async function openTrialInPlace(
+  h: HandlerContext,
+  trialId: string,
+  referenceShown: boolean,
+): Promise<void> {
+  const view = await trials.getTrialForParticipant(h.ctx, { trialId });
+  const [live, ...reference] = participantReplies(view, { referenceShown });
+  await h.interaction.update(live!);
+  if (!referenceShown) for (const reply of reference) await h.interaction.followUp(reply);
+}
+
+/** A button that opens the trial in place of the member's own ephemeral message. */
+function openInPlaceButton(label: string, trialId: string) {
+  return button(label, trialsId(MEMBER_ACTIONS.open, trialId, REFERENCE.absent));
 }
 
 /** Trials worth listing to a member: not drafts, not finished (staff see drafts in /trial manage). */
@@ -236,7 +258,7 @@ export async function completeApplication(h: HandlerContext, trialId: string): P
         `${trialTitle(view)}\nSelection is announced by DM. Withdraw any time before the start.`,
       ),
     ],
-    components: [row(button('View trial', trialsId(MEMBER_ACTIONS.view, trialId)))],
+    components: [row(openInPlaceButton('View trial', trialId))],
     ephemeral: true,
   });
 }
@@ -266,7 +288,7 @@ export async function completeSubmission(h: HandlerContext, trialId: string): Pr
         `${trialTitle(view)}\n${discordTime(receipt.submittedAt, 'f')}. Evaluators assess your team's latest version.${late}`,
       ),
     ],
-    components: [row(button('View trial', trialsId(MEMBER_ACTIONS.view, trialId)))],
+    components: [row(openInPlaceButton('View trial', trialId))],
     ephemeral: true,
   });
 }
@@ -461,7 +483,7 @@ export async function showTeams(h: HandlerContext): Promise<void> {
         ...(view.canSubmit
           ? [button('Submit', trialsId(MEMBER_ACTIONS.submit, view.id), 'primary')]
           : []),
-        button('Trial', trialsId(MEMBER_ACTIONS.view, view.id)),
+        openInPlaceButton('Trial', view.id),
       ]),
       ephemeral: true,
     };

@@ -38,6 +38,7 @@ export interface EvaluationTeam {
   /** Team score from the service's results preview (mean of team evaluations), when known. */
   teamScore: number | null;
   evaluations: EvaluationRow[];
+  /** What the viewer may score here — empty when the team never submitted. */
   targets: ScoreTarget[];
 }
 
@@ -155,7 +156,7 @@ export function EvaluationPanel({
             data-team={team.name}
             description={
               team.latestVersion === null
-                ? 'No submission — INCOMPLETE unless individuals are scored.'
+                ? 'No submission — INCOMPLETE. Nothing to score.'
                 : `Assessing v${team.latestVersion}${team.latestLate ? ' · submitted late' : ''}`
             }
             actions={
@@ -163,7 +164,7 @@ export function EvaluationPanel({
                 {team.teamScore !== null ? (
                   <Badge tone="accent">Team {scoreLabel(team.teamScore)}</Badge>
                 ) : null}
-                {canScore ? (
+                {canScore && team.targets.length > 0 ? (
                   <ScoreDialog
                     trialId={trialId}
                     teamName={team.name}

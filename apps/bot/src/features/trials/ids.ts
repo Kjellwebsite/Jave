@@ -14,7 +14,20 @@ export const MEMBER_ACTIONS = {
   team: 'team',
   /** Select menu: pick a trial for `purpose`. */
   pick: 'pick',
+  /**
+   * Show the trial IN PLACE of the member's own ephemeral message that holds
+   * the button (Refresh, /team, receipts). Never put on a public message: the
+   * press edits the message it came from. Args: trial id, REFERENCE flag.
+   */
+  open: 'open',
 } as const;
+
+/**
+ * Whether the trial's reference messages (brief, rubric) already sit below the
+ * member's view: an in-place refresh re-sends them only when they do not.
+ */
+export const REFERENCE = { shown: '1', absent: '0' } as const;
+export type ReferenceFlag = (typeof REFERENCE)[keyof typeof REFERENCE];
 
 /** Staff control-panel actions (all re-checked by the core services). */
 export const STAFF_ACTIONS = {

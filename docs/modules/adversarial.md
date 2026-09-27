@@ -163,8 +163,10 @@ standard prohibitions already cover it). Abort reasons and RED FLAG notes are
 removed, over-long text truncated) — a STOP is never blocked by validation.
 
 The operative briefing always contains the guardrails, the operating rules and
-the **stop-word protocol**: saying or typing `RED FLAG` ends the exercise
-immediately.
+the **stop-word protocol** (`STOP_PROTOCOL`): the operative pressing the RED FLAG
+button or typing `RED FLAG` anywhere in the server — or staff raising it — ends
+the exercise immediately. Participants are never told the stop word; their use
+of it alerts managers instead (`stopWordTyped`, below).
 
 ## Scoring
 
@@ -177,15 +179,16 @@ own role.
 
 ## Services
 
-| Function                                                                                                                                                                         | Capability / actor                                             |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `createScenario`, `updateScenario`, `deleteScenario`, `getScenario`, `listScenarios`, `seedStarterScenarios`                                                                     | `canManageAdversarial`                                         |
-| `planRole`, `briefRole`, `activateRole`, `concludeRole`, `abortRole`, `addTrigger`, `withdrawTrigger`, `recordObservation`, `evaluateRole`, `revealRole`, `getRole`, `listRoles` | `canManageAdversarial`                                         |
-| `authorizeRole` (with the reviewed `planRevision`), `approveTrigger`                                                                                                             | `canAuthorizeAdversarial`, second person                       |
-| `raiseRedFlag` (idempotent, including concurrent calls; never blocked by validation)                                                                                             | the briefed operative (any standing) or `canManageAdversarial` |
-| `fireTrigger`                                                                                                                                                                    | the operative (good standing) or `canManageAdversarial`        |
-| `getMyBriefing`, `listMyBriefings`                                                                                                                                               | the operative only                                             |
-| `loadBriefingDelivery`, `loadStopNotice`, `loadDebrief`, `mark*` callbacks                                                                                                       | system actor (bot worker) only                                 |
+| Function                                                                                                                                                                                  | Capability / actor                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `createScenario`, `updateScenario`, `deleteScenario`, `getScenario`, `listScenarios`, `seedStarterScenarios`                                                                              | `canManageAdversarial`                                         |
+| `planRole`, `briefRole`, `activateRole`, `concludeRole`, `abortRole`, `addTrigger`, `withdrawTrigger`, `recordObservation`, `evaluateRole`, `revealRole`, `getRole`, `listRoles`          | `canManageAdversarial`                                         |
+| `authorizeRole` (with the reviewed `planRevision`), `approveTrigger`                                                                                                                      | `canAuthorizeAdversarial`, second person                       |
+| `raiseRedFlag` (idempotent, including concurrent calls; never blocked by validation)                                                                                                      | the briefed operative (any standing) or `canManageAdversarial` |
+| `stopWordTyped` (the stop word seen in a Discord message; classifies the author: operative → RED FLAG, adversarial staff in the team channel → RED FLAG, anyone else → one manager alert) | system actor (bot listener) only                               |
+| `fireTrigger`                                                                                                                                                                             | the operative (good standing) or `canManageAdversarial`        |
+| `getMyBriefing`, `listMyBriefings`                                                                                                                                                        | the operative only                                             |
+| `loadBriefingDelivery`, `loadStopNotice`, `loadDebrief`, `mark*` callbacks                                                                                                                | system actor (bot worker) only                                 |
 
 `seedStarterScenarios` is idempotent and seeds five fictional scenarios:
 Urgent Token Request, Unverified Brief Change, Permission Shortcut, Data Export
@@ -216,13 +219,13 @@ payload) and `settings.updated` for section `trials` (enforce the kill switch).
 
 ## Notifications
 
-| Type                   | Recipient            | When                                                                                                     |
-| ---------------------- | -------------------- | -------------------------------------------------------------------------------------------------------- |
-| `adversarial.briefing` | operative            | Briefed (inbox pointer only), briefing updated, exercise live, concluded, revealed.                      |
-| `adversarial.stop`     | operative            | Any abort of a briefed/active role (critical; the DM is the Discord job).                                |
-| `adversarial.revealed` | team participants    | At the reveal, with the debrief.                                                                         |
-| `adversarial.staff`    | authorizers, planner | Authorization or trigger approval requested, authorized, briefing/debrief undeliverable, reveal pending. |
-| `adversarial.alert`    | managers             | RED FLAG raised (also after a normal end), STOP undeliverable (critical).                                |
+| Type                   | Recipient            | When                                                                                                                                                                                                         |
+| ---------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `adversarial.briefing` | operative            | Briefed (inbox pointer only), briefing updated, exercise live, concluded, revealed.                                                                                                                          |
+| `adversarial.stop`     | operative            | Any abort of a briefed/active role (critical; the DM is the Discord job).                                                                                                                                    |
+| `adversarial.revealed` | team participants    | At the reveal, with the debrief.                                                                                                                                                                             |
+| `adversarial.staff`    | authorizers, planner | Authorization or trigger approval requested, authorized, briefing/debrief undeliverable, reveal pending.                                                                                                     |
+| `adversarial.alert`    | managers             | RED FLAG raised (also after a normal end; says who and whether typed in chat), the stop word typed by a participant in an active exercise's team channel (once per exercise), STOP undeliverable (critical). |
 
 Staff notifications exclude anyone taking part in the trial.
 
@@ -256,25 +259,30 @@ got the debrief as a notification).
 `packages/core/src/adversarial/*.test.ts`, run with
 `cd packages/core && npx vitest run src/adversarial --maxWorkers=2`.
 
-| File                 | Covers                                                                                                                                                                                                                                 |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `safety.test.ts`     | Validator: secrets, links/hosts, personal data, out-of-scope targets, guardrails, obfuscation, pathological input.                                                                                                                     |
-| `pure.test.ts`       | Scoring, state predicates, briefing/debrief builders, capability invariants.                                                                                                                                                           |
-| `scenarios.test.ts`  | Library CRUD, idempotent seeding, snapshots.                                                                                                                                                                                           |
-| `lifecycle.test.ts`  | Full flow on a trial built with direct inserts; two-person rule; kill switch; trial gates; operative constraints.                                                                                                                      |
-| `operations.test.ts` | Abort and RED FLAG, defense in depth, delivery callbacks, triggers/observations/time edges, evaluation.                                                                                                                                |
-| `visibility.test.ts` | IDOR and leak tests: participants, moderators and operations read nothing; nothing observable before the reveal.                                                                                                                       |
-| `conflict.test.ts`   | Staff competing in a trial; quarantined operatives.                                                                                                                                                                                    |
-| `jobs.test.ts`       | Kill-switch enforcement, trial reconciliation, sweep, reminders, registry wiring.                                                                                                                                                      |
-| `contracts.test.ts`  | The three Discord job contracts executed through the real queue by a simulated bot worker (test double), incl. failures.                                                                                                               |
-| `hardening.test.ts`  | Races: scenario delete vs. plan, re-evaluation vs. reveal, observation vs. evaluation; audited library reads.                                                                                                                          |
-| `integrity.test.ts`  | Plan revision vs. concurrent trigger changes, trigger approval and withdrawal, scenario snapshot in briefings/debriefs, briefing delivery to ineligible operatives or with the kill switch off, RED FLAG and abort after a normal end. |
+| File                 | Covers                                                                                                                                                                                                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `safety.test.ts`     | Validator: secrets, links/hosts, personal data, out-of-scope targets, guardrails, obfuscation, pathological input.                                                                                                                                                                                              |
+| `pure.test.ts`       | Scoring, state predicates, briefing/debrief builders, capability invariants.                                                                                                                                                                                                                                    |
+| `scenarios.test.ts`  | Library CRUD, idempotent seeding, snapshots.                                                                                                                                                                                                                                                                    |
+| `lifecycle.test.ts`  | Full flow on a trial built with direct inserts; two-person rule; kill switch; trial gates; operative constraints.                                                                                                                                                                                               |
+| `operations.test.ts` | Abort and RED FLAG, defense in depth, delivery callbacks, triggers/observations/time edges, evaluation.                                                                                                                                                                                                         |
+| `visibility.test.ts` | IDOR and leak tests: participants, moderators and operations read nothing; nothing observable before the reveal.                                                                                                                                                                                                |
+| `conflict.test.ts`   | Staff competing in a trial; quarantined operatives.                                                                                                                                                                                                                                                             |
+| `jobs.test.ts`       | Kill-switch enforcement, trial reconciliation, sweep, reminders, registry wiring.                                                                                                                                                                                                                               |
+| `contracts.test.ts`  | The three Discord job contracts executed through the real queue by a simulated bot worker (test double), incl. failures.                                                                                                                                                                                        |
+| `hardening.test.ts`  | Races: scenario delete vs. plan, re-evaluation vs. reveal, observation vs. evaluation; audited library reads.                                                                                                                                                                                                   |
+| `integrity.test.ts`  | Plan revision vs. concurrent trigger changes, trigger approval and withdrawal, scenario snapshot in briefings/debriefs, briefing delivery to ineligible operatives or with the kill switch off, RED FLAG and abort after a normal end.                                                                          |
+| `stop-word.test.ts`  | The stop word typed in Discord: operative anywhere and adversarial staff in the team channel stop (with attribution); participants, non-adversarial staff, staff competing in the trial and unknown users only alert managers once, unaudited; system-actor only; RED FLAG by the system is attributed to JAVE. |
 
 ## Extension points
 
 - **Stop-word listener.** Wired in `apps/bot/src/features/adversarial/stop-word.ts`:
-  `raiseRedFlag` (system actor) when the operative types `RED FLAG` anywhere in the
-  server, or anyone types it in the team channel of a running exercise.
+  every server message containing the stop word goes to `stopWordTyped` (system
+  actor). The operative anywhere, or adversarial staff in the team channel, raise
+  RED FLAG as themselves (the abort reason and the alert say _typed in chat by the
+  operative / staff_); anyone else in the team channel of an active exercise
+  triggers one manager alert and no stop. Participant mentions are deliberately
+  not audited. A RED FLAG raised by the system actor itself is attributed to JAVE.
 - **Sandbox domains** are a code constant (`SANDBOX_DOMAINS`), deliberately not a
   setting: widening them is a code review, not a toggle.
 - **Trials module.** This module reads the trials schema directly and reacts
@@ -288,8 +296,8 @@ Full reference: [docs/commands/adversarial.md](../commands/adversarial.md).
 - **Discord** (`apps/bot/src/features/adversarial`, namespace `adversarial`):
   `/trial briefing` (the operative's own briefing, otherwise the identical NO
   BRIEFING answer), the single-press RED FLAG button and the trigger-fired select
-  under it, the stop-word listener, and the three `discord.adversarial.*` job
-  handlers. No participant-facing surface reveals whether a trial hosts a role
+  under it — also under the briefing DM, since DMs are not read — the stop-word
+  listener, and the three `discord.adversarial.*` job handlers. No participant-facing surface reveals whether a trial hosts a role
   (asserted by the bot tests).
 - **Dashboard** (`/trials/[id]?tab=adversarial`, `canManageAdversarial` only,
   marked SANDBOX · FICTIONAL DATA ONLY): trial switch, plan, two-person
@@ -326,3 +334,8 @@ Full reference: [docs/commands/adversarial.md](../commands/adversarial.md).
 - Evaluators accepting the suggested score (no `score` given) accept the
   suggestion as computed at save time; an observation recorded between viewing
   and saving changes it.
+- The operative is still bound by the verbatim standard prohibition "Stop
+  immediately when anyone says RED FLAG." When a participant uses the words, JAVE
+  keeps the exercise running and alerts managers; the operative judges, and the
+  briefing tells them to raise RED FLAG themselves when unsure. The operative
+  typing the words as vocabulary always stops the exercise.

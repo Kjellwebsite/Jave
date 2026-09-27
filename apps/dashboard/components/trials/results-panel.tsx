@@ -43,6 +43,8 @@ export interface ResultRowData {
   facetLabel: string | null;
   recommendedRank: string | null;
   rankApplied: boolean;
+  /** The verified rank actually granted — the recommendation or lower. Null until applied. */
+  appliedRank: string | null;
   /** Rank codes at or below the recommendation, highest first (empty when not applicable). */
   rankOptions: string[];
 }
@@ -84,15 +86,28 @@ function RankCell({
   action: FormAction;
 }) {
   if (!row.recommendedRank) return <Mono dim>—</Mono>;
-  if (row.rankApplied)
+  if (row.rankApplied) {
+    // The plate shows the rank that was granted, never the recommendation in its place.
+    const belowRecommendation = row.appliedRank !== null && row.appliedRank !== row.recommendedRank;
     return (
-      <span className="inline-flex items-center gap-2" data-rank-applied="true">
-        <RankBadge verifiedRank={row.recommendedRank} size="sm" />
+      <span
+        className="inline-flex flex-wrap items-center justify-end gap-2"
+        data-rank-applied="true"
+        data-applied-rank={row.appliedRank ?? undefined}
+      >
+        {row.appliedRank ? <RankBadge verifiedRank={row.appliedRank} size="sm" /> : null}
         <span className="text-small text-fg-subtle">
           {row.facetLabel ? `${row.facetLabel} · ` : ''}applied
+          {belowRecommendation ? (
+            <>
+              {' '}
+              · recommended <Mono>{row.recommendedRank}</Mono>
+            </>
+          ) : null}
         </span>
       </span>
     );
+  }
   return (
     <span className="inline-flex flex-wrap items-center justify-end gap-2">
       <span className="text-small text-fg-subtle">

@@ -342,7 +342,13 @@ test.describe('access', () => {
   test('operations cannot apply rank consequences', async ({ page }) => {
     await signInAs(page, 'operations');
     await openTrial(page, TRIAL_FIXTURES.completed, 'Results');
-    await expect(page.locator('[data-rank-applied="true"]').first()).toBeVisible();
+    // The seed granted one tier below the recommendation: the plate shows what was granted.
+    const applied = page.locator('[data-rank-applied="true"]').first();
+    await expect(applied).toBeVisible();
+    const granted = await applied.getAttribute('data-applied-rank');
+    expect(granted).toMatch(/^[A-Z]+$/);
+    await expect(applied).toContainText(/applied · recommended [A-Z]+/);
+    await expect(applied).not.toContainText(`recommended ${granted}`);
     await expect(page.locator('[data-testid^="apply-rank-"]')).toHaveCount(0);
   });
 });

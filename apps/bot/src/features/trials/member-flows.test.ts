@@ -387,6 +387,84 @@ describe('trials: member flows', SUITE, () => {
     expect(missing.interaction.lastText()).toContain('NOT FOUND');
   });
 
+  it('Refresh updates the member’s own view in place; the brief is never re-sent', async () => {
+    await configureDiscord(bot);
+    const [manager] = await people(bot, 1, ['operations']);
+    const players = await people(bot, 2);
+    const { trialId } = await activeTrial(bot, manager!, players);
+    await bot.drain();
+
+    const opened = await bot.run({
+      kind: 'slash',
+      name: 'trial',
+      subcommand: 'view',
+      user: players[0]!.user,
+      options: { trial: trialId },
+    });
+    // Live state and controls first; the brief below it.
+    const [live, ...reference] = opened.interaction.responses.filter((r) => 'payload' in r);
+    expect(live!.type).toBe('editReply');
+    const liveIds = JSON.stringify(live);
+    expect(liveIds).toContain(`trials:submit:${trialId}`);
+    expect(liveIds).toContain(`trials:open:${trialId}:1`);
+    expect(liveIds).not.toContain('Ship a working tool');
+    expect(JSON.stringify(reference)).toContain('Ship a working tool');
+
+    for (let press = 0; press < 3; press++) {
+      const refresh = await bot.run({
+        kind: 'button',
+        name: customId('trials', 'open', trialId, '1'),
+        user: players[0]!.user,
+      });
+      expect(refresh.interaction.responses.map((r) => r.type)).toEqual(['update']);
+      expect(refresh.interaction.lastText()).toContain('NIGHT BUILD');
+      expect(customIds(refresh.interaction)).toContain(`trials:open:${trialId}:1`);
+    }
+
+    // From /team, the view replaces the team panel and brings the brief once.
+    const team = await bot.run({ kind: 'slash', name: 'team', user: players[1]!.user });
+    expect(customIds(team.interaction)).toContain(`trials:open:${trialId}:0`);
+    const fromTeam = await bot.run({
+      kind: 'button',
+      name: customId('trials', 'open', trialId, '0'),
+      user: players[1]!.user,
+    });
+    const types = fromTeam.interaction.responses.map((r) => r.type);
+    expect(types[0]).toBe('update');
+    expect(types.slice(1).every((type) => type === 'followUp')).toBe(true);
+    expect(JSON.stringify(fromTeam.interaction.responses.slice(1))).toContain(
+      'Ship a working tool',
+    );
+  });
+
+  it('BREAK: public cards and team-channel posts never carry the in-place control', async () => {
+    await configureDiscord(bot);
+    const [manager] = await people(bot, 1, ['operations']);
+    const players = await people(bot, 2);
+    const { trialId } = await activeTrial(bot, manager!, players);
+    await bot.drain();
+    const posts = JSON.stringify(bot.gateway.callsTo('sendMessage').map((call) => call.args[1]));
+    expect(posts).toContain(`trials:view:${trialId}`);
+    expect(posts).not.toContain('trials:open:');
+
+    // A forged or stale in-place press is re-authorized like any other.
+    const [outsider] = await people(bot, 1, ['member']);
+    const draftId = await draftTrial(bot, manager!, { title: 'Hidden Draft' });
+    const forged = await bot.run({
+      kind: 'button',
+      name: customId('trials', 'open', draftId, '1'),
+      user: outsider!.user,
+    });
+    expect(forged.interaction.responses.map((r) => r.type)).toEqual(['reply']);
+    expect(forged.interaction.lastText()).toContain('NOT FOUND');
+    const garbage = await bot.run({
+      kind: 'button',
+      name: customId('trials', 'open', 'not-a-trial', '1'),
+      user: outsider!.user,
+    });
+    expect(garbage.interaction.lastText()).toContain('EXPIRED');
+  });
+
   it('autocomplete offers only what the member may see', async () => {
     const [manager] = await people(bot, 1, ['operations']);
     const [member] = await people(bot, 1, ['trial']);

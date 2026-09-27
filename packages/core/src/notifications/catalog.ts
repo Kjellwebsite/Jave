@@ -144,7 +144,8 @@ export const NOTIFICATION_TYPES = {
   },
   'adversarial.alert': {
     label: 'Adversarial alert',
-    description: 'RED FLAG raised, or a STOP notice could not be delivered.',
+    description:
+      'RED FLAG raised, the stop word typed in a team channel, or a STOP notice could not be delivered.',
     severity: 'critical',
     channels: ['discord_dm'],
     staff: true,

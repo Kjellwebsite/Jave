@@ -25,6 +25,8 @@ export interface FakeInteractionInit {
   modalSelect?: Record<string, string[]>;
   targetUser?: InteractionUser;
   targetMessage?: TargetMessage;
+  /** Default: true for buttons and selects; set it for a modal opened from a component. */
+  fromMessage?: boolean;
 }
 
 export type RecordedResponse =
@@ -52,6 +54,7 @@ export class FakeInteraction implements InteractionContext {
   readonly values: string[];
   readonly targetUser: InteractionUser | null;
   readonly targetMessage: TargetMessage | null;
+  readonly fromMessage: boolean;
   readonly responses: RecordedResponse[] = [];
   readonly options: CommandOptions;
   readonly modal: InteractionContext['modal'];
@@ -68,6 +71,7 @@ export class FakeInteraction implements InteractionContext {
     this.values = init.values ?? [];
     this.targetUser = init.targetUser ?? null;
     this.targetMessage = init.targetMessage ?? null;
+    this.fromMessage = init.fromMessage ?? (init.kind === 'button' || init.kind === 'select');
     const opts = init.options ?? {};
     const get = <T>(name: string, check: (v: unknown) => boolean): T | null => {
       const value = opts[name];
@@ -122,8 +126,7 @@ export class FakeInteraction implements InteractionContext {
     this.responses.push({ type: 'followUp', payload });
   }
   async update(payload: ReplyPayload) {
-    if (this.kind !== 'button' && this.kind !== 'select')
-      throw new Error('update on non-component');
+    if (!this.fromMessage) throw new Error('update without a source message');
     this.assertFresh('update');
     this._replied = true;
     this.responses.push({ type: 'update', payload });

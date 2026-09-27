@@ -4,7 +4,7 @@ import type { ReplyPayload } from '../../../interactions/types';
 import { button, field, panel, row } from '../../../ui/components';
 import { clip, discordTime, userText } from '../../../ui/format';
 import { COLORS, GLYPH, LIMITS } from '../../../ui/theme';
-import { MEMBER_ACTIONS, trialsId } from '../ids';
+import { MEMBER_ACTIONS, REFERENCE, trialsId } from '../ids';
 import { deadlineLine } from './cards';
 import {
   categoryLabel,
@@ -159,7 +159,10 @@ function resultEmbed(result: NonNullable<ParticipantView['result']>): APIEmbed {
 }
 
 /** Buttons a member can use on this trial right now (as computed by core). */
-export function participantButtons(view: ParticipantView): ReturnType<typeof button>[] {
+export function participantButtons(
+  view: ParticipantView,
+  referenceShown: boolean,
+): ReturnType<typeof button>[] {
   const buttons: ReturnType<typeof button>[] = [];
   if (view.canApply)
     buttons.push(button('Apply', trialsId(MEMBER_ACTIONS.apply, view.id), 'primary'));
@@ -167,41 +170,18 @@ export function participantButtons(view: ParticipantView): ReturnType<typeof but
     buttons.push(button('Submit', trialsId(MEMBER_ACTIONS.submit, view.id), 'primary'));
   if (view.canWithdraw)
     buttons.push(button('Withdraw', trialsId(MEMBER_ACTIONS.withdraw, view.id), 'danger'));
-  buttons.push(button('Refresh', trialsId(MEMBER_ACTIONS.view, view.id)));
+  buttons.push(
+    button(
+      'Refresh',
+      trialsId(MEMBER_ACTIONS.open, view.id, referenceShown ? REFERENCE.shown : REFERENCE.absent),
+    ),
+  );
   return buttons;
 }
 
-/**
- * A member's view of one trial. The brief and rubric appear only when core
- * unsealed them (competitors, once live); built only from the member view,
- * which never carries staff or adversarial fields.
- */
-export function participantReplies(view: ParticipantView): ReplyPayload[] {
-  const clock = clockLine(view);
-  const main = panel({
-    kicker: `${view.ref} ${GLYPH.dot} ${categoryLabel(view.category)}`,
-    title: userText(view.title, TITLE_MAX),
-    description: [userText(view.summary, SUMMARY_MAX), clock ? `\n${clock}` : '']
-      .filter(Boolean)
-      .join('\n'),
-    color: STATUS_COLOR[view.status],
-    fields: [
-      field('State', factsLine(view)),
-      ...(view.teams.length > 0
-        ? [
-            field(
-              'Teams',
-              view.teams
-                .map((team) => `${userText(team.name, NAME_MAX)} (${team.memberCount})`)
-                .join(' · '),
-            ),
-          ]
-        : []),
-      ...participationFields(view),
-      ...[submissionField(view)].filter((entry): entry is APIEmbedField => entry !== null),
-    ],
-  });
-  const embeds: APIEmbed[] = [main];
+/** Reference material that never changes once shown: the unsealed brief and the rubric. */
+function referenceEmbeds(view: ParticipantView): APIEmbed[] {
+  const embeds: APIEmbed[] = [];
   if (view.brief) {
     const chunks = safeChunks(view.brief);
     chunks.forEach((chunk, index) =>
@@ -229,13 +209,61 @@ export function participantReplies(view: ParticipantView): ReplyPayload[] {
         ),
       }),
     );
-  if (view.result) embeds.push(resultEmbed(view.result));
-  const messages = packEmbeds(embeds);
-  return messages.map((group, index) => ({
-    embeds: group,
-    components: index === messages.length - 1 ? buttonRows(participantButtons(view)) : undefined,
-    ephemeral: true,
-  }));
+  return embeds;
+}
+
+/**
+ * A member's view of one trial: first the live message — state, clock, team,
+ * submission, result — with the member's buttons (its Refresh updates it in
+ * place), then the reference messages (brief, rubric). The brief and rubric
+ * appear only when core unsealed them (competitors, once live); built only from
+ * the member view, which never carries staff or adversarial fields. The live
+ * message always fits one Discord message: its only long parts are three
+ * fields clipped at 1024 characters, well under the 6000-character cap.
+ */
+export function participantReplies(
+  view: ParticipantView,
+  options: { referenceShown?: boolean } = {},
+): ReplyPayload[] {
+  const reference = packEmbeds(referenceEmbeds(view));
+  const referenceShown = (options.referenceShown ?? false) || reference.length > 0;
+  const live: APIEmbed[] = [mainEmbed(view)];
+  if (view.result) live.push(resultEmbed(view.result));
+  return [
+    {
+      embeds: live,
+      components: buttonRows(participantButtons(view, referenceShown)),
+      ephemeral: true,
+    },
+    ...reference.map((embeds) => ({ embeds, ephemeral: true })),
+  ];
+}
+
+function mainEmbed(view: ParticipantView): APIEmbed {
+  const clock = clockLine(view);
+  return panel({
+    kicker: `${view.ref} ${GLYPH.dot} ${categoryLabel(view.category)}`,
+    title: userText(view.title, TITLE_MAX),
+    description: [userText(view.summary, SUMMARY_MAX), clock ? `\n${clock}` : '']
+      .filter(Boolean)
+      .join('\n'),
+    color: STATUS_COLOR[view.status],
+    fields: [
+      field('State', factsLine(view)),
+      ...(view.teams.length > 0
+        ? [
+            field(
+              'Teams',
+              view.teams
+                .map((team) => `${userText(team.name, NAME_MAX)} (${team.memberCount})`)
+                .join(' · '),
+            ),
+          ]
+        : []),
+      ...participationFields(view),
+      ...[submissionField(view)].filter((entry): entry is APIEmbedField => entry !== null),
+    ],
+  });
 }
 
 /** A trial as one list field. */

@@ -16,7 +16,7 @@ import {
   type ModSource,
   timeoutInForce,
 } from './case-engine';
-import { MAX_CASE_HISTORY } from './constants';
+import { MAX_CASE_HISTORY, MAX_CASE_NUMBER } from './constants';
 import { caseReference, type ModAction } from './copy';
 
 export interface CasePerson {
@@ -148,6 +148,8 @@ export async function getCase(ctx: ServiceContext, caseId: string): Promise<ModC
 }
 
 export const listCasesSchema = pageSchema.extend({
+  /** The case number (CASE-0042 → 42). */
+  number: z.coerce.number().int().positive().max(MAX_CASE_NUMBER).optional(),
   targetUserId: z.uuid().optional(),
   moderatorUserId: z.uuid().optional(),
   action: z.enum(modAction.enumValues).optional(),
@@ -166,6 +168,7 @@ export async function listCases(
   const q = parseInput(listCasesSchema, input);
   await authorize(ctx, 'canModerate', { type: 'mod_case' });
   const filters: SQL[] = [];
+  if (q.number !== undefined) filters.push(eq(modCases.number, q.number));
   if (q.targetUserId) filters.push(eq(modCases.targetUserId, q.targetUserId));
   if (q.moderatorUserId) filters.push(eq(modCases.moderatorUserId, q.moderatorUserId));
   if (q.action) filters.push(eq(modCases.action, q.action));

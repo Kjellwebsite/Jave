@@ -498,11 +498,13 @@ export async function executeCase(ctx: ServiceContext, spec: CaseSpec): Promise<
       await notifySyncFailure(tx, record, sync.error);
     }
     if (spec.action === 'release' && spec.target.memberId && spec.target.inGuild) {
+      // Role sync converges on current state: a sync already running may have
+      // read the quarantined standing, so it must run again rather than be dropped.
       await enqueueJob(
         tx,
         DISCORD_ROLE_SYNC_JOB,
         { memberId: spec.target.memberId },
-        { dedupeKey: `roles-sync:${spec.target.memberId}` },
+        { dedupeKey: `roles-sync:${spec.target.memberId}`, rerunIfRunning: true },
       );
     }
 

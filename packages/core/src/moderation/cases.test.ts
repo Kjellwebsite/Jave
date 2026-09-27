@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { members, modCases, notificationDeliveries, notifications } from '@jave/database';
+import { jobs, members, modCases, notificationDeliveries, notifications } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import { HOUR, MINUTE } from '../kernel/clock';
-import { enqueueJob } from '../jobs/queue';
+import { claimJobs, enqueueJob } from '../jobs/queue';
 import { InvalidStateError, ConflictError, ValidationError } from '../kernel/errors';
 import { recordGuildLeave, resolveUserActor } from '../identity/users.service';
 import type { UserActor } from '../permissions/actor';
@@ -270,6 +270,34 @@ describe('moderation cases', () => {
   });
 
   describe('quarantine', () => {
+    it('a release while a role sync is running makes that sync run again', async () => {
+      await quarantineMember(kit.as(moderator), {
+        targetUserId: target.userId,
+        reason: 'Compromised account suspected.',
+      });
+      // A role sync for this member (it reads the quarantined standing) is in flight…
+      await enqueueJob(
+        kit.system,
+        'discord.roles.sync',
+        { memberId: target.memberId },
+        { dedupeKey: `roles-sync:${target.memberId}` },
+      );
+      const sync = (await jobsOfType(kit, 'discord.roles.sync')).find(
+        (job) => job.dedupeKey === `roles-sync:${target.memberId}`,
+      );
+      const [running] = await claimJobs(kit.db, {
+        workerId: 'bot-1',
+        limit: 1,
+        now: kit.clock.now(),
+        ids: [sync!.id],
+      });
+      expect(running?.id).toBe(sync!.id);
+      // …when the member is released: their roles must still be restored.
+      await releaseMember(kit.as(moderator), { targetUserId: target.userId, reason: 'Cleared.' });
+      const [row] = await kit.db.select().from(jobs).where(eq(jobs.id, sync!.id));
+      expect(row).toMatchObject({ status: 'running', rerunRequested: true });
+    });
+
     it('quarantines with the configured role, strips managed roles and releases', async () => {
       const q = await quarantineMember(kit.as(moderator), {
         targetUserId: target.userId,

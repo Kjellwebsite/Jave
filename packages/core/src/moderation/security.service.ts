@@ -1,6 +1,7 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  memberRoles,
   members,
   securityAction,
   securityEvents,
@@ -10,12 +11,18 @@ import {
 } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
-import { upsertDiscordUser } from '../identity/users.service';
+import { activeRoles, upsertDiscordUser } from '../identity/users.service';
 import { type ServiceContext, withTransaction } from '../kernel/context';
 import { ConflictError, InvalidStateError, NotFoundError, ValidationError } from '../kernel/errors';
 import { redactString, truncate } from '../kernel/redact';
 import { parseInput } from '../kernel/validation';
-import { notifyCapabilityHolders } from '../notifications/notifications.service';
+import {
+  notify,
+  notifyCapabilityHolders,
+  type NotifyInput,
+  rolesWithCapability,
+} from '../notifications/notifications.service';
+import type { OrgRole } from '../permissions/roles';
 import { authorize } from '../permissions/authorize';
 import { getSettings } from '../settings/settings.service';
 import {
@@ -45,7 +52,7 @@ import {
   type SecuritySourceKey,
   type SecurityEventView,
 } from './security.query';
-import { deny, loadTarget, rankOf, requireSystemActor } from './targets';
+import { deny, holdsStaffRole, loadTarget, rankOf, requireSystemActor } from './targets';
 
 const snowflake = z.string().regex(/^\d{17,20}$/, 'must be a Discord ID');
 
@@ -110,6 +117,52 @@ function safeLabel(username: string): string {
   return username.replace(/[^\w.-]/g, '').slice(0, 32) || 'unknown';
 }
 
+type StaffAlert = Omit<NotifyInput, 'recipientUserId'>;
+
+/**
+ * Alert only the staff who may read an event about a staff member: founders,
+ * and holders of canViewSecurityEvents ranked above the subject — the
+ * audience `canSeeSubject` allows. The subject and reporter are excluded.
+ */
+async function notifyEventReaders(
+  ctx: ServiceContext,
+  subjectRoles: readonly OrgRole[],
+  alert: StaffAlert,
+  excludeUserIds: readonly string[],
+): Promise<void> {
+  const now = ctx.clock.now();
+  const rows = await ctx.db
+    .select({ userId: members.userId, role: memberRoles.role })
+    .from(memberRoles)
+    .innerJoin(members, eq(members.id, memberRoles.memberId))
+    .where(
+      and(
+        inArray(memberRoles.role, rolesWithCapability('canViewSecurityEvents')),
+        isNull(memberRoles.revokedAt),
+        or(isNull(memberRoles.expiresAt), gt(memberRoles.expiresAt, now)),
+        eq(members.standing, 'good'),
+        isNull(members.deletedAt),
+      ),
+    );
+  const rolesByUser = new Map<string, OrgRole[]>();
+  for (const row of rows) {
+    rolesByUser.set(row.userId, [...(rolesByUser.get(row.userId) ?? []), row.role]);
+  }
+  const subjectRank = rankOf(subjectRoles);
+  let sent = 0;
+  for (const [userId, roles] of rolesByUser) {
+    if (sent >= ALERT_RECIPIENT_LIMIT) break;
+    if (excludeUserIds.includes(userId)) continue;
+    if (!roles.includes('founder') && rankOf(roles) <= subjectRank) continue;
+    await notify(ctx, {
+      ...alert,
+      recipientUserId: userId,
+      dedupeKey: alert.dedupeKey ? `${alert.dedupeKey}:${userId}` : undefined,
+    });
+    sent++;
+  }
+}
+
 /**
  * Internal: insert a security event with its outbox side effects (domain
  * event, staff alert, alert card). Idempotent on `dedupeKey`: a duplicate
@@ -148,6 +201,7 @@ export async function createSecurityEvent(
 
   let subjectMemberId: string | null = null;
   let subjectLabel = 'no specific user';
+  let subjectRoles: OrgRole[] = [];
   if (input.userId) {
     const [subject] = await ctx.db
       .select({ memberId: members.id, username: users.username })
@@ -156,7 +210,12 @@ export async function createSecurityEvent(
       .where(eq(users.id, input.userId));
     subjectMemberId = subject?.memberId ?? null;
     subjectLabel = subject ? `@${safeLabel(subject.username)}` : 'unknown user';
+    subjectRoles = subjectMemberId ? await activeRoles(ctx, subjectMemberId) : [];
   }
+  // Events about staff are readable only by founders and staff ranked above
+  // the subject: they get no card in the shared alerts channel, and only
+  // those readers are alerted.
+  const aboutStaff = holdsStaffRole(subjectRoles);
   const reference = securityReference(inserted.number);
   await publishEvent(ctx, {
     type: 'security.event_raised',
@@ -176,28 +235,28 @@ export async function createSecurityEvent(
   if (input.notifyStaff ?? true) {
     const settings = await getSettings(ctx, 'moderation');
     const critical = inserted.riskScore >= settings.quarantineRiskScore;
-    await notifyCapabilityHolders(
-      ctx,
-      'canViewSecurityEvents',
-      {
-        type: 'security.alert',
-        title: `${critical ? 'SECURITY ALERT' : 'SECURITY EVENT'} — ${TRIGGER_LABELS[inserted.trigger]}`,
-        body: `${reference} · risk ${inserted.riskScore}/100 · ${subjectLabel} · action ${inserted.actionTaken.replace('_', ' ')}`,
-        severity: critical ? 'critical' : 'notice',
-        // Below the quarantine threshold: dashboard inbox only, no DM.
-        ...(!critical && { channels: [] }),
-        dedupeKey: `security:${inserted.id}`,
-        data: { securityEventId: inserted.id },
-      },
-      {
-        limit: ALERT_RECIPIENT_LIMIT,
-        excludeUserIds: [input.userId, input.reportedByUserId].filter((id): id is string =>
-          Boolean(id),
-        ),
-      },
+    const alert: StaffAlert = {
+      type: 'security.alert',
+      title: `${critical ? 'SECURITY ALERT' : 'SECURITY EVENT'} — ${TRIGGER_LABELS[inserted.trigger]}`,
+      body: `${reference} · risk ${inserted.riskScore}/100 · ${subjectLabel} · action ${inserted.actionTaken.replace('_', ' ')}`,
+      severity: critical ? 'critical' : 'notice',
+      // Below the quarantine threshold: dashboard inbox only, no DM.
+      ...(!critical && { channels: [] }),
+      dedupeKey: `security:${inserted.id}`,
+      data: { securityEventId: inserted.id },
+    };
+    const excludeUserIds = [input.userId, input.reportedByUserId].filter((id): id is string =>
+      Boolean(id),
     );
+    if (aboutStaff) await notifyEventReaders(ctx, subjectRoles, alert, excludeUserIds);
+    else {
+      await notifyCapabilityHolders(ctx, 'canViewSecurityEvents', alert, {
+        limit: ALERT_RECIPIENT_LIMIT,
+        excludeUserIds,
+      });
+    }
   }
-  await enqueueAlertPost(ctx, inserted.id);
+  if (!aboutStaff) await enqueueAlertPost(ctx, inserted.id);
   return { event: inserted, created: true };
 }
 

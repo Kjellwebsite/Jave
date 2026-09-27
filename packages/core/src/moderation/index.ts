@@ -76,6 +76,14 @@ export {
   type SecuritySourceKey,
 } from './security.query';
 
+// Member reports
+export {
+  MESSAGE_REPORT_RISK_SCORE,
+  type MessageReportResult,
+  reportMessage,
+  reportMessageSchema,
+} from './reports.service';
+
 // Automod, raid mode, sweeps
 export {
   applyAutomodDecision,

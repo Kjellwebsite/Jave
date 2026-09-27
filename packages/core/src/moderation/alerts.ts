@@ -129,7 +129,12 @@ export async function enqueueAlertPost(ctx: ServiceContext, eventId: string): Pr
   );
 }
 
-/** Queue an edit of an already-posted card (after a review or an action). */
+/**
+ * Queue an edit of an already-posted card (after a review or an action). The
+ * card is re-rendered from current state, so a change while an edit is in
+ * flight re-runs it instead of being dropped (the running edit may have read
+ * the state before this change).
+ */
 export async function enqueueAlertRefresh(
   ctx: ServiceContext,
   event: Pick<SecurityEventRecord, 'id' | 'alertChannelId' | 'alertMessageId'>,
@@ -144,6 +149,6 @@ export async function enqueueAlertRefresh(
       channelId: event.alertChannelId,
       messageId: event.alertMessageId,
     },
-    { dedupeKey: `sec-alert:${event.id}:update` },
+    { dedupeKey: `sec-alert:${event.id}:update`, rerunIfRunning: true },
   );
 }

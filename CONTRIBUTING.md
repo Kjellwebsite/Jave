@@ -7,6 +7,7 @@ pnpm install
 docker compose up -d          # or any PostgreSQL 16
 cp .env.example .env          # fill in the required values (see ENVIRONMENT.md)
 pnpm db:migrate
+pnpm db:seed                  # optional: a populated development org (docs/commands/core.md)
 pnpm dev:dashboard            # http://localhost:3000
 pnpm dev:bot                  # needs a Discord bot token
 ```

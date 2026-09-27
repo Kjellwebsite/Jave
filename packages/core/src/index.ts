@@ -25,6 +25,7 @@ export * from './jobs/worker';
 export * from './jobs/admin.service';
 export * from './settings/schemas';
 export * from './settings/settings.service';
+export * from './settings/role-mapping';
 export * from './notifications/catalog';
 export * from './notifications/quiet-hours';
 export * from './notifications/notifications.service';

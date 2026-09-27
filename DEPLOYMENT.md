@@ -74,6 +74,7 @@ In the [Discord Developer Portal](https://discord.com/developers/applications):
 | Ban Members              | Ban and unban members (moderation cases).           |
 | Manage Server            | List invites for referral attribution.              |
 | Manage Events            | Create Discord scheduled events for JAVELIN events. |
+| Add Reactions            | Grant reactions in private trial team channels.     |
 
 The source of truth is `REQUIRED_PERMISSIONS` in
 `apps/bot/src/discord/permissions.ts`; the bot's readiness check compares the

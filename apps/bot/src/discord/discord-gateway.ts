@@ -3,6 +3,8 @@ import {
   ChannelType,
   type Client,
   DiscordAPIError,
+  DiscordjsError,
+  DiscordjsErrorCodes,
   GuildScheduledEventEntityType,
   GuildScheduledEventPrivacyLevel,
   GuildScheduledEventStatus,
@@ -10,11 +12,14 @@ import {
   OverwriteType,
   PermissionFlagsBits,
   RESTJSONErrorCodes,
+  type Role,
   type TextChannel,
   ThreadAutoArchiveDuration,
   type ThreadChannel,
 } from 'discord.js';
 import {
+  type BotMemberSnapshot,
+  type ChannelAccessSnapshot,
   DiscordActionError,
   type DiscordGateway,
   MESSAGE_NONCE_MAX,
@@ -24,11 +29,13 @@ import {
   type PermissionName,
   type PermissionOverwriteSpec,
   type ReadableMessage,
+  type RoleSnapshot,
   type ScheduledEventSpec,
   type SentMessage,
   type ThreadAutoArchiveMinutes,
   type ThreadState,
 } from './gateway';
+import { channelKind, permissionNames, roleCanView } from './introspection';
 
 const AUTO_ARCHIVE_DURATION: Record<ThreadAutoArchiveMinutes, ThreadAutoArchiveDuration> = {
   60: ThreadAutoArchiveDuration.OneHour,
@@ -67,6 +74,19 @@ function normalize(error: unknown, action: string): never {
     );
   }
   throw error;
+}
+
+/** A guild role, or null when it no longer exists (a deleted role still mapped). */
+async function roleOrNull(guild: Guild, roleId: string): Promise<Role | null> {
+  const cached = guild.roles.cache.get(roleId);
+  if (cached) return cached;
+  try {
+    return await guild.roles.fetch(roleId);
+  } catch (error) {
+    if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownRole)
+      return null;
+    throw error;
+  }
 }
 
 async function attempt<T>(action: string, fn: () => Promise<T>): Promise<T> {
@@ -475,6 +495,76 @@ export class DiscordJsGateway implements DiscordGateway {
     await attempt('fetch members', () => guild.members.fetch());
     const role = await attempt('fetch role', () => guild.roles.fetch(roleId));
     return role ? [...role.members.keys()] : [];
+  }
+
+  async botMember(): Promise<BotMemberSnapshot> {
+    const guild = await this.guild();
+    const me = await attempt('fetch bot member', () => guild.members.fetchMe());
+    return {
+      userId: me.id,
+      permissions: permissionNames(me.permissions),
+      administrator: me.permissions.has(PermissionFlagsBits.Administrator),
+      highestRolePosition: me.roles.highest.position,
+    };
+  }
+
+  async botPermissionsIn(
+    channelId: string,
+    audienceRoleIds: readonly string[] = [],
+  ): Promise<ChannelAccessSnapshot | null> {
+    const guild = await this.guild();
+    let channel;
+    try {
+      channel = await guild.channels.fetch(channelId);
+    } catch (error) {
+      if (error instanceof DiscordjsError && error.code === DiscordjsErrorCodes.GuildChannelUnowned)
+        return null;
+      if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownChannel)
+        return null;
+      if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.MissingAccess)
+        return {
+          channelId,
+          name: null,
+          kind: 'other',
+          visible: false,
+          permissions: [],
+          everyoneCanView: false,
+          audienceWithView: [],
+        };
+      return normalize(error, 'fetch channel');
+    }
+    if (!channel) return null;
+    const me = await attempt('fetch bot member', () => guild.members.fetchMe());
+    const permissions = channel.permissionsFor(me);
+    const visible = permissions.has(PermissionFlagsBits.ViewChannel);
+    const everyone = guild.roles.everyone;
+    const audience = await attempt('fetch roles', () =>
+      Promise.all(audienceRoleIds.map((id) => roleOrNull(guild, id))),
+    );
+    return {
+      channelId: channel.id,
+      name: visible ? channel.name : null,
+      kind: channelKind(channel.type),
+      visible,
+      permissions: permissionNames(permissions),
+      everyoneCanView: roleCanView(channel, everyone, everyone),
+      audienceWithView: audience
+        .filter((role): role is Role => role !== null && roleCanView(channel, everyone, role))
+        .map((role) => role.id),
+    };
+  }
+
+  async listRoles(): Promise<RoleSnapshot[]> {
+    const guild = await this.guild();
+    const roles = await attempt('list roles', () => guild.roles.fetch());
+    return roles.map((role) => ({
+      id: role.id,
+      name: role.name,
+      position: role.position,
+      managed: role.managed,
+      everyone: role.id === guild.id,
+      permissions: permissionNames(role.permissions),
+    }));
   }
 
   async sendMessageOnce(

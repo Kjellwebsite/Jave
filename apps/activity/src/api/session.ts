@@ -57,7 +57,7 @@ export class ActivitySession {
 
   private async token(): Promise<string> {
     const session = this.current;
-    if (!session || session.expiresAt - this.clock.now() < REFRESH_MARGIN_MS) {
+    if (!session || session.expiresAt - this.clock.now() <= REFRESH_MARGIN_MS) {
       return (await this.signIn()).token;
     }
     return session.token;

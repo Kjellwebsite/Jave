@@ -118,6 +118,7 @@ export interface TrialWire {
   status: string;
   phase: 'not_started' | 'open' | 'grace' | 'closed';
   scheduledStartAt: number | null;
+  startedAt: number | null;
   deadlineAt: number | null;
   closesAt: number | null;
   teamName: string | null;

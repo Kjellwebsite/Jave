@@ -34,6 +34,7 @@ const TRIAL_KEYS = [
   'phase',
   'ref',
   'scheduledStartAt',
+  'startedAt',
   'status',
   'teamName',
   'title',

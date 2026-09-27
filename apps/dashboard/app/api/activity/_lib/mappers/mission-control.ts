@@ -88,6 +88,7 @@ export function pickCurrentTrial(entries: readonly trials.TrialHistoryEntry[]): 
     status: trial.status,
     phase: trial.timing.phase,
     scheduledStartAt: epoch(trial.scheduledStartAt),
+    startedAt: epoch(trial.startedAt),
     deadlineAt: epoch(trial.timing.deadlineAt),
     closesAt: epoch(trial.timing.closesAt),
     teamName: entry.teamName,

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PARADIGMS, registerAll } from '../src/items';
-import type { ItemParadigm } from '../src/items/paradigm';
+import { PACE, pacedLimit, type ItemParadigm } from '../src/items/paradigm';
 import { createRng } from '../src/utils/rng';
 
 beforeAll(() => registerAll());
@@ -16,6 +16,9 @@ describe('every item instrument', () => {
           expect(performance.now() - t0, `${p.id} ${c.key}`).toBeLessThan(250);
           expect(item.paradigm).toBe(p.id);
           expect(item.irt.b).toBeCloseTo(c.irt.b, 6);
+          // Every item has a bounded, visible time limit.
+          expect(item.timeLimitMs, `${p.id} ${c.key}`).toBeGreaterThanOrEqual(PACE.minMs);
+          expect(item.timeLimitMs, `${p.id} ${c.key}`).toBeLessThanOrEqual(PACE.maxMs);
           // The key must score as correct.
           const value =
             item.response.kind === 'choice'
@@ -49,5 +52,15 @@ describe('item validation', () => {
     expect(validateItem({ ...good, key: 9 })).not.toEqual([]);
     expect(validateItem({ ...good, irt: { ...good.irt, a: -1 } })).not.toEqual([]);
     expect(validateItem({ ...good, response: { kind: 'choice', options: 1 } })).not.toEqual([]);
+  });
+});
+
+describe('item pacing', () => {
+  it('scales nominal limits, rounds to 5 s and clamps', () => {
+    expect(pacedLimit(60_000)).toBe(45_000);
+    expect(pacedLimit(90_000)).toBe(70_000);
+    expect(pacedLimit(180_000)).toBe(120_000);
+    expect(pacedLimit(10_000)).toBe(20_000);
+    expect(pacedLimit(30_000)).toBe(25_000);
   });
 });

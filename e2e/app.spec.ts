@@ -121,3 +121,32 @@ test('report handles corrupted storage without crashing', async ({ page }) => {
   await expect(page.getByText('No assessment in progress')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('items show a running countdown and time out on their own', async ({ page }) => {
+  await page.clock.install();
+  await startSingle(page, 'Sequence induction');
+  await page.getByRole('button', { name: /Start practice/ }).click();
+  await expect(page.getByText('Practice · untimed')).toBeVisible();
+  for (let i = 0; i < 2; i++) {
+    await page.locator('.entry-input').fill('1');
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'Continue' }).click();
+  }
+  await page.getByRole('button', { name: 'Begin' }).click();
+  const timer = page.getByRole('timer');
+  await expect(timer).toBeVisible();
+  const first = await timer.textContent();
+  await page.clock.runFor(5_000);
+  await expect(timer).not.toHaveText(first!);
+  const before = await storedResponses(page);
+  await page.clock.runFor(125_000);
+  await expect.poll(() => storedResponses(page)).toBe(before + 1);
+  const last = await page.evaluate(() => {
+    const id = localStorage.getItem('jvln.v1.active')!;
+    const s = JSON.parse(localStorage.getItem(`jvln.v1.${id}`)!);
+    const all = s.sections.flatMap((x: { responses: unknown[] }) => x.responses);
+    return all[all.length - 1];
+  });
+  expect(last.timedOut).toBe(true);
+  expect(last.correct).toBe(false);
+});

@@ -71,6 +71,7 @@ A participant who solves the hardest level of an instrument gets a **ceiling** f
 | Matrix layout | Options fell below the fold at 900 px height. | Side-by-side layout from 1,100 px width. |
 | Practice feedback | The matrix explanation used internal rule codes. | Rewritten in plain language. |
 | Long sessions | Full takes 100–130 min. | Pause at any time, and resume after closing the tab. Pausing replaces the open item. |
+| Time limits | Limits were invisible until the last 30%, so items felt open-ended. | Always-visible countdown with a 10-second warning; limits tightened to 20 s – 2 min (e2e *items show a running countdown and time out on their own*). |
 | Confidence probe | Must be set explicitly, so there is no default anchoring. | — |
 | Errors | A failed chunk load or render error now shows a recoverable message instead of a blank page. | ErrorBoundary around pages and renderers. |
 

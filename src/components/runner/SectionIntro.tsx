@@ -45,7 +45,14 @@ export function SectionIntro({ paradigm, index, total, hasPractice, onBegin }: {
       <div className="intro-foot">
         <div className="intro-tags">
           <Tag tone="outline">~{paradigm.minutes} min</Tag>
-          {paradigm.kind === 'items' ? <Tag tone="outline">Adaptive</Tag> : <Tag tone="outline">Timed trials</Tag>}
+          {paradigm.kind === 'items' ? (
+            <>
+              <Tag tone="outline">Adaptive</Tag>
+              <Tag tone="outline">Time limit per item</Tag>
+            </>
+          ) : (
+            <Tag tone="outline">Timed trials</Tag>
+          )}
           {paradigm.input === 'keyboard-preferred' ? <Tag tone="outline">Keyboard recommended</Tag> : null}
           {paradigm.experimental ? <Tag>Experimental</Tag> : null}
         </div>

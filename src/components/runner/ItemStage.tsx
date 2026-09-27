@@ -32,7 +32,7 @@ export function ItemStage({ item, practice, askConfidence, onDone }: Props) {
   const onset = useRef<number>(performance.now());
   const locked = useRef(false);
   const finished = useRef(false);
-  const [remaining, setRemaining] = useState(1);
+  const [remainingMs, setRemainingMs] = useState(item.timeLimitMs);
 
   // Onset = first frame after the item has been painted.
   useLayoutEffect(() => {
@@ -76,7 +76,7 @@ export function ItemStage({ item, practice, askConfidence, onDone }: Props) {
   useEffect(() => {
     if (practice) return;
     const start = performance.now();
-    const tick = window.setInterval(() => setRemaining(Math.max(0, 1 - (performance.now() - start) / item.timeLimitMs)), 500);
+    const tick = window.setInterval(() => setRemainingMs(Math.max(0, item.timeLimitMs - (performance.now() - start))), 250);
     const timeout = window.setTimeout(() => handleAnswer({ kind: 'timeout' }), item.timeLimitMs);
     return () => {
       clearInterval(tick);
@@ -86,11 +86,13 @@ export function ItemStage({ item, practice, askConfidence, onDone }: Props) {
 
   return (
     <div className="item-stage">
-      {!practice && remaining < 0.3 && phase.kind === 'answer' ? (
-        <div className="time-left" role="timer" aria-label="Time remaining">
-          <span style={{ transform: `scaleX(${remaining / 0.3})` }} />
+      {practice ? (
+        <div className="item-timer is-untimed">
+          <Label>Practice · untimed</Label>
         </div>
-      ) : null}
+      ) : (
+        <ItemTimer remainingMs={remainingMs} limitMs={item.timeLimitMs} stopped={phase.kind !== 'answer'} />
+      )}
       <div className={`item-body ${phase.kind !== 'answer' ? 'is-answered' : ''}`} aria-hidden={phase.kind === 'confidence'}>
         <ErrorBoundary compact>
 <Suspense fallback={<div className="renderer-loading" />}>
@@ -115,6 +117,30 @@ export function ItemStage({ item, practice, askConfidence, onDone }: Props) {
           </Button>
         </motion.div>
       ) : null}
+    </div>
+  );
+}
+
+function ItemTimer({ remainingMs, limitMs, stopped }: { remainingMs: number; limitMs: number; stopped: boolean }) {
+  const seconds = Math.ceil(remainingMs / 1000);
+  const urgent = seconds <= 10;
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  // Announce only the two warnings, not every second.
+  const announce = seconds === 30 ? '30 seconds left' : seconds === 10 ? '10 seconds left' : '';
+  return (
+    <div className={`item-timer ${urgent ? 'is-urgent' : ''} ${stopped ? 'is-stopped' : ''}`}>
+      <div className="item-timer-row">
+        <Label>Time</Label>
+        <span className="mono item-timer-clock" role="timer" aria-label={`${seconds} seconds remaining`}>
+          {clock}
+        </span>
+      </div>
+      <div className="item-timer-track" aria-hidden="true">
+        <span style={{ transform: `scaleX(${remainingMs / limitMs})` }} />
+      </div>
+      <span className="sr-only" aria-live="polite">
+        {announce}
+      </span>
     </div>
   );
 }

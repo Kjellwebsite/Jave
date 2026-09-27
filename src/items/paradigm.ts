@@ -137,7 +137,7 @@ export function generatorParadigm<C, K>(def: GeneratorDef<C, K>): ItemParadigm {
       level,
       band: bandFor(spec.b),
       irt: provisional(spec.a, spec.b, spec.c),
-      timeLimitMs: spec.timeLimitMs,
+      timeLimitMs: pacedLimit(spec.timeLimitMs),
       response: g.response,
       content: g.content,
       key: g.key,
@@ -204,7 +204,7 @@ export function bankParadigm<C>(def: BankDef<C>): ItemParadigm {
       level: Math.round(a.b * 10) / 10,
       band: bandFor(a.b),
       irt: provisional(aParam, a.b, 1 / a.options),
-      timeLimitMs: a.timeLimitMs ?? def.defaultTimeLimitMs ?? 90_000,
+      timeLimitMs: pacedLimit(a.timeLimitMs ?? def.defaultTimeLimitMs ?? 90_000),
       response: { kind: 'choice', options: a.options },
       content: a.content,
       key: a.key,
@@ -230,4 +230,14 @@ export function bankParadigm<C>(def: BankDef<C>): ItemParadigm {
     score: defaultCheck,
     range: () => ({ minB: Math.min(...live.map((i) => i.b)), maxB: Math.max(...live.map((i) => i.b)) }),
   };
+}
+
+/** Item time limits are 75% of each instrument's nominal limit, rounded to 5 s,
+ *  and kept between 20 s and 2 min. The limit is always visible to the
+ *  participant; a timeout scores as incorrect. */
+export const PACE = { factor: 0.75, minMs: 20_000, maxMs: 120_000 } as const;
+
+export function pacedLimit(nominalMs: number): number {
+  const scaled = Math.round((nominalMs * PACE.factor) / 5_000) * 5_000;
+  return Math.min(PACE.maxMs, Math.max(PACE.minMs, scaled));
 }

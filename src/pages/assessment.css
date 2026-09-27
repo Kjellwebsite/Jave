@@ -205,22 +205,46 @@
   pointer-events: none;
 }
 
-.time-left {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 60px;
-  height: 2px;
-  z-index: 9;
+.item-timer {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
 }
 
-.time-left span {
+.item-timer-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.item-timer-clock {
+  font-size: 14px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur) var(--ease);
+}
+
+.item-timer-track {
+  height: 2px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.item-timer-track span {
   display: block;
   height: 100%;
   background: var(--steel);
   transform-origin: left;
-  transition: transform 500ms linear;
+  transition: transform 250ms linear, background-color var(--dur) var(--ease);
 }
+
+.item-timer.is-urgent .item-timer-clock { color: var(--negative); }
+.item-timer.is-urgent .item-timer-track span { background: var(--negative); }
+.item-timer.is-stopped .item-timer-track span { transition: none; }
+.item-timer.is-untimed { justify-items: end; }
 
 .stage-overlay {
   position: absolute;

@@ -439,3 +439,9 @@ Where the implementation deviates from the tables above, the implementation is a
   - No simpler rule may single out a different specimen.
 - **Layout precision.** Offsets are 12, 10, 6, 4, 3 and 2 px. 8 px is avoided so that exactly one element is off the 8-px grid.
 - **Authored banks.** 157 live items: social 37, strategic 28, semantic 36, reading 27, prompting 28. Each bank also has two practice items.
+
+### Time limits (v1.1)
+
+Every scored item shows its time limit from the first frame: a countdown clock and a draining line above the item, which turn red in the last 10 seconds. Screen readers get "30 seconds left" and "10 seconds left" announcements. When time runs out, the item is submitted as a timeout and scored as incorrect.
+
+The limit is 75% of the instrument's nominal limit per level, rounded to 5 s and kept between 20 s and 2 min (`pacedLimit` in `src/items/paradigm.ts`). The tighter limits add a speed component at the hardest levels. Whether that shifts item difficulty has to be checked during calibration. Practice items stay untimed and are labelled as such.

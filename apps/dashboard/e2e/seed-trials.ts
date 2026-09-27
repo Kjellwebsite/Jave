@@ -100,7 +100,7 @@ const COMPETITORS: readonly Competitor[] = [
   {
     discordId: '130000000000000007',
     username: 'greta',
-    displayName: 'Greta Solberg',
+    displayName: 'Greta Halden',
     role: 'verified',
     primaryDomain: 'mind',
   },

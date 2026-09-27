@@ -40,6 +40,7 @@ import { caseReference, type ModAction } from './copy';
 import { enqueueDiscordJob, moderationApplyContract } from './discord-jobs';
 import {
   assertCanActOn,
+  botTargetViolation,
   deny,
   issuerRoles,
   loadTarget,
@@ -153,6 +154,8 @@ async function createManualCase(
     ctx,
     data.targetUserId ? { userId: data.targetUserId } : { discordId: data.targetDiscordId ?? '' },
   );
+  const botRefusal = botTargetViolation(target, action);
+  if (botRefusal) throw new InvalidStateError(botRefusal);
   await assertCanActOn(ctx, target, action);
 
   const live = await loadLiveCases(ctx, target.userId);

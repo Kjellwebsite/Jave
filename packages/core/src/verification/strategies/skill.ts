@@ -18,7 +18,7 @@ const MAX_RANK_REASON = 2000;
  * locked so approvals and revocations on one facet run one at a time
  * (setVerifiedRank takes the same lock).
  */
-async function currentVerifiedRank(
+export async function currentVerifiedRank(
   ctx: ServiceContext,
   memberId: string,
   facetKey: string,

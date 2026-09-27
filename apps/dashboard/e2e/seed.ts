@@ -37,6 +37,7 @@ import {
   trials,
 } from '@jave/database';
 import { DEV_PERSONAS, provisionDevPersona } from '../server/auth/dev-personas';
+import { seedModerationFixtures } from './moderation-seed';
 import { seedReferralFixtures } from './seed-referrals';
 
 interface MemberFixture {
@@ -410,6 +411,8 @@ export async function seedDashboardFixtures(databaseUrl: string): Promise<void> 
       trigger: 'spam_rate',
       evidence: { signals: [{ key: 'message_rate', weight: 40, detail: '14 messages in 10s' }] },
     });
+
+    await seedModerationFixtures(system);
 
     const founderUserId = personaUsers.get('founder')!;
     await notify(system, {

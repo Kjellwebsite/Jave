@@ -64,6 +64,8 @@ const INVITES = [
   { code: 'priyaink', inviter: '110000000000000021', uses: 2 },
 ] as const;
 const VANITY_CODE = 'javelin';
+/** Theo (seed.ts) owns the referral code the claim flow credits. */
+const CODE_OWNER_DISCORD_ID = '110000000000000014';
 const VANITY_USES = 40;
 
 const REFERRALS: readonly ReferralFixture[] = [
@@ -248,7 +250,10 @@ const REFERRALS: readonly ReferralFixture[] = [
   },
 ];
 
-/** Joined from an unknown source, then credited to Priya's referral code through the claim flow. */
+/**
+ * Joined from an unknown source, then credited to Theo's referral code through
+ * the claim flow. (Priya cannot hold a code: the moderation fixtures quarantine her.)
+ */
 const CODE_CLAIMANT = { username: 'ivo_g', displayName: 'Ivo Grant', joinedDaysAgo: 5 };
 
 function inviteeDiscordId(index: number): string {
@@ -408,8 +413,8 @@ export async function seedReferralFixtures(system: ServiceContext): Promise<void
     usedCode: null,
     joinedAt: claimantJoin,
   });
-  const priya = await actorFor(system, '110000000000000021');
-  const code = await invites.createReferralCode(priya, {});
+  const theo = await actorFor(system, CODE_OWNER_DISCORD_ID);
+  const code = await invites.createReferralCode(theo, {});
   await invites.claimReferralCode(await actorFor(system, inviteeDiscordId(REFERRALS.length)), {
     code: code.code,
   });

@@ -36,6 +36,24 @@ export {
   VERIFICATION_STRATEGIES,
 } from './strategies';
 export { requestVerification } from './request.service';
+export {
+  type GrantableRanks,
+  grantableRanksSchema,
+  listGrantableRanks,
+  listTargetCandidates,
+  MAX_TARGET_CANDIDATES,
+  TARGET_CANDIDATE_TYPES,
+  type TargetCandidate,
+  type TargetCandidateType,
+  targetCandidatesSchema,
+} from './candidates.service';
+export {
+  VERIFICATION_BLOCK_MESSAGES,
+  type VerificationAccess,
+  verificationAccess,
+  type VerificationBlock,
+  type VerificationControl,
+} from './access';
 export { assignVerifier, startReview } from './review.service';
 export { decideVerification, revokeVerification } from './decision.service';
 export {

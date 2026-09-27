@@ -141,4 +141,15 @@ export interface DiscordGateway {
     reason: string,
   ): Promise<void>;
   cancelScheduledEvent(eventId: string, reason: string): Promise<void>;
+
+  // Idempotent posting
+  /**
+   * Post with an enforced nonce (≤ 25 characters, e.g. a prefix plus the job
+   * id): within Discord's nonce window a retry with the same nonce returns
+   * the message already posted instead of posting a duplicate.
+   */
+  sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string): Promise<SentMessage>;
 }
+
+/** Discord caps message nonces at 25 characters. */
+export const MESSAGE_NONCE_MAX = 25;

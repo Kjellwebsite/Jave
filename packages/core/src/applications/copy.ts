@@ -1,4 +1,5 @@
 import type { OrgRole } from '../permissions/roles';
+import type { ApplicationStatus } from './state-machine';
 
 /**
  * User-facing notification copy for the application workflow. Concise, calm,
@@ -19,6 +20,17 @@ export function formatUtc(value: Date): string {
 export function formatDay(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
+
+/** A status as a phrase inside applicant copy: "it is now in review". */
+export const STATUS_WORDS: Readonly<Record<ApplicationStatus, string>> = {
+  draft: 'a draft',
+  submitted: 'submitted',
+  review: 'in review',
+  interview: 'at the interview stage',
+  accepted: 'accepted',
+  rejected: 'not accepted',
+  withdrawn: 'withdrawn',
+};
 
 function withMessage(body: string, message: string | null | undefined): string {
   return message ? `${body}\n\n${message}` : body;

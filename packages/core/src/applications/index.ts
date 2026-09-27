@@ -14,6 +14,7 @@ export {
   submitApplication,
   updateDraft,
   withdrawApplication,
+  type WithdrawInput,
 } from './applicant.service';
 
 // Staff
@@ -92,6 +93,7 @@ export {
   applicationRefSchema,
   beginReviewCardRenderSchema,
   decideSchema,
+  EVIDENCE_LINK_SEPARATOR,
   isSafeHttpUrl,
   listApplicationsSchema,
   MIN_LONG_ANSWER_CHARS,

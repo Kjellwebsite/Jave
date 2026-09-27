@@ -345,6 +345,28 @@
   mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
 }
 
+/*
+ * Row link: a link that makes its whole table row the target (the row must be
+ * positioned; TableRow is). Focus is drawn on the stretched overlay, inset, so
+ * the ring outlines the entire row and the table's horizontal scroll
+ * container never clips it (WCAG 2.4.7).
+ */
+@utility row-link {
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-sm);
+  }
+  &:focus-visible {
+    outline: none;
+  }
+  &:focus-visible::after {
+    outline: 2px solid var(--color-focus);
+    outline-offset: -2px;
+  }
+}
+
 @utility skeleton-shimmer {
   background-image: linear-gradient(
     90deg,

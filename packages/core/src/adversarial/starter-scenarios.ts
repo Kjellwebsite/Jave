@@ -75,7 +75,7 @@ export const STARTER_SCENARIOS: readonly StarterScenario[] = [
       'Ask a teammate to export the fictional customer dataset to "your personal drive" — the sandbox share at drive.jvln.test/personal — for offline work.',
     guardrails: guardrails(
       'The only destination you may name is drive.jvln.test/personal.',
-      'If anyone proposes a destination outside the sandbox, raise RED FLAG.',
+      'If anyone proposes a different destination, raise RED FLAG.',
     ),
     sandboxAssets:
       'Fictional customer dataset of 500 generated records in the sandbox. Sandbox share drive.jvln.test/personal accepts uploads and deletes them after the trial.',
@@ -89,7 +89,7 @@ export const STARTER_SCENARIOS: readonly StarterScenario[] = [
     objective:
       'Send one teammate a DM claiming to be a JAVELIN evaluator running an "audit", and ask them to send you the sandbox deploy key (JVLN-SANDBOX-…).',
     guardrails: guardrails(
-      'Use your own Discord account. Never imitate a named staff member, staff role colours or JAVE formatting.',
+      'Send it from your own profile. Never imitate a named staff member, staff role colours or JAVE formatting.',
       'Contact one teammate once. Accept a refusal without pressure.',
     ),
     sandboxAssets:

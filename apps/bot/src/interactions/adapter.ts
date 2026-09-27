@@ -9,7 +9,7 @@ import {
   MessageFlags,
   type ModalSubmitInteraction,
   type RepliableInteraction,
-  type StringSelectMenuInteraction,
+  type AnySelectMenuInteraction,
   type User,
   type UserContextMenuCommandInteraction,
 } from 'discord.js';
@@ -115,7 +115,7 @@ function kindOf(interaction: Interaction): InteractionKind | null {
   if (interaction.isMessageContextMenuCommand()) return 'message_context';
   if (interaction.isAutocomplete()) return 'autocomplete';
   if (interaction.isButton()) return 'button';
-  if (interaction.isStringSelectMenu()) return 'select';
+  if (interaction.isAnySelectMenu()) return 'select';
   if (interaction.isModalSubmit()) return 'modal';
   return null;
 }
@@ -127,8 +127,8 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
 
   const repliable = interaction.isRepliable() ? (interaction as RepliableInteraction) : null;
   const component =
-    interaction.isButton() || interaction.isStringSelectMenu()
-      ? (interaction as ButtonInteraction | StringSelectMenuInteraction)
+    interaction.isButton() || interaction.isAnySelectMenu()
+      ? (interaction as ButtonInteraction | AnySelectMenuInteraction)
       : null;
   const modal = interaction.isModalSubmit() ? (interaction as ModalSubmitInteraction) : null;
   const memberRoles = interaction.inCachedGuild()
@@ -158,7 +158,8 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
       interaction.isChatInputCommand() || interaction.isAutocomplete()
         ? commandOptions(interaction)
         : EMPTY_OPTIONS,
-    values: interaction.isStringSelectMenu() ? interaction.values : [],
+    // String selects carry option values; user/role/channel selects carry Discord ids.
+    values: interaction.isAnySelectMenu() ? interaction.values : [],
     modal: {
       text: (id) => modal?.fields.getTextInputValue(id) ?? '',
       select: (id) => {

@@ -166,16 +166,33 @@ describe('navigation', () => {
       .filter((item) => item.capability === null)
       .map((item) => item.href);
     expect(hrefs([])).toEqual(everyone);
-    expect(everyone).toEqual(expect.arrayContaining(['/overview', '/projects', '/contributions']));
+    expect(everyone).toEqual(['/overview', '/projects', '/contributions', '/tickets']);
 
     const member = hrefs(['canViewMembers']);
     expect(member).toEqual(expect.arrayContaining(['/members', '/ranking']));
     expect(member).not.toContain('/audit');
     expect(member).not.toContain('/integrations');
+    expect(visibleNav(NAV_GROUPS, ['canViewMembers']).map((group) => group.label)).toEqual([
+      'OVERVIEW',
+      'PEOPLE',
+      'OPERATIONS',
+      'SUPPORT & SAFETY',
+    ]);
 
     const staff = hrefs(['canViewMembers', 'canViewAuditLogs', 'canManageIntegrations']);
     expect(staff).toEqual(expect.arrayContaining(['/audit', '/integrations']));
     expect(staff).not.toContain('/settings');
+
+    expect(hrefs(['canViewMembers', 'canViewAuditLogs', 'canViewSettings'])).toEqual([
+      '/overview',
+      '/members',
+      '/ranking',
+      '/projects',
+      '/contributions',
+      '/tickets',
+      '/audit',
+      '/settings',
+    ]);
 
     for (const group of visibleNav(NAV_GROUPS, [])) expect(group.items.length).toBeGreaterThan(0);
     expect(visibleNav(NAV_GROUPS, []).map((group) => group.label)).not.toContain('SYSTEM');

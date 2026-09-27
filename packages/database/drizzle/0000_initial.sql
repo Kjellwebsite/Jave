@@ -489,12 +489,16 @@ CREATE TABLE "adversarial_roles" (
 	"operative_member_id" uuid NOT NULL,
 	"scenario_id" uuid NOT NULL,
 	"objective" text NOT NULL,
+	"scenario_title" varchar(120) NOT NULL,
+	"technique" "adversarial_technique" NOT NULL,
 	"guardrails" text NOT NULL,
 	"sandbox_assets" text NOT NULL,
 	"status" "adversarial_role_status" DEFAULT 'planned' NOT NULL,
+	"plan_revision" smallint DEFAULT 1 NOT NULL,
 	"authorized_by_user_id" uuid,
 	"authorized_at" timestamp with time zone,
 	"sandbox_attested" boolean DEFAULT false NOT NULL,
+	"authorization_note" text,
 	"briefed_at" timestamp with time zone,
 	"briefing_revision" smallint DEFAULT 1 NOT NULL,
 	"briefing_delivery" "adversarial_delivery",
@@ -542,6 +546,8 @@ CREATE TABLE "adversarial_triggers" (
 	"fired_at" timestamp with time zone,
 	"fired_by_user_id" uuid,
 	"created_by_user_id" uuid,
+	"approved_by_user_id" uuid,
+	"approved_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -1308,6 +1314,7 @@ ALTER TABLE "adversarial_scenarios" ADD CONSTRAINT "adversarial_scenarios_create
 ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_role_id_adversarial_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."adversarial_roles"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_fired_by_user_id_users_id_fk" FOREIGN KEY ("fired_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "adversarial_triggers" ADD CONSTRAINT "adversarial_triggers_approved_by_user_id_users_id_fk" FOREIGN KEY ("approved_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_events" ADD CONSTRAINT "ticket_events_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_events" ADD CONSTRAINT "ticket_events_actor_user_id_users_id_fk" FOREIGN KEY ("actor_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_messages" ADD CONSTRAINT "ticket_messages_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

@@ -26,18 +26,14 @@ import {
 } from './discord-jobs';
 import { evaluateRole, revealRole } from './evaluation.service';
 import { jobHandlers, subscribers } from './index';
-import { addTrigger, recordObservation } from './observations.service';
-import {
-  abortRole,
-  activateRole,
-  authorizeRole,
-  briefRole,
-  concludeRole,
-  raiseRedFlag,
-} from './roles.service';
+import { recordObservation } from './observations.service';
+import { abortRole, activateRole, authorizeRole, briefRole, concludeRole } from './roles.service';
+import { raiseRedFlag } from './red-flag.service';
 import { STOP_WORD } from './safety';
 import { LIMITS } from './schemas';
+import { addTrigger, approveTrigger } from './triggers.service';
 import {
+  addApprovedTrigger,
   type AdversarialFixture,
   INTEGRATION_TIMEOUT_MS,
   planDefault,
@@ -174,7 +170,11 @@ describe('adversarial Discord job contracts (simulated bot)', () => {
 
   it('briefing, updated briefing and debrief flow through the queue end to end', async () => {
     const role = await planDefault(fx);
-    await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+    await authorizeRole(kit.as(fx.authorizer), {
+      roleId: role.id,
+      planRevision: 1,
+      sandboxAttested: true,
+    });
     await briefRole(kit.as(fx.planner), { roleId: role.id });
     await kit.drain(handlers);
 
@@ -185,11 +185,19 @@ describe('adversarial Discord job contracts (simulated bot)', () => {
       expect(briefing.text).toContain(section);
     expect((await roleRow(role.id)).briefingDelivery).toBe('sent');
 
-    // A second authorizer changes the plan after the briefing: revision 2 is DMed.
-    await addTrigger(kit.as(fx.founder), {
+    // A trigger added after the briefing stays pending: nothing reaches the operative.
+    const pending = await addTrigger(kit.as(fx.founder), {
       roleId: role.id,
       label: 'Token ask',
       description: 'Ask for the sandbox deploy key in the team channel.',
+    });
+    await kit.drain(handlers);
+    expect(discord.sent).toHaveLength(1);
+    // A second person approves it: revision 2 is DMed.
+    await approveTrigger(kit.as(fx.authorizer), {
+      roleId: role.id,
+      triggerId: pending.id,
+      sandboxAttested: true,
     });
     await kit.drain(handlers);
     expect(discord.sent).toHaveLength(2);
@@ -226,7 +234,11 @@ describe('adversarial Discord job contracts (simulated bot)', () => {
 
   it('RED FLAG before delivery: only the STOP is sent, never the stale briefing or the note', async () => {
     const role = await planDefault(fx);
-    await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+    await authorizeRole(kit.as(fx.authorizer), {
+      roleId: role.id,
+      planRevision: 1,
+      sandboxAttested: true,
+    });
     await briefRole(kit.as(fx.planner), { roleId: role.id });
     await raiseRedFlag(kit.as(fx.operative), {
       roleId: role.id,
@@ -294,10 +306,14 @@ describe('adversarial Discord job contracts (simulated bot)', () => {
 
   it('a late job for an older revision sends the newest briefing once, never twice', async () => {
     const role = await planDefault(fx);
-    await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+    await authorizeRole(kit.as(fx.authorizer), {
+      roleId: role.id,
+      planRevision: 1,
+      sandboxAttested: true,
+    });
     await briefRole(kit.as(fx.planner), { roleId: role.id });
     // The revision 1 job has not run yet when the plan changes to revision 2.
-    await addTrigger(kit.as(fx.founder), {
+    await addApprovedTrigger(fx, {
       roleId: role.id,
       label: 'Token ask',
       description: 'Ask for the sandbox deploy key in the team channel.',

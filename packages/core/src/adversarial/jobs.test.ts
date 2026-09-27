@@ -52,7 +52,11 @@ describe('adversarial background work', () => {
       operativeMemberId: memberIdOf(other),
       scenarioId: fx.scenarioId,
     });
-    await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+    await authorizeRole(kit.as(fx.authorizer), {
+      roleId: role.id,
+      planRevision: 1,
+      sandboxAttested: true,
+    });
     return briefRole(kit.as(fx.planner), { roleId: role.id });
   }
 

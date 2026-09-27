@@ -26,6 +26,8 @@ import { z } from 'zod';
  *    `{ operativeDiscordId, revision, superseded, alreadyDelivered, briefing, text }`.
  *    Send nothing and finish the job when `superseded` (the job for the newer revision
  *    delivers it — jobs may run concurrently) or `alreadyDelivered` (a retried job).
+ *    The loader refuses (INVALID_STATE) when the role is no longer briefed or active,
+ *    the kill switch is off, or the operative lost eligibility (e.g. quarantined).
  * 2. `gateway.sendDirectMessage(operativeDiscordId, …)` rendering every section of
  *    `briefing` — scenario, objective, sandbox assets, triggers, guardrails,
  *    operating rules and the stop-word protocol. Never drop the guardrails or the

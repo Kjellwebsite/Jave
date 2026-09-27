@@ -86,11 +86,15 @@ export const planRoleSchema = z.object({
 
 export const roleIdSchema = z.object({ roleId: z.uuid() });
 
+const sandboxAttested = z.literal(true, {
+  error: 'Attest that the scenario uses only fictional data and sandbox accounts.',
+});
+
 export const authorizeRoleSchema = z.object({
   roleId: z.uuid(),
-  sandboxAttested: z.literal(true, {
-    error: 'Attest that the scenario uses only fictional data and sandbox accounts.',
-  }),
+  /** The plan revision the authorizer reviewed (`role.planRevision` from getRole). */
+  planRevision: z.number().int().min(1),
+  sandboxAttested,
   note: z.string().trim().max(LIMITS.authorizationNote).optional(),
 });
 
@@ -117,10 +121,13 @@ export const addTriggerSchema = z.object({
   plannedFor: z.coerce.date().optional(),
 });
 
-export const fireTriggerSchema = z.object({
+/** Identifies one trigger of one role (fire, withdraw). */
+export const triggerRefSchema = z.object({
   roleId: z.uuid(),
   triggerId: z.uuid(),
 });
+
+export const approveTriggerSchema = triggerRefSchema.extend({ sandboxAttested });
 
 export const recordObservationSchema = z.object({
   roleId: z.uuid(),

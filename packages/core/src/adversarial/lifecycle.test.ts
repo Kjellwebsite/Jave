@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
   adversarialRoles,
+  adversarialTriggers,
   auditLogs,
   domainEvents,
   jobs,
@@ -26,7 +27,7 @@ import { createTestKit, type TestKit } from '../testing';
 import { loadDebrief, markDebriefPosted } from './delivery.service';
 import { ADVERSARIAL_BRIEF_JOB, ADVERSARIAL_DEBRIEF_JOB } from './discord-jobs';
 import { evaluateRole, revealRole } from './evaluation.service';
-import { addTrigger, fireTrigger, recordObservation } from './observations.service';
+import { recordObservation } from './observations.service';
 import { getMyBriefing } from './queries.service';
 import {
   abortRole,
@@ -37,6 +38,7 @@ import {
   planRole,
 } from './roles.service';
 import { STOP_WORD } from './safety';
+import { addTrigger, approveTrigger, fireTrigger } from './triggers.service';
 import {
   type AdversarialFixture,
   memberIdOf,
@@ -83,12 +85,19 @@ describe('adversarial lifecycle', () => {
       description: 'Ask for the sandbox deploy key in the team channel.',
       plannedFor: new Date(kit.clock.now().getTime() + HOUR),
     });
+    // The trigger changed the plan under review: revision 2 is what gets signed.
     const authorized = await authorizeRole(kit.as(fx.authorizer), {
       roleId: role.id,
+      planRevision: 2,
       sandboxAttested: true,
     });
     expect(authorized.authorizedByUserId).toBe(fx.authorizer.userId);
     expect(authorized.sandboxAttested).toBe(true);
+    const [signed] = await kit.db
+      .select()
+      .from(adversarialTriggers)
+      .where(eq(adversarialTriggers.id, trigger.id));
+    expect(signed!.approvedByUserId).toBe(fx.authorizer.userId);
 
     const briefed = await briefRole(staff, { roleId: role.id });
     expect(briefed.status).toBe('briefed');
@@ -201,7 +210,11 @@ describe('adversarial lifecycle', () => {
         scenarioId: fx.scenarioId,
       });
       await expect(
-        authorizeRole(kit.as(fx.founder), { roleId: role.id, sandboxAttested: true }),
+        authorizeRole(kit.as(fx.founder), {
+          roleId: role.id,
+          planRevision: 1,
+          sandboxAttested: true,
+        }),
       ).rejects.toBeInstanceOf(ForbiddenError);
       const blocked = await kit.db
         .select()
@@ -214,7 +227,11 @@ describe('adversarial lifecycle', () => {
     it('BREAK: a staff operative cannot authorize — or even see — their own planned role', async () => {
       const role = await planDefault(fx);
       await expect(
-        authorizeRole(kit.as(fx.operative), { roleId: role.id, sandboxAttested: true }),
+        authorizeRole(kit.as(fx.operative), {
+          roleId: role.id,
+          planRevision: 1,
+          sandboxAttested: true,
+        }),
       ).rejects.toBeInstanceOf(NotFoundError);
       const blocked = await kit.db
         .select()
@@ -227,11 +244,16 @@ describe('adversarial lifecycle', () => {
     it('BREAK: operations cannot authorize; attestation is mandatory', async () => {
       const role = await planDefault(fx);
       await expect(
-        authorizeRole(kit.as(fx.operations), { roleId: role.id, sandboxAttested: true }),
+        authorizeRole(kit.as(fx.operations), {
+          roleId: role.id,
+          planRevision: 1,
+          sandboxAttested: true,
+        }),
       ).rejects.toBeInstanceOf(ForbiddenError);
       await expect(
         authorizeRole(kit.as(fx.authorizer), {
           roleId: role.id,
+          planRevision: 1,
           sandboxAttested: false as unknown as true,
         }),
       ).rejects.toBeInstanceOf(ValidationError);
@@ -247,8 +269,16 @@ describe('adversarial lifecycle', () => {
     it('BREAK: concurrent authorizations — exactly one wins', async () => {
       const role = await planDefault(fx);
       const results = await Promise.allSettled([
-        authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true }),
-        authorizeRole(kit.as(fx.founder), { roleId: role.id, sandboxAttested: true }),
+        authorizeRole(kit.as(fx.authorizer), {
+          roleId: role.id,
+          planRevision: 1,
+          sandboxAttested: true,
+        }),
+        authorizeRole(kit.as(fx.founder), {
+          roleId: role.id,
+          planRevision: 1,
+          sandboxAttested: true,
+        }),
       ]);
       expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
       const [rejected] = results.filter((r) => r.status === 'rejected');
@@ -257,7 +287,11 @@ describe('adversarial lifecycle', () => {
 
     it('BREAK: concurrent briefings enqueue exactly one briefing', async () => {
       const role = await planDefault(fx);
-      await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+      await authorizeRole(kit.as(fx.authorizer), {
+        roleId: role.id,
+        planRevision: 1,
+        sandboxAttested: true,
+      });
       const results = await Promise.allSettled([
         briefRole(kit.as(fx.planner), { roleId: role.id }),
         briefRole(kit.as(fx.authorizer), { roleId: role.id }),
@@ -268,29 +302,70 @@ describe('adversarial lifecycle', () => {
       ).toHaveLength(1);
     });
 
-    it('BREAK: after authorization the planner cannot change the plan; another authorizer can', async () => {
+    it('BREAK: after authorization a new trigger reaches the operative only with a second person', async () => {
       const role = await planDefault(fx);
-      await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
-      await briefRole(kit.as(fx.planner), { roleId: role.id });
-      const trigger = {
+      await authorizeRole(kit.as(fx.authorizer), {
         roleId: role.id,
-        label: 'Second ask',
-        description: 'Repeat the ask once, calmly.',
+        planRevision: 1,
+        sandboxAttested: true,
+      });
+      await briefRole(kit.as(fx.planner), { roleId: role.id });
+      const input = {
+        roleId: role.id,
+        label: 'Follow-up',
+        description: 'Ask the team once more, calmly.',
       };
-      await expect(addTrigger(kit.as(fx.planner), trigger)).rejects.toBeInstanceOf(ForbiddenError);
       // A staff operative takes part in the trial: the role does not exist for them.
-      await expect(addTrigger(kit.as(fx.operative), trigger)).rejects.toBeInstanceOf(NotFoundError);
-      await addTrigger(kit.as(fx.founder), trigger);
-      const [updated] = await kit.db
+      await expect(addTrigger(kit.as(fx.operative), input)).rejects.toBeInstanceOf(NotFoundError);
+      const pending = await addTrigger(kit.as(fx.authorizer), input);
+      expect(pending.approvedAt).toBeNull();
+
+      // Pending: no new revision, no DM, invisible to the operative, cannot fire.
+      const before = await kit.db
         .select()
         .from(adversarialRoles)
         .where(eq(adversarialRoles.id, role.id));
-      expect(updated!.briefingRevision).toBe(2);
+      expect(before[0]!.briefingRevision).toBe(1);
+      expect(
+        await kit.db.select().from(jobs).where(eq(jobs.type, ADVERSARIAL_BRIEF_JOB)),
+      ).toHaveLength(1);
+      const mine = await getMyBriefing(kit.as(fx.operative), { roleId: role.id });
+      expect(mine.briefing.triggers).toEqual([]);
+      expect(mine.text).not.toContain('Follow-up');
+      const ref = { roleId: role.id, triggerId: pending.id };
+      await expect(fireTrigger(kit.as(fx.operative), ref)).rejects.toBeInstanceOf(NotFoundError);
+      await expect(fireTrigger(kit.as(fx.planner), ref)).rejects.toThrow('second person');
+
+      // The author cannot approve their own trigger — not even as the role's authorizer.
+      const approve = (actor: typeof fx.founder) =>
+        approveTrigger(kit.as(actor), {
+          roleId: role.id,
+          triggerId: pending.id,
+          sandboxAttested: true,
+        });
+      await expect(approve(fx.authorizer)).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(approve(fx.operative)).rejects.toBeInstanceOf(NotFoundError);
+      const approved = await approve(fx.founder);
+      expect(approved.approvedByUserId).toBe(fx.founder.userId);
+      await expect(approve(fx.founder)).rejects.toBeInstanceOf(ConflictError);
+
+      const [after] = await kit.db
+        .select()
+        .from(adversarialRoles)
+        .where(eq(adversarialRoles.id, role.id));
+      expect(after!.briefingRevision).toBe(2);
       const briefJobs = await kit.db
         .select()
         .from(jobs)
         .where(eq(jobs.type, ADVERSARIAL_BRIEF_JOB));
       expect(briefJobs.map((j) => j.payload.revision).sort()).toEqual([1, 2]);
+      const blocked = await kit.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, 'adversarial.two_person_rule_blocked'));
+      expect(blocked.map((b) => b.context)).toContainEqual(
+        expect.objectContaining({ operation: 'approve_trigger', triggerId: pending.id }),
+      );
     });
   });
 
@@ -311,7 +386,11 @@ describe('adversarial lifecycle', () => {
     it('BREAK: turning the kill switch off blocks briefing immediately (no cache window)', async () => {
       const fx = await setupAdversarial(kit);
       const role = await planDefault(fx);
-      await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+      await authorizeRole(kit.as(fx.authorizer), {
+        roleId: role.id,
+        planRevision: 1,
+        sandboxAttested: true,
+      });
       await updateSettings(kit.as(fx.founder), 'trials', { adversarialEnabled: false });
       await expect(briefRole(kit.as(fx.planner), { roleId: role.id })).rejects.toBeInstanceOf(
         DisabledError,
@@ -342,7 +421,11 @@ describe('adversarial lifecycle', () => {
     it('activation needs an active trial before its deadline', async () => {
       const fx = await setupAdversarial(kit, { trialStatus: 'teams_assigned' });
       const role = await planDefault(fx);
-      await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+      await authorizeRole(kit.as(fx.authorizer), {
+        roleId: role.id,
+        planRevision: 1,
+        sandboxAttested: true,
+      });
       await briefRole(kit.as(fx.planner), { roleId: role.id });
       await expect(activateRole(kit.as(fx.planner), { roleId: role.id })).rejects.toThrow(
         'must be active',
@@ -420,7 +503,11 @@ describe('adversarial lifecycle', () => {
 
     it('an operative removed from the team can no longer be briefed', async () => {
       const role = await planDefault(fx);
-      await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+      await authorizeRole(kit.as(fx.authorizer), {
+        roleId: role.id,
+        planRevision: 1,
+        sandboxAttested: true,
+      });
       await kit.db
         .update(trialParticipants)
         .set({ status: 'withdrawn' })

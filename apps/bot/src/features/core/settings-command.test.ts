@@ -14,6 +14,7 @@ import {
   ChannelType,
   ComponentType,
 } from 'discord.js';
+import { DiscordActionError } from '../../discord/gateway';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
 import type { InteractionUser } from '../../interactions/types';
 import { customId } from '../../interactions/custom-id';
@@ -280,6 +281,27 @@ describe('/settings', () => {
         supporter: PATRON_ROLE,
         moderator: MODS_ROLE,
       });
+    });
+
+    it('BREAK: a Discord failure is a calm refusal that keeps the panel; nothing is written', async () => {
+      bot.gateway.failures.set('listRoles', new DiscordActionError('Missing Access', 50001, true));
+      const roles = await press(founder.user, 'settings:roleset:verified', [VERIFIED_ROLE]);
+      expect(roles.outcome.errorId).toBeNull();
+      expect(roles.interaction.responses.map((r) => r.type)).toEqual(['deferUpdate', 'followUp']);
+      expect(roles.interaction.lastText()).toContain('SERVICE UNAVAILABLE');
+      expect((await getSettings(bot.kit.system, 'roles')).discordRoleIds).toEqual({});
+
+      bot.gateway.failures.set(
+        'botPermissionsIn',
+        new DiscordActionError('gateway timeout', null, false),
+      );
+      const channel = await settings(founder.user, 'channel', {
+        output: 'welcome',
+        channel: TEXT_CHANNEL,
+      });
+      expect(channel.outcome.errorId).toBeNull();
+      expect(channel.interaction.lastText()).toContain('could not read the server');
+      expect((await getSettings(bot.kit.system, 'channels')).welcome).toBeUndefined();
     });
 
     it('clears a mapping', async () => {

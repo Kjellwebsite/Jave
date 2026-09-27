@@ -155,11 +155,14 @@ function mappingSection(input: ReadinessInput): ReadinessSection {
     });
   }
   for (const { target, label, id } of mappedRoles(roleSettings)) {
-    const problem = roleProblem(target, byId.get(id));
+    const role = byId.get(id);
+    const problem = roleProblem(target, role);
     if (problem) {
+      // A deleted role would render as "@deleted-role": name it by id instead.
+      const reference = role ? `<@&${id}>` : `role \`${id}\``;
       items.push({
         state: 'fail',
-        text: `${label} → role \`${id}\` ${problem}.`,
+        text: `${label} → ${reference} ${problem}.`,
         fix: `/settings role → ${label}.`,
       });
     }

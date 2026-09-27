@@ -16,6 +16,8 @@ import {
 
 const CACHE_TTL_MS = 15_000;
 const cacheKey = (section: SettingsSection) => `settings:${section}`;
+/** pg_advisory_xact_lock namespace serializing writes of one settings section. */
+const SETTINGS_LOCK_NAMESPACE = 424_202;
 
 function parseStored<S extends SettingsSection>(section: S, stored: unknown): Settings<S> {
   const schema = settingsSchemas[section];
@@ -83,10 +85,12 @@ export type SettingsPatch<S extends SettingsSection> =
  * Replace a settings section with a validated value (the patch is merged
  * over the current value). Audited with a field-level diff.
  *
- * The current value is read fresh and locked inside the transaction, never
- * from the per-process cache: another process (bot or dashboard) may have
- * changed the section within the cache's lifetime, and merging over a stale
- * copy would silently undo that change.
+ * The current value is read fresh inside the transaction, never from the
+ * per-process cache: another process (bot or dashboard) may have changed the
+ * section within the cache's lifetime, and merging over a stale copy would
+ * silently undo that change. Writes of one section are serialized with a
+ * transaction-scoped advisory lock rather than a row lock, because the row
+ * does not exist before the section's first write.
  */
 export async function updateSettings<S extends SettingsSection>(
   ctx: ServiceContext,
@@ -97,11 +101,13 @@ export async function updateSettings<S extends SettingsSection>(
   if (!SETTINGS_SECTIONS.includes(section))
     throw new ValidationError(`Unknown settings section ${section}`);
   const outcome = await withTransaction(ctx, async (tx) => {
+    await tx.db.execute(
+      sql`select pg_advisory_xact_lock(${SETTINGS_LOCK_NAMESPACE}::int, hashtext(${section}))`,
+    );
     const [row] = await tx.db
       .select({ value: serverSettings.value })
       .from(serverSettings)
-      .where(eq(serverSettings.section, section))
-      .for('update');
+      .where(eq(serverSettings.section, section));
     const current = parseStored(section, row?.value);
     const merged = { ...current, ...(typeof patch === 'function' ? patch(current) : patch) };
     const result = settingsSchemas[section].safeParse(merged);

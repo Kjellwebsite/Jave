@@ -23,6 +23,8 @@ import { channelSelect, fitLines, roleSelect, SETTINGS_NS, SETUP_NS } from './se
 const OPTION_DESCRIPTION_MAX = 100;
 
 const onOff = (value: boolean) => (value ? 'ON' : 'OFF');
+/** 1 → "1 review", 2 → "2 reviews". */
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`;
 /** 'a text channel' → 'A text channel'. */
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const channelRef = (id: string | undefined) => (id ? `<#${id}>` : GLYPH.unknown);
@@ -69,7 +71,7 @@ export function renderSummary(settings: AllSettings, canManage: boolean): ReplyP
       'Applications',
       [
         applications.open ? 'OPEN' : 'CLOSED',
-        `${applications.minReviewsBeforeDecision} review(s) before a decision`,
+        `${plural(applications.minReviewsBeforeDecision, 'review')} before a decision`,
         `${applications.cooldownDaysAfterRejection}d cooldown after rejection`,
       ].join('\n'),
       true,

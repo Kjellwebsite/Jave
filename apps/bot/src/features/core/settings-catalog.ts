@@ -93,7 +93,15 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
     label: 'Tickets',
     purpose: 'Parent channel of private ticket threads.',
     accepts: THREAD_PARENT,
-    needs: [...POSTING, 'CreatePrivateThreads', 'SendMessagesInThreads', 'ManageThreads'],
+    // Cards live inside the threads: the parent itself can stay closed to posting.
+    needs: [
+      'ViewChannel',
+      'EmbedLinks',
+      'ReadMessageHistory',
+      'CreatePrivateThreads',
+      'SendMessagesInThreads',
+      'ManageThreads',
+    ],
     recommended: true,
   },
   ticketArchive: {
@@ -229,11 +237,11 @@ export function mayCarryElevated(target: RoleTarget): boolean {
   return target !== QUARANTINE_TARGET && isStaffRole(target);
 }
 
-/** Who would hold a mapped Discord role: "every VERIFIED member", "quarantined members". */
+/** Who would hold a mapped Discord role: "everyone holding VERIFIED", "every quarantined member". */
 export function roleHolders(target: RoleTarget): string {
   return target === QUARANTINE_TARGET
     ? 'every quarantined member'
-    : `every ${roleTargetLabel(target)} member`;
+    : `everyone holding ${roleTargetLabel(target)}`;
 }
 
 type BooleanKeys<T> = { [K in keyof T]-?: T[K] extends boolean ? K : never }[keyof T];

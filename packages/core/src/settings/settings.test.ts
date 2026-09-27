@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { auditLogs, jobs, members } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import { ForbiddenError, ValidationError } from '../kernel/errors';
-import { defaultSettings, SETTINGS_SECTIONS } from './schemas';
+import { defaultSettings, SETTINGS_SECTIONS, type Settings } from './schemas';
 import { getAllSettings, getSettings, updateSettings } from './settings.service';
 import { DISCORD_ROLE_SYNC_JOB } from '../identity/users.service';
 import { TtlCache } from '../kernel/cache';
@@ -118,6 +118,29 @@ describe('settings', () => {
       discordRoleIds: { member: MEMBER_ROLE, verified: VERIFIED_ROLE },
       syncToDiscord: false,
     });
+  });
+
+  it('serializes concurrent writes of a section, including its very first write', async () => {
+    const founder = await kit.member({ roles: ['founder'] });
+    // Separate contexts and caches, as two processes would have.
+    const first = kit.as(founder);
+    const second = { ...kit.as(founder), cache: new TtlCache(() => kit.clock.now().getTime()) };
+    const addRole = (role: 'member' | 'verified', id: string) => (current: Settings<'roles'>) => ({
+      discordRoleIds: { ...current.discordRoleIds, [role]: id },
+    });
+    await Promise.all([
+      updateSettings(first, 'roles', addRole('member', MEMBER_ROLE)),
+      updateSettings(second, 'roles', addRole('verified', VERIFIED_ROLE)),
+    ]);
+    expect((await getSettings(kit.as(founder), 'roles')).discordRoleIds).toEqual({
+      member: MEMBER_ROLE,
+      verified: VERIFIED_ROLE,
+    });
+    const audits = await kit.db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.action, 'settings.updated'));
+    expect(audits).toHaveLength(2);
   });
 
   it('writes the value, its audit entry and its event together or not at all', async () => {

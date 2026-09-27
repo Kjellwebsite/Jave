@@ -102,9 +102,10 @@ describe('/jave setup', () => {
       `✕ <@&${ROLE.verified}> (VERIFIED) sits at or above JAVE's highest role.`,
     );
     expect(text).toContain(`✕ TRIAL → role \`${ROLE.missing}\` no longer exists.`);
-    expect(text).toContain('SUPPORTER → role');
-    expect(text).toContain('is managed by an integration');
-    expect(text).toContain('QUARANTINE → role');
+    expect(text).toContain(
+      `✕ SUPPORTER → <@&${ROLE.booster}> is managed by an integration; Discord will not let JAVE assign it.`,
+    );
+    expect(text).toContain(`✕ QUARANTINE → role \`${ROLE.quarantine}\` no longer exists.`);
     expect(text).toContain('✕ Announcements — channel no longer exists.');
     expect(text).toContain(`✕ Security alerts — JAVE cannot see <#${CHANNEL.hidden}>.`);
     expect(text).toContain(`✕ Trials category — <#${CHANNEL.trials}> must be a category.`);
@@ -124,7 +125,7 @@ describe('/jave setup', () => {
 
     const text = (await setup(founder.user)).interaction.lastText();
     expect(text).toContain(
-      `✕ VERIFIED → role \`${ROLE.admin}\` grants Administrator to every VERIFIED member.`,
+      `✕ VERIFIED → <@&${ROLE.admin}> grants Administrator to everyone holding VERIFIED.`,
     );
     expect(text).not.toContain('MODERATOR → role');
     expect(text).toContain(`✕ Tickets — <#${CHANNEL.news}> must be a text channel.`);

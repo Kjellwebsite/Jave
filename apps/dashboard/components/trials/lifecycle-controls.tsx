@@ -8,6 +8,7 @@ import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 import { ActionButton } from './action-button';
+import { TRIAL_LIMITS } from '@/lib/trial-limits';
 
 export interface LifecycleActions {
   open: FormAction;
@@ -35,9 +36,11 @@ export interface LifecycleControlsProps {
   actions: LifecycleActions;
 }
 
-const REASON_MIN = 3;
-const REASON_MAX = 500;
-const MAX_EXTENSION_MINUTES = 7 * 24 * 60;
+const {
+  reasonMin: REASON_MIN,
+  reason: REASON_MAX,
+  maxExtensionMinutes: MAX_EXTENSION_MINUTES,
+} = TRIAL_LIMITS;
 
 function ReasonField({ description }: { description: string }) {
   return (

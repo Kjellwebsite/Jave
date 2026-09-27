@@ -1,5 +1,5 @@
 import { FlaskConical, ShieldAlert, UserPlus } from 'lucide-react';
-import type { adversarial } from '@jave/core';
+import { adversarial } from '@jave/core';
 import { Button, Callout, Card, EmptyState, Icon, StatusBadge, Textarea } from '@jave/ui';
 import type { ObservationOutcomeKey } from '@/lib/trial-labels';
 import type { FormAction } from '../../forms/action-form';
@@ -50,7 +50,7 @@ export interface AdversarialPanelProps {
   };
 }
 
-const OBJECTIVE_MAX = 1000;
+const OBJECTIVE_MAX = adversarial.LIMITS.objective;
 
 /** The SANDBOX mark every adversarial surface carries. */
 export function SandboxBanner() {

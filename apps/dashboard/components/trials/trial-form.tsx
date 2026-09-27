@@ -5,6 +5,7 @@ import { Callout, Checkbox, Fieldset, Input, NativeSelect, Switch, Textarea } fr
 import { ActionForm, type FormAction } from '../forms/action-form';
 import { FormField } from '../forms/form-field';
 import { RubricEditor, type RubricCriterionValue } from './rubric-editor';
+import { TRIAL_LIMITS } from '@/lib/trial-limits';
 
 export interface TemplateOption {
   id: string;
@@ -41,19 +42,6 @@ export interface FacetOption {
   label: string;
   domain: string;
 }
-
-/** Mirrors the service limits; the service validates again. */
-export const TRIAL_FORM_LIMITS = {
-  title: 120,
-  summary: 280,
-  brief: 8000,
-  minDuration: 15,
-  maxDuration: 14 * 24 * 60,
-  minTeamSize: 1,
-  maxTeamSize: 12,
-  maxParticipants: 500,
-  maxFacets: 3,
-} as const;
 
 export interface TrialFormProps {
   mode: 'create' | 'edit';
@@ -153,8 +141,8 @@ export function TrialForm({
               name="title"
               defaultValue={values.title}
               required
-              minLength={3}
-              maxLength={TRIAL_FORM_LIMITS.title}
+              minLength={TRIAL_LIMITS.titleMin}
+              maxLength={TRIAL_LIMITS.title}
             />
           </FormField>
           <FormField name="category" label="Category" required>
@@ -175,7 +163,7 @@ export function TrialForm({
           <Textarea
             name="summary"
             defaultValue={values.summary}
-            maxLength={TRIAL_FORM_LIMITS.summary}
+            maxLength={TRIAL_LIMITS.summary}
             rows={3}
             required
           />
@@ -189,7 +177,7 @@ export function TrialForm({
           <Textarea
             name="brief"
             defaultValue={values.brief}
-            maxLength={TRIAL_FORM_LIMITS.brief}
+            maxLength={TRIAL_LIMITS.brief}
             rows={10}
             required
           />
@@ -199,7 +187,7 @@ export function TrialForm({
 
         <Fieldset
           legend="Evidence for"
-          description={`Up to ${TRIAL_FORM_LIMITS.maxFacets} facets. The first is the primary facet: a passing result can become a VERIFIED rank there.`}
+          description={`Up to ${TRIAL_LIMITS.maxFacets} facets. The first is the primary facet: a passing result can become a VERIFIED rank there.`}
         >
           <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
             {facets.map((facet) => (
@@ -227,8 +215,8 @@ export function TrialForm({
               name="durationMinutes"
               type="number"
               inputMode="numeric"
-              min={TRIAL_FORM_LIMITS.minDuration}
-              max={TRIAL_FORM_LIMITS.maxDuration}
+              min={TRIAL_LIMITS.minDuration}
+              max={TRIAL_LIMITS.maxDuration}
               defaultValue={values.durationMinutes}
               mono
               required
@@ -239,8 +227,8 @@ export function TrialForm({
               name="teamSize"
               type="number"
               inputMode="numeric"
-              min={TRIAL_FORM_LIMITS.minTeamSize}
-              max={TRIAL_FORM_LIMITS.maxTeamSize}
+              min={TRIAL_LIMITS.minTeamSize}
+              max={TRIAL_LIMITS.maxTeamSize}
               defaultValue={values.teamSize}
               mono
               required
@@ -252,7 +240,7 @@ export function TrialForm({
               type="number"
               inputMode="numeric"
               min={1}
-              max={TRIAL_FORM_LIMITS.maxParticipants}
+              max={TRIAL_LIMITS.maxParticipants}
               defaultValue={values.maxParticipants ?? ''}
               mono
             />

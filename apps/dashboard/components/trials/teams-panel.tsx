@@ -14,6 +14,7 @@ import {
 import { STRATEGY_LABELS, type StrategyKey } from '@/lib/trial-labels';
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
+import { TRIAL_LIMITS } from '@/lib/trial-limits';
 
 export interface TeamMemberRow {
   memberId: string;
@@ -57,8 +58,7 @@ export interface TeamsPanelProps {
   assignAction: FormAction;
 }
 
-const SEED_MAX = 64;
-const MAX_TEAM_SIZE = 12;
+const { seed: SEED_MAX, maxTeamSize: MAX_TEAM_SIZE } = TRIAL_LIMITS;
 
 function discordChannelUrl(guildId: string | null, channelId: string): string | null {
   return guildId ? `https://discord.com/channels/${guildId}/${channelId}` : null;

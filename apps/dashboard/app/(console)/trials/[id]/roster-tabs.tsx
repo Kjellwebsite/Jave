@@ -11,7 +11,6 @@ import { assignTeamsAction, selectManualAction, selectRandomAction } from './act
 
 type StaffView = trials.StaffTrialView;
 
-const ASSIGNABLE: readonly trials.TrialStatus[] = ['recruiting', 'teams_assigned'];
 const WHOLE = /^\d{1,2}$/;
 const SEED = /^[A-Za-z0-9._:-]{1,64}$/;
 
@@ -81,7 +80,8 @@ export async function TeamsTab({
       p.primaryDomain ? (domainLabels.get(p.primaryDomain) ?? p.primaryDomain) : null,
     ]),
   );
-  const canAssign = ASSIGNABLE.includes(view.status) && can(ctx, 'canManageTrials');
+  const canAssign =
+    trials.canTransition(view.status, 'teams_assigned') && can(ctx, 'canManageTrials');
   const strategy = strategyParam(
     firstParam(params.strategy) ?? view.assignmentStrategy ?? undefined,
   );

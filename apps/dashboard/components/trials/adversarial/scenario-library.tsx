@@ -1,4 +1,5 @@
 import { BookLock, Pencil, Plus, Trash2 } from 'lucide-react';
+import { adversarial } from '@jave/core';
 import {
   Button,
   EmptyState,
@@ -36,14 +37,7 @@ export interface ScenarioLibraryProps {
   actions: { create: FormAction; update: FormAction; remove: FormAction; seed: FormAction };
 }
 
-const LIMITS = {
-  key: 64,
-  title: 120,
-  description: 2000,
-  objective: 1000,
-  guardrails: 4000,
-  sandboxAssets: 1000,
-} as const;
+const { LIMITS, MIN_LENGTHS } = adversarial;
 
 function ScenarioFields({
   scenario,
@@ -63,14 +57,14 @@ function ScenarioFields({
           description="Permanent: 3–64 lowercase letters, digits, dashes."
           required
         >
-          <Input name="key" required maxLength={LIMITS.key} mono spellCheck={false} />
+          <Input name="key" required maxLength={LIMITS.scenarioKey} mono spellCheck={false} />
         </FormField>
       )}
       <FormField name="title" label="Title" required>
         <Input
           name="title"
           required
-          minLength={3}
+          minLength={MIN_LENGTHS.label}
           maxLength={LIMITS.title}
           defaultValue={scenario?.title}
         />
@@ -86,7 +80,7 @@ function ScenarioFields({
         <Textarea
           name="description"
           required
-          minLength={10}
+          minLength={MIN_LENGTHS.prose}
           maxLength={LIMITS.description}
           rows={3}
           defaultValue={scenario?.description}
@@ -101,7 +95,7 @@ function ScenarioFields({
         <Textarea
           name="objective"
           required
-          minLength={10}
+          minLength={MIN_LENGTHS.prose}
           maxLength={LIMITS.objective}
           rows={3}
           defaultValue={scenario?.objective}
@@ -116,7 +110,7 @@ function ScenarioFields({
         <Textarea
           name="guardrails"
           required
-          minLength={50}
+          minLength={MIN_LENGTHS.guardrails}
           maxLength={LIMITS.guardrails}
           rows={8}
           defaultValue={scenario?.guardrails ?? standardGuardrails}
@@ -131,7 +125,7 @@ function ScenarioFields({
         <Textarea
           name="sandboxAssets"
           required
-          minLength={10}
+          minLength={MIN_LENGTHS.prose}
           maxLength={LIMITS.sandboxAssets}
           rows={3}
           defaultValue={scenario?.sandboxAssets}

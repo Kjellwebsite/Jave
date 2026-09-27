@@ -4,7 +4,8 @@ import { Checkbox, Fieldset, Input, NativeSelect, Switch, Textarea } from '@jave
 import { ActionForm, type FormAction } from '../forms/action-form';
 import { FormField } from '../forms/form-field';
 import { RubricEditor, type RubricCriterionValue } from './rubric-editor';
-import { type FacetOption, TRIAL_FORM_LIMITS } from './trial-form';
+import { type FacetOption } from './trial-form';
+import { TRIAL_LIMITS } from '@/lib/trial-limits';
 
 export interface TemplateFormValues {
   key: string;
@@ -19,8 +20,6 @@ export interface TemplateFormValues {
   teamSizeMax: number;
   allowsAdversarial: boolean;
 }
-
-const KEY_MAX = 64;
 
 export interface TemplateFormProps {
   mode: 'create' | 'edit';
@@ -56,8 +55,8 @@ export function TemplateForm({
             name="title"
             defaultValue={initial.title}
             required
-            minLength={3}
-            maxLength={TRIAL_FORM_LIMITS.title}
+            minLength={TRIAL_LIMITS.titleMin}
+            maxLength={TRIAL_LIMITS.title}
           />
         </FormField>
         <FormField name="category" label="Category" required>
@@ -82,7 +81,7 @@ export function TemplateForm({
           name="key"
           defaultValue={initial.key}
           required
-          maxLength={KEY_MAX}
+          maxLength={TRIAL_LIMITS.templateKey}
           mono
           spellCheck={false}
           autoCapitalize="none"
@@ -98,7 +97,7 @@ export function TemplateForm({
         <Textarea
           name="summary"
           defaultValue={initial.summary}
-          maxLength={TRIAL_FORM_LIMITS.summary}
+          maxLength={TRIAL_LIMITS.summary}
           rows={3}
           required
         />
@@ -107,13 +106,16 @@ export function TemplateForm({
         <Textarea
           name="brief"
           defaultValue={initial.brief}
-          maxLength={TRIAL_FORM_LIMITS.brief}
+          maxLength={TRIAL_LIMITS.brief}
           rows={10}
           required
         />
       </FormField>
       <RubricEditor name="rubric" initial={initial.rubric} />
-      <Fieldset legend="Evidence for" description="Up to 3 facets; the first is the primary facet.">
+      <Fieldset
+        legend="Evidence for"
+        description={`Up to ${TRIAL_LIMITS.maxFacets} facets; the first is the primary facet.`}
+      >
         <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
           {facets.map((facet) => (
             <Checkbox
@@ -134,8 +136,8 @@ export function TemplateForm({
             name="durationMinutes"
             type="number"
             inputMode="numeric"
-            min={TRIAL_FORM_LIMITS.minDuration}
-            max={TRIAL_FORM_LIMITS.maxDuration}
+            min={TRIAL_LIMITS.minDuration}
+            max={TRIAL_LIMITS.maxDuration}
             defaultValue={initial.durationMinutes}
             mono
             required
@@ -146,8 +148,8 @@ export function TemplateForm({
             name="teamSizeMin"
             type="number"
             inputMode="numeric"
-            min={TRIAL_FORM_LIMITS.minTeamSize}
-            max={TRIAL_FORM_LIMITS.maxTeamSize}
+            min={TRIAL_LIMITS.minTeamSize}
+            max={TRIAL_LIMITS.maxTeamSize}
             defaultValue={initial.teamSizeMin}
             mono
             required
@@ -158,8 +160,8 @@ export function TemplateForm({
             name="teamSizeMax"
             type="number"
             inputMode="numeric"
-            min={TRIAL_FORM_LIMITS.minTeamSize}
-            max={TRIAL_FORM_LIMITS.maxTeamSize}
+            min={TRIAL_LIMITS.minTeamSize}
+            max={TRIAL_LIMITS.maxTeamSize}
             defaultValue={initial.teamSizeMax}
             mono
             required

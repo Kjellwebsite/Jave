@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { Button, IconButton, Input, Mono, Textarea } from '@jave/ui';
 import { useActionFieldError } from '../forms/action-form';
+import { RUBRIC_LIMITS } from '@/lib/trial-limits';
 
 export interface RubricCriterionValue {
   key: string;
@@ -18,16 +19,6 @@ interface Row extends RubricCriterionValue {
   /** The key was typed by hand: stop deriving it from the label. */
   keyEdited: boolean;
 }
-
-/** Mirrors the service limits; the service validates again. */
-export const RUBRIC_LIMITS = {
-  minCriteria: 1,
-  maxCriteria: 10,
-  maxWeight: 100,
-  keyLength: 48,
-  labelLength: 60,
-  descriptionLength: 400,
-} as const;
 
 const DEFAULT_WEIGHT = 1;
 const PERCENT = 100;

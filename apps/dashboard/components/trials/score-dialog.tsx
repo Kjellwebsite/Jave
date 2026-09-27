@@ -6,6 +6,7 @@ import { Button, Input, Mono, NativeSelect, Textarea } from '@jave/ui';
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
+import { TRIAL_LIMITS } from '@/lib/trial-limits';
 
 export interface ScoreCriterion {
   key: string;
@@ -31,9 +32,7 @@ export interface ScoreDialogProps {
   action: FormAction;
 }
 
-const SCORE_MIN = 0;
-const SCORE_MAX = 10;
-const NOTES_MAX = 4000;
+const { scoreMin: SCORE_MIN, scoreMax: SCORE_MAX, notes: NOTES_MAX } = TRIAL_LIMITS;
 const PREVIEW_DIGITS = 2;
 
 /**

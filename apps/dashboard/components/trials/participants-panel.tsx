@@ -28,6 +28,7 @@ import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 import { useToast } from '../toast';
 import { IDLE_STATE } from '@/lib/action-state';
+import { TRIAL_LIMITS } from '@/lib/trial-limits';
 
 export interface ParticipantRow {
   memberId: string;
@@ -54,7 +55,7 @@ export interface ParticipantsPanelProps {
 
 /** Who may be (re)selected: applicants, the current selection and the waitlist. */
 const POOL: readonly ParticipantStatusKey[] = ['applied', 'selected', 'waitlisted'];
-const SEED_MAX = 64;
+const SEED_MAX = TRIAL_LIMITS.seed;
 
 function Statement({ text }: { text: string | null }) {
   if (!text) return <span className="text-fg-faint">—</span>;

@@ -29,6 +29,7 @@ import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 import { SelectField } from '../forms/select-field';
+import { TRIAL_LIMITS } from '@/lib/trial-limits';
 
 export interface ResultRowData {
   memberId: string;
@@ -59,7 +60,7 @@ export interface ResultsPanelProps {
   applyRankAction: FormAction;
 }
 
-const RANK_REASON_MAX = 2000;
+const RANK_REASON_MAX = TRIAL_LIMITS.rankReason;
 const OUTCOME_ORDER: readonly OutcomeKey[] = ['distinction', 'pass', 'fail', 'incomplete'];
 
 /** Outcome first (distinction … incomplete), then the final score, then the name. */

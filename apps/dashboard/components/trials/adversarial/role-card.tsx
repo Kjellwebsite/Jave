@@ -55,8 +55,7 @@ export interface RoleCardProps {
   actions: RoleActions;
 }
 
-const TEXT = { label: 120, prose: 1000, observation: 2000, summary: 2000, debrief: 3000 } as const;
-const SCORE_MAX = 10;
+const { LIMITS, MIN_LENGTHS } = adversarial;
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -266,7 +265,7 @@ export function RoleCard({
                 label="Note"
                 description="Optional. Recorded in the audit log."
               >
-                <Textarea name="note" maxLength={500} rows={2} />
+                <Textarea name="note" maxLength={LIMITS.authorizationNote} rows={2} />
               </FormField>
             </ConfirmActionDialog>
           )
@@ -339,14 +338,19 @@ export function RoleCard({
             }
           >
             <FormField name="label" label="Label" required>
-              <Input name="label" required minLength={3} maxLength={TEXT.label} />
+              <Input
+                name="label"
+                required
+                minLength={MIN_LENGTHS.label}
+                maxLength={LIMITS.triggerLabel}
+              />
             </FormField>
             <FormField name="description" label="What the operative does" required>
               <Textarea
                 name="description"
                 required
-                minLength={10}
-                maxLength={TEXT.prose}
+                minLength={MIN_LENGTHS.prose}
+                maxLength={LIMITS.triggerDescription}
                 rows={3}
               />
             </FormField>
@@ -409,8 +413,8 @@ export function RoleCard({
               <Textarea
                 name="description"
                 required
-                minLength={10}
-                maxLength={TEXT.observation}
+                minLength={MIN_LENGTHS.prose}
+                maxLength={LIMITS.observation}
                 rows={4}
               />
             </FormField>
@@ -444,8 +448,8 @@ export function RoleCard({
                 name="score"
                 type="number"
                 inputMode="numeric"
-                min={0}
-                max={SCORE_MAX}
+                min={adversarial.SCORE_MIN}
+                max={adversarial.SCORE_MAX}
                 defaultValue={role.evaluation?.securityCultureScore ?? ''}
                 mono
               />
@@ -453,7 +457,7 @@ export function RoleCard({
             <FormField name="justification" label="Justification">
               <Textarea
                 name="justification"
-                maxLength={TEXT.prose}
+                maxLength={LIMITS.justification}
                 rows={2}
                 defaultValue={role.evaluation?.overrideJustification ?? ''}
               />
@@ -462,8 +466,8 @@ export function RoleCard({
               <Textarea
                 name="summary"
                 required
-                minLength={10}
-                maxLength={TEXT.summary}
+                minLength={MIN_LENGTHS.prose}
+                maxLength={LIMITS.summary}
                 rows={3}
                 defaultValue={role.evaluation?.summary ?? ''}
               />
@@ -475,7 +479,8 @@ export function RoleCard({
             >
               <Textarea
                 name="debrief"
-                maxLength={TEXT.debrief}
+                minLength={MIN_LENGTHS.debrief}
+                maxLength={LIMITS.debrief}
                 rows={4}
                 defaultValue={role.evaluation?.debrief ?? ''}
               />
@@ -516,7 +521,13 @@ export function RoleCard({
               }
             >
               <FormField name="reason" label="Reason" required>
-                <Textarea name="reason" required minLength={3} maxLength={500} rows={2} />
+                <Textarea
+                  name="reason"
+                  required
+                  minLength={MIN_LENGTHS.reason}
+                  maxLength={LIMITS.stopText}
+                  rows={2}
+                />
               </FormField>
             </ConfirmActionDialog>
           </span>

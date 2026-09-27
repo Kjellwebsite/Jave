@@ -23,7 +23,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
   return (
     <article
       data-project={project.slug}
-      className="machined group relative flex min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-5 transition-colors hover:border-line-strong hover:bg-surface-raised"
+      className="machined group relative flex w-full min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-5 transition-colors hover:border-line-strong hover:bg-surface-raised"
     >
       <div className="flex items-start justify-between gap-3">
         <ProjectStatusBadge status={project.status} />
@@ -31,10 +31,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
       </div>
       <div className="min-w-0 space-y-1.5">
         <h2 className="type-heading break-words text-fg">
-          <Link
-            href={projectPath(project.slug)}
-            className="after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none"
-          >
+          <Link href={projectPath(project.slug)} className="row-link after:rounded-lg">
             {project.title}
           </Link>
         </h2>

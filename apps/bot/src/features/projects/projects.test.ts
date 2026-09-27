@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import {
   auditLogs,
+  members as membersTable,
   projectMembers,
   projectMilestones,
   projects as projectsTable,
@@ -168,6 +169,50 @@ describe('projects feature', () => {
         options: { project: closed.id, share: true },
       });
       expect(refused.interaction.lastPayload()!.ephemeral).toBe(true);
+      expect(refused.interaction.lastText()).toContain('NOT SHARED');
+    });
+
+    it('BREAK: a shared card names only public profiles, never the sharer’s insider view', async () => {
+      const open = await createProject(owner, { title: 'Open Engine', visibility: 'public' });
+      const hidden = await bot.member({ roles: ['verified'], username: 'quietmate' });
+      const visible = await bot.member({ roles: ['verified'], username: 'loudmate' });
+      await bot.kit.db
+        .update(membersTable)
+        .set({ profileVisibility: 'staff' })
+        .where(eq(membersTable.id, hidden.actor.memberId!));
+      await bot.kit.db
+        .update(membersTable)
+        .set({ profileVisibility: 'public' })
+        .where(eq(membersTable.id, visible.actor.memberId!));
+      for (const teammate of [hidden, visible]) {
+        await projects.addProjectMember(bot.kit.as(owner.actor), {
+          projectId: open.id,
+          memberId: teammate.actor.memberId!,
+          role: 'contributor',
+        });
+      }
+      const own = await bot.run({
+        kind: 'slash',
+        name: 'project',
+        subcommand: 'view',
+        user: owner.user,
+        options: { project: open.id },
+      });
+      expect(own.interaction.lastText()).toContain('quietmate');
+      const shared = await bot.run({
+        kind: 'slash',
+        name: 'project',
+        subcommand: 'view',
+        user: owner.user,
+        options: { project: open.id, share: true },
+      });
+      const text = shared.interaction.lastText();
+      expect(shared.interaction.lastPayload()!.ephemeral).toBe(false);
+      expect(text).toContain('loudmate');
+      expect(text).not.toContain('quietmate');
+      // The owner's own profile is members-only: counted, not named, in public.
+      expect(text).not.toContain('mara');
+      expect(text).toContain('+2 more');
     });
 
     it('accepts a typed slug', async () => {
@@ -454,6 +499,24 @@ describe('projects feature', () => {
         values: [foreign.id],
       });
       expect(idor.interaction.lastText()).toContain('NOT FOUND');
+      const typed = await bot.run({
+        kind: 'slash',
+        name: 'project',
+        subcommandGroup: 'milestone',
+        subcommand: 'done',
+        user: owner.user,
+        options: { project: project.id, milestone: 'Foreign' },
+      });
+      expect(typed.interaction.lastText()).toContain('NOT FOUND');
+      const foreignBySlash = await bot.run({
+        kind: 'slash',
+        name: 'project',
+        subcommandGroup: 'milestone',
+        subcommand: 'done',
+        user: owner.user,
+        options: { project: project.id, milestone: foreign.id },
+      });
+      expect(foreignBySlash.interaction.lastText()).toContain('NOT FOUND');
       const outsider = await bot.member({ roles: ['verified'] });
       const blocked = await bot.run({
         kind: 'button',
@@ -498,22 +561,27 @@ describe('projects feature', () => {
       await bot.drain();
     });
 
-    it('Add to Project: context menu → project → role, re-authorized at every step', async () => {
+    it('ADD MEMBER: card → member picker → role, re-authorized at every step', async () => {
       const project = await createProject(owner);
       const jun = await bot.member({ roles: ['verified'], username: 'jun' });
-      const menu = await bot.run({
-        kind: 'user_context',
-        name: 'Add to Project',
+      const card = await bot.run({
+        kind: 'button',
+        name: customId('projects', 'view', project.id),
         user: owner.user,
-        targetUser: jun.user,
       });
-      const pick = customId('projects', 'addto', jun.actor.memberId!);
-      expect(selectValues(menu.interaction.lastPayload(), pick)).toEqual([project.id]);
+      const open = customId('projects', 'addmember', project.id);
+      expect(customIds(card.interaction.lastPayload())).toContain(open);
+      // Every row stays within Discord's five-button limit.
+      for (const row of card.interaction.lastPayload()!.components!)
+        expect(row.components.length).toBeLessThanOrEqual(5);
+      const picker = await bot.run({ kind: 'button', name: open, user: owner.user });
+      const pick = customId('projects', 'addpick', project.id);
+      expect(customIds(picker.interaction.lastPayload())).toEqual([pick]);
       const roles = await bot.run({
         kind: 'select',
         name: pick,
         user: owner.user,
-        values: [project.id],
+        values: [jun.user.id],
       });
       expect(buttonLabels(roles.interaction.lastPayload())).toEqual(['CONTRIBUTOR', 'MAINTAINER']);
       const done = await bot.run({
@@ -529,12 +597,59 @@ describe('projects feature', () => {
       expect(rows[0]!.role).toBe('contributor');
 
       const again = await bot.run({
-        kind: 'user_context',
-        name: 'Add to Project',
+        kind: 'select',
+        name: pick,
         user: owner.user,
-        targetUser: jun.user,
+        values: [jun.user.id],
       });
-      expect(again.interaction.lastText()).toContain('NO PROJECT TO ADD TO');
+      expect(again.interaction.lastText()).toContain('ALREADY ON THE TEAM');
+    });
+
+    it('BREAK: the member picker refuses outsiders, unknown users and forged values', async () => {
+      const project = await createProject(owner);
+      const outsider = await bot.member({ roles: ['verified'] });
+      const jun = await bot.member({ roles: ['verified'] });
+      const pick = customId('projects', 'addpick', project.id);
+      const byOutsider = await bot.run({
+        kind: 'button',
+        name: customId('projects', 'addmember', project.id),
+        user: outsider.user,
+      });
+      expect(byOutsider.interaction.lastText()).toContain('ACCESS RESTRICTED');
+      const forgedPick = await bot.run({
+        kind: 'select',
+        name: pick,
+        user: outsider.user,
+        values: [jun.user.id],
+      });
+      expect(forgedPick.interaction.lastText()).toContain('ACCESS RESTRICTED');
+      for (const value of ['123456789012345678', '@everyone', '']) {
+        const refused = await bot.run({
+          kind: 'select',
+          name: pick,
+          user: owner.user,
+          values: [value],
+        });
+        expect(refused.interaction.lastText(), value).toContain('NOT FOUND');
+      }
+      const maintainer = await bot.member({ roles: ['verified'] });
+      await projects.addProjectMember(bot.kit.as(owner.actor), {
+        projectId: project.id,
+        memberId: maintainer.actor.memberId!,
+        role: 'maintainer',
+      });
+      const offered = await bot.run({
+        kind: 'select',
+        name: pick,
+        user: maintainer.user,
+        values: [jun.user.id],
+      });
+      expect(buttonLabels(offered.interaction.lastPayload())).toEqual(['CONTRIBUTOR']);
+      const members = await bot.kit.db
+        .select()
+        .from(projectMembers)
+        .where(eq(projectMembers.memberId, jun.actor.memberId!));
+      expect(members).toHaveLength(0);
     });
 
     it('BREAK: forged add buttons are re-authorized (outsiders, maintainers granting maintainer)', async () => {

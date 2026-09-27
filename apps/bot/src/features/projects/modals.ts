@@ -146,8 +146,21 @@ export function milestoneModal(projectId: string, projectTitle: string): ModalPa
     .toJSON();
 }
 
+/** Values a flow already knows (e.g. the message a contribution was recorded from). */
+export interface ContributionPrefill {
+  title?: string;
+  url?: string;
+}
+
+function prefilled(input: TextInputBuilder, value: string | undefined): TextInputBuilder {
+  return value ? input.setValue(value) : input;
+}
+
 /** Record your own contribution, optionally on a project you belong to. */
-export function contributionModal(project: { id: string; title: string } | null): ModalPayload {
+export function contributionModal(
+  project: { id: string; title: string } | null,
+  prefill: ContributionPrefill = {},
+): ModalPayload {
   return new ModalBuilder()
     .setCustomId(customId(PROJECTS_NS, 'contribute', project?.id ?? NO_PROJECT))
     .setTitle('RECORD CONTRIBUTION')
@@ -170,12 +183,17 @@ export function contributionModal(project: { id: string; title: string } | null)
           clip(project ? `On ${project.title}` : 'Not tied to a project.', LABEL_DESCRIPTION_MAX),
         )
         .setTextInputComponent(
-          shortInput(MODAL_FIELDS.title, CONTRIBUTION_TITLE_MAX, true, CONTRIBUTION_TITLE_MIN),
+          prefilled(
+            shortInput(MODAL_FIELDS.title, CONTRIBUTION_TITLE_MAX, true, CONTRIBUTION_TITLE_MIN),
+            prefill.title,
+          ),
         ),
       new LabelBuilder()
         .setLabel('Link')
-        .setDescription('Optional. Pull request, document, demo — https only.')
-        .setTextInputComponent(shortInput(MODAL_FIELDS.url, URL_MAX, false)),
+        .setDescription('Optional. Pull request, document or demo. http(s) link.')
+        .setTextInputComponent(
+          prefilled(shortInput(MODAL_FIELDS.url, URL_MAX, false), prefill.url),
+        ),
       new LabelBuilder()
         .setLabel('Details')
         .setTextInputComponent(paragraphInput(MODAL_FIELDS.description, MODAL_TEXT_MAX, false)),

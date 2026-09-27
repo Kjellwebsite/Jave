@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { ArrowRight, Send } from 'lucide-react';
-import { integrations } from '@jave/core';
 import { Badge, Card, EmptyState, Icon, Mono, StatusBadge } from '@jave/ui';
 import { OutboundRowControls } from '@/components/integrations/outbound-controls';
 import { eventCountLabel } from '@/lib/integration-view';
@@ -17,8 +16,7 @@ import { Meta, type PanelProps } from './panel-parts';
 const EVENT_BADGES_SHOWN = 4;
 
 /** Outbound subscriptions: masked target, events, health and controls. */
-export async function OutboundPanel({ ctx, timeZone, eventGroups }: PanelProps) {
-  const webhooks = await integrations.listOutboundWebhooks(ctx);
+export function OutboundPanel({ webhooks, timeZone, eventGroups }: PanelProps) {
   if (webhooks.length === 0) {
     return (
       <Card padding="none">

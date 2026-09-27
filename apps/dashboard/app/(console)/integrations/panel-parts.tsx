@@ -25,6 +25,8 @@ const DELIVERY_STATUSES = Object.keys(DELIVERY_STATUS_LABELS) as DeliveryStatusK
 export interface PanelProps {
   ctx: UserContext;
   registry: readonly integrations.IntegrationView[];
+  /** Outbound subscriptions; loaded only for the outbound tabs (empty otherwise). */
+  webhooks: readonly integrations.OutboundWebhookView[];
   query: SearchParams;
   timeZone: string;
   publicUrl: string;

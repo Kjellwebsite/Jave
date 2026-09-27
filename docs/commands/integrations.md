@@ -36,7 +36,9 @@ integration's `relayChannelId`:
 2. skips if the delivery already has `relayMessageId` (retry idempotency);
 3. sends one `panel()` embed — kicker `INTEGRATION`, title and text passed
    through `userText()` (markdown escaped, mentions neutralized), no buttons,
-   `allowedMentions: { parse: [] }`;
+   `allowedMentions: { parse: [] }` — with a message nonce derived from the job
+   id (`sendMessageOnce`), so a retry after Discord accepted the post but before
+   the callback committed returns that message instead of posting twice;
 4. reports `markRelayDelivered`, or `markRelayFailed` + dead-letter on a
    permanent Discord error (unknown channel, missing access); transient
    errors retry with backoff.

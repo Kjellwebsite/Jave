@@ -13,6 +13,7 @@ import { customId } from '../../interactions/custom-id';
 import type { InteractionUser } from '../../interactions/types';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
 import { buttonLabels } from '../projects/testing';
+import { feature } from '.';
 
 interface Person {
   actor: UserActor;
@@ -71,7 +72,7 @@ describe('integrations feature', () => {
         text: '@everyone deploy **done** <@123456789012345678> [x](https://evil.example)',
       });
       await bot.drain();
-      const sent = bot.gateway.callsTo('sendMessage');
+      const sent = bot.gateway.callsTo('sendMessageOnce');
       expect(sent).toHaveLength(1);
       expect(sent[0]!.args[0]).toBe(RELAY_CHANNEL);
       const payload = sent[0]!.args[1] as {
@@ -108,7 +109,7 @@ describe('integrations feature', () => {
         text: 'green',
       });
       await bot.drain();
-      expect(bot.gateway.callsTo('sendMessage')).toHaveLength(1);
+      expect(bot.gateway.callsTo('sendMessageOnce')).toHaveLength(1);
       const [after] = await bot.kit.db
         .select()
         .from(webhookDeliveries)
@@ -118,7 +119,7 @@ describe('integrations feature', () => {
 
     it('records permanent Discord failures on the delivery and the integration', async () => {
       bot.gateway.failures.set(
-        'sendMessage',
+        'sendMessageOnce',
         new DiscordActionError('send message failed: Missing Access', 50001, true),
       );
       const deliveryId = await deliver({ text: 'red' });
@@ -139,7 +140,10 @@ describe('integrations feature', () => {
     });
 
     it('retries transient Discord failures', async () => {
-      bot.gateway.failures.set('sendMessage', new DiscordActionError('rate limited', 429, false));
+      bot.gateway.failures.set(
+        'sendMessageOnce',
+        new DiscordActionError('rate limited', 429, false),
+      );
       const deliveryId = await deliver({ text: 'flaky' });
       await bot.drain();
       const [pending] = await bot.kit.db
@@ -154,7 +158,69 @@ describe('integrations feature', () => {
         .from(webhookDeliveries)
         .where(eq(webhookDeliveries.id, deliveryId));
       expect(row!.relayMessageId).toBeTruthy();
-      expect(bot.gateway.callsTo('sendMessage')).toHaveLength(2);
+      expect(bot.gateway.callsTo('sendMessageOnce')).toHaveLength(2);
+    });
+
+    it('a retry after Discord accepted the post gets the same message back, never a duplicate', async () => {
+      const deliveryId = await deliver({ text: 'shipped' });
+      await bot.drain();
+      const [first] = await bot.kit.db
+        .select()
+        .from(webhookDeliveries)
+        .where(eq(webhookDeliveries.id, deliveryId));
+      // The callback's commit is lost (worker crash): the delivery looks unrelayed again.
+      await bot.kit.db
+        .update(webhookDeliveries)
+        .set({ relayMessageId: null, relayedAt: null })
+        .where(eq(webhookDeliveries.id, deliveryId));
+      const [job] = await bot.kit.db
+        .select()
+        .from(jobs)
+        .where(eq(jobs.type, integrations.DISCORD_INTEGRATIONS_RELAY_JOB));
+      const handler = feature.jobHandlers!(bot.app.services)[
+        integrations.DISCORD_INTEGRATIONS_RELAY_JOB
+      ]!;
+      await handler({ ...bot.kit.system, effects: { jobIds: [] } }, job!.payload, job!);
+
+      const calls = bot.gateway.callsTo('sendMessageOnce');
+      expect(calls).toHaveLength(2);
+      expect(calls[1]!.args[2]).toBe(calls[0]!.args[2]);
+      expect(bot.gateway.messages.size).toBe(1);
+      const [after] = await bot.kit.db
+        .select()
+        .from(webhookDeliveries)
+        .where(eq(webhookDeliveries.id, deliveryId));
+      expect(after!.relayMessageId).toBe(first!.relayMessageId);
+    });
+
+    it('relays nothing for an integration without a relay channel', async () => {
+      const admin = await bot.member({ roles: ['core'] });
+      const quiet = await integrations.createIntegration(bot.kit.as(admin.actor), {
+        provider: 'generic',
+        name: 'Quiet',
+        slug: 'quiet-hooks',
+      });
+      const rawBody = JSON.stringify({ text: 'no channel configured' });
+      const timestamp = String(Math.floor(bot.kit.clock.now().getTime() / 1000));
+      const response = await integrations.receiveWebhook(bot.kit.as(anonymousActor), {
+        slug: 'quiet-hooks',
+        rawBody,
+        headers: {
+          'x-jave-timestamp': timestamp,
+          'x-jave-signature': integrations.signJave(quiet.signingSecret!, timestamp, rawBody),
+          'x-jave-delivery': 'quiet-1',
+        },
+        secrets: {},
+      });
+      expect(response.status).toBe(202);
+      await bot.drain();
+      const [row] = await bot.kit.db
+        .select()
+        .from(webhookDeliveries)
+        .where(eq(webhookDeliveries.id, String(response.body.deliveryId)));
+      expect(row!.status).toBe('processed');
+      expect(row!.relayMessageId).toBeNull();
+      expect(bot.gateway.callsTo('sendMessageOnce')).toHaveLength(0);
     });
 
     it('BREAK: invalid payloads dead-letter without touching Discord', async () => {
@@ -176,7 +242,7 @@ describe('integrations feature', () => {
         .from(jobs)
         .where(eq(jobs.type, integrations.DISCORD_INTEGRATIONS_RELAY_JOB));
       expect(rows.map((row) => row.status)).toEqual(['dead', 'dead']);
-      expect(bot.gateway.callsTo('sendMessage')).toHaveLength(0);
+      expect(bot.gateway.callsTo('sendMessageOnce')).toHaveLength(0);
     });
   });
 

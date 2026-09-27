@@ -6,7 +6,7 @@ import { PROVIDER_HINTS, PROVIDER_LABELS, type ProviderKey } from '@/lib/integra
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
-import { InlineAction } from '../projects/inline-action';
+import { InlineAction } from '../forms/inline-action';
 import { type SecretAction, SecretDialog } from './secret-dialog';
 
 const NAME_MIN = 2;

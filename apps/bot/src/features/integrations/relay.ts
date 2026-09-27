@@ -8,6 +8,11 @@ import { userText } from '../../ui/format';
 import { COLORS, LIMITS } from '../../ui/theme';
 
 const RELAY_KICKER = 'INTEGRATION';
+/**
+ * Message nonce prefix: with the job id it stays well inside Discord's
+ * 25-character nonce limit and is stable across retries of the same job.
+ */
+const RELAY_NONCE_PREFIX = 'ir';
 
 /** Execute jobs a callback enqueued, now rather than on the next poll. */
 async function flushEffects(services: BotServices, ctx: ServiceContext): Promise<void> {
@@ -18,47 +23,55 @@ async function flushEffects(services: BotServices, ctx: ServiceContext): Promise
 /**
  * `discord.integrations.relay` — post one sanitized summary of an inbound
  * generic webhook delivery to the configured channel (see
- * docs/modules/integrations.md). Idempotent: a delivery that already has a
- * relay message is skipped. No buttons, no pings.
+ * docs/modules/integrations.md). No buttons, no pings.
+ *
+ * Idempotent twice over: a delivery that already has a relay message is
+ * skipped, and the post itself carries a nonce derived from the job id, so a
+ * retry after Discord accepted the message but before the callback committed
+ * gets the same message back instead of posting a duplicate.
  */
 export function relayHandler(services: BotServices): JobHandler {
-  return async (ctx, payload) => {
+  return async (ctx, payload, job) => {
     const parsed = integrations.relayJobPayloadSchema.safeParse(payload);
     if (!parsed.success) throw new PermanentJobError('invalid relay payload');
-    const job = parsed.data;
+    const relay = parsed.data;
     const [delivery] = await ctx.db
       .select({ relayMessageId: webhookDeliveries.relayMessageId })
       .from(webhookDeliveries)
-      .where(eq(webhookDeliveries.id, job.deliveryId));
-    if (!delivery) throw new PermanentJobError(`delivery ${job.deliveryId} not found`);
+      .where(eq(webhookDeliveries.id, relay.deliveryId));
+    if (!delivery) throw new PermanentJobError(`delivery ${relay.deliveryId} not found`);
     if (delivery.relayMessageId) return { skipped: 'already relayed' };
 
     let sent: SentMessage;
     try {
-      sent = await services.gateway.sendMessage(job.channelId, {
-        embeds: [
-          panel({
-            kicker: RELAY_KICKER,
-            title: userText(job.title, LIMITS.embedTitle),
-            description: userText(job.text, LIMITS.embedDescription),
-            color: COLORS.steel,
-          }),
-        ],
-      });
+      sent = await services.gateway.sendMessageOnce(
+        relay.channelId,
+        {
+          embeds: [
+            panel({
+              kicker: RELAY_KICKER,
+              title: userText(relay.title, LIMITS.embedTitle),
+              description: userText(relay.text, LIMITS.embedDescription),
+              color: COLORS.steel,
+            }),
+          ],
+        },
+        `${RELAY_NONCE_PREFIX}${job.id}`,
+      );
     } catch (error) {
       if (!(error instanceof DiscordActionError && error.permanent)) throw error;
       await integrations.markRelayFailed(ctx, {
-        deliveryId: job.deliveryId,
+        deliveryId: relay.deliveryId,
         reason: error.message.slice(0, integrations.MAX_ERROR_LENGTH),
       });
       await flushEffects(services, ctx);
       throw new PermanentJobError(error.message);
     }
     // Outside the Discord try: a failing callback (database) retries the job
-    // instead of being recorded as a permanent Discord failure. Delivery is
-    // at-least-once: that rare retry can post the summary a second time.
+    // instead of being recorded as a permanent Discord failure; the nonce
+    // makes that retry return the message already posted.
     await integrations.markRelayDelivered(ctx, {
-      deliveryId: job.deliveryId,
+      deliveryId: relay.deliveryId,
       messageId: sent.messageId,
     });
     await flushEffects(services, ctx);

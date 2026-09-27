@@ -12,9 +12,11 @@ const SCREENSHOT_DIR = fileURLToPath(new URL('../../../docs/screenshots/', impor
 const SAVE = process.env.JAVE_SCREENSHOTS === '1';
 const MAX_CAPTURE_HEIGHT = 2200;
 
+/** Captures at 1440 and 390; 375 (the smallest phone we support) is checked for overflow only. */
 const VIEWPORTS = [
-  { name: 'desktop', width: 1440, height: 900 },
-  { name: 'mobile', width: 390, height: 844 },
+  { name: 'desktop', width: 1440, height: 900, capture: true },
+  { name: 'mobile', width: 390, height: 844, capture: true },
+  { name: 'small', width: 375, height: 812, capture: false },
 ] as const;
 
 async function projectPath(page: Page, search: string, query = ''): Promise<string> {
@@ -43,7 +45,11 @@ const SHOTS: readonly Shot[] = [
   { name: 'projects-list', path: '/projects?view=list&status=shipped', persona: 'founder' },
   { name: 'projects-new', path: '/projects/new', persona: 'verified' },
   { name: 'projects-overview', path: (page) => projectPath(page, 'orbital'), persona: 'verified' },
-  { name: 'projects-team', path: (page) => projectPath(page, 'orbital', '?tab=team'), persona: 'verified' },
+  {
+    name: 'projects-team',
+    path: (page) => projectPath(page, 'orbital', '?tab=team'),
+    persona: 'verified',
+  },
   {
     name: 'projects-milestones',
     path: (page) => projectPath(page, 'orbital', '?tab=milestones'),
@@ -88,12 +94,20 @@ for (const viewport of VIEWPORTS) {
           const overflow = await page.evaluate(
             () => document.documentElement.scrollWidth - window.innerWidth,
           );
-          expect(overflow, `${shot.name} scrolls horizontally at ${viewport.width}px`).toBeLessThanOrEqual(0);
-          if (SAVE) {
+          expect(
+            overflow,
+            `${shot.name} scrolls horizontally at ${viewport.width}px`,
+          ).toBeLessThanOrEqual(0);
+          if (SAVE && viewport.capture) {
             const height = await page.evaluate(() => document.documentElement.scrollHeight);
             await page.screenshot({
               path: `${SCREENSHOT_DIR}${shot.name}-${viewport.width}.png`,
-              clip: { x: 0, y: 0, width: viewport.width, height: Math.min(height, MAX_CAPTURE_HEIGHT) },
+              clip: {
+                x: 0,
+                y: 0,
+                width: viewport.width,
+                height: Math.min(height, MAX_CAPTURE_HEIGHT),
+              },
               fullPage: true,
               animations: 'disabled',
               caret: 'hide',

@@ -1,4 +1,4 @@
-import type { APIEmbed } from 'discord.js';
+import { type APIEmbed, type APIUserSelectComponent, ComponentType } from 'discord.js';
 import type {
   ComponentHandler,
   HandlerContext,
@@ -21,6 +21,17 @@ export function replaceWith(
   components: ReplyPayload['components'] = [],
 ): Promise<void> {
   return h.interaction.update({ embeds, components });
+}
+
+/** Discord's member picker. Routing only: the handler resolves and core authorizes. */
+export function userSelect(custom: string, placeholder: string): APIUserSelectComponent {
+  return {
+    type: ComponentType.UserSelect,
+    custom_id: custom,
+    placeholder,
+    min_values: 1,
+    max_values: 1,
+  };
 }
 
 /** The first selected value of a select menu ('' when none). */

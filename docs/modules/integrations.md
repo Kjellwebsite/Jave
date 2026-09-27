@@ -178,15 +178,15 @@ Subscriber: `integrations.outbound_webhooks` (all external events → outbound d
 
 ## Jobs
 
-| Job                             | Kind | Dedupe                          |
-| ------------------------------- | ---- | ------------------------------- |
-| `integrations.process_delivery` | core | `webhook:<deliveryId>`          |
-| `integrations.deliver_outbound` | core | `outbound:<outboundDeliveryId>` |
+| Job                             | Kind             | Dedupe                          |
+| ------------------------------- | ---------------- | ------------------------------- |
+| `integrations.process_delivery` | core             | `webhook:<deliveryId>`          |
+| `integrations.deliver_outbound` | core             | `outbound:<outboundDeliveryId>` |
+| `discord.integrations.relay`    | Discord contract | `relay:<deliveryId>`            |
 
 Deleting an outbound subscription cascades to its deliveries; delivery jobs
 still queued for it complete as `{ skipped: 'subscription deleted' }` rather
 than dead-lettering.
-| `discord.integrations.relay` | Discord contract | `relay:<deliveryId>` |
 
 ## Discord job contract: `discord.integrations.relay`
 

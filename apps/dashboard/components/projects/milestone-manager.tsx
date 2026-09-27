@@ -11,7 +11,7 @@ import {
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
-import { InlineAction } from './inline-action';
+import { InlineAction } from '../forms/inline-action';
 
 export interface MilestoneRow {
   id: string;

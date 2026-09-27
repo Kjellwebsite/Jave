@@ -184,8 +184,9 @@ of its own (GitHub processing lives in the integrations module).
 Full reference: [docs/commands/projects.md](../commands/projects.md).
 
 - **Discord** (`apps/bot/src/features/projects`): `/project create | view | list | status | milestone add | milestone done | member add | member remove`,
-  `/contribute add | list | review` (review queue with VERIFY / REJECT / SKIP), and the
-  **Add to Project** user context menu. No `discord.*` jobs (the module has no Discord side effects).
+  `/contribute add | list | review` (review queue with VERIFY / REJECT / SKIP), the card's
+  ADD MEMBER flow (Discord member picker → role), and the **Record Contribution** message
+  context menu. No `discord.*` jobs (the module has no Discord side effects).
 - **Dashboard**: `/projects` (status tabs, search, grid/list), `/projects/new`,
   `/projects/[slug]` (overview, team management, milestones, links, contributions,
   activity feed from domain events, settings with GitHub repository link, archive/restore),

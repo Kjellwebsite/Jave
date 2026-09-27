@@ -1,11 +1,4 @@
-import {
-  can,
-  findMemberByDiscordId,
-  isUuid,
-  NotFoundError,
-  projects,
-  requireMember,
-} from '@jave/core';
+import { can, findMemberByDiscordId, isUuid, NotFoundError, projects } from '@jave/core';
 import type { AutocompleteChoice, HandlerContext, InteractionUser } from '../../interactions/types';
 import { clip } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
@@ -100,19 +93,4 @@ export async function openMilestoneChoices(
       name: clip(`${m.title} ${GLYPH.dot} ${m.status.toUpperCase()}`, CHOICE_NAME_MAX),
       value: m.id,
     }));
-}
-
-/** Projects the invoking member can manage (owner/maintainer, or any as staff), for pickers. */
-export async function manageableProjects(h: HandlerContext): Promise<projects.ProjectDetail[]> {
-  const actor = requireMember(h.ctx);
-  const page = await projects.listProjects(h.ctx, {
-    memberId: actor.memberId,
-    limit: PICKER_LIMIT,
-  });
-  const details: projects.ProjectDetail[] = [];
-  for (const summary of page.items) {
-    const detail = await projects.getProject(h.ctx, { projectId: summary.id });
-    if (detail.viewer.canEdit) details.push(detail);
-  }
-  return details;
 }

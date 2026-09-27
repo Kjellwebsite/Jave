@@ -15,7 +15,7 @@ import {
   TableRow,
 } from '@jave/ui';
 import { NextLink } from '@/components/next-link';
-import { InlineAction } from '@/components/projects/inline-action';
+import { InlineAction } from '@/components/forms/inline-action';
 import { payloadPreview, RETRYABLE_DELIVERY_STATUSES } from '@/lib/integration-view';
 import { offsetParam, toQueryString } from '@/lib/search-params';
 import { formatTimestamp } from '@/lib/time';
@@ -193,14 +193,14 @@ export async function DeliveriesPanel({ ctx, registry, query, timeZone }: PanelP
               page.items.map((delivery) => (
                 <TableRow
                   key={delivery.id}
-                  className="relative"
                   data-delivery={delivery.deliveryId}
-                  aria-selected={delivery.id === deliveryId || undefined}
+                  className={delivery.id === deliveryId ? 'bg-surface-raised' : undefined}
                 >
                   <TableCell>
                     <Link
                       href={href({ delivery: delivery.id, offset: offset || undefined })}
-                      className="block min-w-0 after:absolute after:inset-0 focus-visible:outline-none"
+                      aria-current={delivery.id === deliveryId ? 'true' : undefined}
+                      className="row-link block min-w-0"
                     >
                       <span className="block truncate font-mono text-small text-fg">
                         {delivery.eventType}

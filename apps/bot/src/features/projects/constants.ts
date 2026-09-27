@@ -3,7 +3,7 @@ export const PROJECTS_NS = 'projects';
 
 /** Projects per /project list page. */
 export const LIST_PAGE_SIZE = 10;
-/** Projects fetched for pickers (autocomplete, "Add to Project" select). */
+/** Projects offered by autocomplete pickers (Discord shows at most 25 choices). */
 export const PICKER_LIMIT = 25;
 /** Contributions per /contribute list page. */
 export const CONTRIBUTION_PAGE_SIZE = 10;

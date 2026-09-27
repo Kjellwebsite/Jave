@@ -70,7 +70,7 @@ function reviewCard(
   const fields = [
     field(
       'Author',
-      `${userText(c.memberDisplayName, LINE_TEXT_MAX)} ${GLYPH.dot} @${c.memberHandle}`,
+      `${userText(c.memberDisplayName, LINE_TEXT_MAX)} ${GLYPH.dot} @${userText(c.memberHandle, LINE_TEXT_MAX)}`,
       true,
     ),
     field(

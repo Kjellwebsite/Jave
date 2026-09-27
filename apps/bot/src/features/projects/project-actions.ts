@@ -1,10 +1,10 @@
-import { projects, ValidationError } from '@jave/core';
+import { findMemberByDiscordId, NotFoundError, projects, ValidationError } from '@jave/core';
 import { customId } from '../../interactions/custom-id';
 import type { HandlerContext } from '../../interactions/types';
 import { button, failure, panel, row, success } from '../../ui/components';
 import { userText } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
-import { type ActionMap, replaceWith, selectedValue } from './actions';
+import { type ActionMap, replaceWith, selectedValue, userSelect } from './actions';
 import { LINE_TEXT_MAX, PROJECTS_NS } from './constants';
 import { uuidArg } from './lookup';
 import { contributionModal, MODAL_FIELDS, milestoneModal } from './modals';
@@ -23,6 +23,8 @@ import {
 import { projectCard, ROLE_LABELS } from './render';
 
 const DUE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+/** Discord snowflakes, as a user select sends them. */
+const DISCORD_ID_PATTERN = /^\d{17,20}$/;
 const ASSIGNABLE_ROLES = ['contributor', 'maintainer'] as const;
 type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
@@ -181,12 +183,43 @@ export const projectComponentActions: ActionMap = {
     ]);
   },
 
-  /** "Add to Project" step 2: the manager picked a project; choose the role. */
-  async addto(h, args) {
-    const memberId = uuidArg(args, 0, 'Member');
-    const detail = await loadById(h, uuidArg([selectedValue(h)], 0, 'Project'));
+  /** Card → ADD MEMBER, step 1: Discord's member picker (no typing, no ids). */
+  async addmember(h, args) {
+    const detail = await loadById(h, uuidArg(args, 0, 'Project'));
+    const restricted = editRestriction(detail);
+    if (restricted) return h.respond(restricted);
+    await h.respond({
+      embeds: [
+        panel({
+          kicker: 'ADD MEMBER',
+          title: userText(detail.title, LINE_TEXT_MAX),
+          description: 'Choose the member to add. They are notified and can leave at any time.',
+        }),
+      ],
+      components: [row(userSelect(customId(PROJECTS_NS, 'addpick', detail.id), 'Member…'))],
+      ephemeral: true,
+    });
+  },
+
+  /** ADD MEMBER, step 2: the picked Discord user → their JVLN profile → role buttons. */
+  async addpick(h, args) {
+    const detail = await loadById(h, uuidArg(args, 0, 'Project'));
     const restricted = editRestriction(detail);
     if (restricted) return replaceWith(h, restricted.embeds ?? []);
+    const discordId = selectedValue(h);
+    const member = DISCORD_ID_PATTERN.test(discordId)
+      ? await findMemberByDiscordId(h.ctx, discordId)
+      : null;
+    if (!member) throw new NotFoundError('JVLN profile');
+    const teammate = detail.members.find((candidate) => candidate.memberId === member.id);
+    if (teammate) {
+      return replaceWith(h, [
+        failure(
+          'ALREADY ON THE TEAM',
+          `${userText(teammate.displayName, LINE_TEXT_MAX)} is already on ${userText(detail.title, LINE_TEXT_MAX)}.`,
+        ),
+      ]);
+    }
     const roles = ASSIGNABLE_ROLES.filter(
       (role) => role === 'contributor' || detail.viewer.canAdmin,
     );
@@ -194,7 +227,7 @@ export const projectComponentActions: ActionMap = {
       h,
       [
         panel({
-          kicker: 'ADD TO PROJECT',
+          kicker: 'ADD MEMBER',
           title: userText(detail.title, LINE_TEXT_MAX),
           description: 'Choose their role. They are notified and can leave at any time.',
         }),
@@ -202,14 +235,14 @@ export const projectComponentActions: ActionMap = {
       [
         row(
           ...roles.map((role) =>
-            button(ROLE_LABELS[role], customId(PROJECTS_NS, 'add', detail.id, memberId, role)),
+            button(ROLE_LABELS[role], customId(PROJECTS_NS, 'add', detail.id, member.id, role)),
           ),
         ),
       ],
     );
   },
 
-  /** "Add to Project" step 3: add with the chosen role (core re-authorizes). */
+  /** ADD MEMBER, step 3: add with the chosen role (core re-authorizes). */
   async add(h, args) {
     const projectId = uuidArg(args, 0, 'Project');
     const memberId = uuidArg(args, 1, 'Member');

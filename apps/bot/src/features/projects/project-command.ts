@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, type SlashCommandStringOption } from 'discord.js';
-import { loadCatalog, projects, ValidationError } from '@jave/core';
+import { anonymousActor, loadCatalog, projects, ValidationError, withActor } from '@jave/core';
 import type { CommandDefinition, HandlerContext } from '../../interactions/types';
-import { success } from '../../ui/components';
+import { notice, success } from '../../ui/components';
 import { userText } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
 import { LINE_TEXT_MAX } from './constants';
@@ -11,6 +11,7 @@ import {
   memberIdOf,
   openMilestoneChoices,
   projectChoices,
+  uuidArg,
 } from './lookup';
 import { createProjectModal, milestoneModal } from './modals';
 import { editRestriction, projectListPayload, statusPickerPayload } from './project-views';
@@ -150,9 +151,10 @@ async function execute(h: HandlerContext): Promise<void> {
   }
   if (group === 'milestone' && sub === 'done') {
     const detail = await loadProject(h, o.string(PROJECT_OPTION));
+    // Autocomplete sends the milestone id; typed text that is not one names no milestone.
     const milestone = await projects.completeMilestone(h.ctx, {
       projectId: detail.id,
-      milestoneId: o.string(MILESTONE_OPTION) ?? '',
+      milestoneId: uuidArg([o.string(MILESTONE_OPTION) ?? ''], 0, 'Milestone'),
     });
     return h.respond({
       embeds: [
@@ -197,8 +199,25 @@ async function execute(h: HandlerContext): Promise<void> {
       return h.interaction.showModal(createProjectModal(await loadCatalog(h.ctx)));
     case 'view': {
       const detail = await loadProject(h, o.string(PROJECT_OPTION));
-      const share = o.boolean('share') === true && detail.visibility === 'public';
-      return h.respond(projectCard(detail, { publicUrl, shared: share }));
+      if (o.boolean('share') !== true) return h.respond(projectCard(detail, { publicUrl }));
+      if (detail.visibility !== 'public') {
+        const card = projectCard(detail, { publicUrl });
+        return h.respond({
+          ...card,
+          embeds: [
+            notice(
+              'NOT SHARED',
+              'Only PUBLIC projects can be posted in a channel. Shown to you only.',
+            ),
+            ...(card.embeds ?? []),
+          ],
+        });
+      }
+      // Everyone in the channel reads a shared card: render what the public may
+      // see (profile privacy applied by core), never the sharer's insider view.
+      const audience = withActor(h.ctx, anonymousActor);
+      const publicDetail = await projects.getProject(audience, { projectId: detail.id });
+      return h.respond(projectCard(publicDetail, { publicUrl, shared: true }));
     }
     case 'list': {
       const status = projects.PROJECT_STATUSES.find((s) => s === o.string(STATUS_OPTION));

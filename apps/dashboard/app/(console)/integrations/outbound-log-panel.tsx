@@ -24,14 +24,16 @@ import {
 } from './panel-parts';
 
 /** Outbound delivery log: HTTP status, attempts and the last error per delivery. */
-export async function OutboundLogPanel({ ctx, query, timeZone }: PanelProps) {
+export async function OutboundLogPanel({ ctx, webhooks, query, timeZone }: PanelProps) {
   const webhookId = uuidParam(query, 'webhook');
   const status = statusParam(query);
   const offset = offsetParam(query.offset);
-  const [page, webhooks] = await Promise.all([
-    integrations.listOutboundDeliveries(ctx, { webhookId, status, limit: LOG_PAGE_SIZE, offset }),
-    integrations.listOutboundWebhooks(ctx),
-  ]);
+  const page = await integrations.listOutboundDeliveries(ctx, {
+    webhookId,
+    status,
+    limit: LOG_PAGE_SIZE,
+    offset,
+  });
   const names = new Map(webhooks.map((webhook) => [webhook.id, webhook.name]));
   const filtered = Boolean(webhookId || status);
   return (

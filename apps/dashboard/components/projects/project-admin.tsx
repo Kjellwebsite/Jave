@@ -1,7 +1,7 @@
 'use client';
 
 import { Archive, ArchiveRestore } from 'lucide-react';
-import { Button, Input, Textarea } from '@jave/ui';
+import { Button, Input } from '@jave/ui';
 import { ActionForm, type FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
@@ -102,7 +102,13 @@ export function UnarchiveControl({
         description="Required. Recorded in the audit log."
         required
       >
-        <Textarea name="reason" rows={3} required minLength={REASON_MIN} maxLength={REASON_MAX} />
+        <Input
+          name="reason"
+          required
+          minLength={REASON_MIN}
+          maxLength={REASON_MAX}
+          autoComplete="off"
+        />
       </FormField>
     </ConfirmActionDialog>
   );

@@ -174,12 +174,8 @@ async function ensureTemplate(adminUrl: string): Promise<string> {
     await lock`select pg_advisory_lock(${TEMPLATE_LOCK_KEY})`;
     const [existing] = await lock`select 1 from pg_database where datname = ${name}`;
     if (existing) return name;
-    const stale = await lock<{ datname: string }[]>`
-      select datname from pg_database where datname like ${`${TEMPLATE_PREFIX}%`}`;
-    for (const { datname } of stale) {
-      await lock.unsafe(`alter database ${datname} is_template false`);
-      await lock.unsafe(`drop database if exists ${datname} with (force)`);
-    }
+    // Templates of other migration sets belong to other checkouts sharing this
+    // server; never drop them here (`pnpm --filter @jave/database test:db:clean`).
     const building = `${name}_${randomBytes(4).toString('hex')}`;
     await lock.unsafe(`create database ${building}`);
     const client = quiet(databaseUrl(adminUrl, building), { max: 1 });

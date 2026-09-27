@@ -36,7 +36,12 @@ async function postJave(
 ) {
   deliveryCounter++;
   return request.post(`/api/webhooks/${SLUG}`, {
-    headers: javeHeaders(signingSecret, body, options.delivery ?? `e2e-${deliveryCounter}`, options.timestamp),
+    headers: javeHeaders(
+      signingSecret,
+      body,
+      options.delivery ?? `e2e-${deliveryCounter}`,
+      options.timestamp,
+    ),
     data: body,
   });
 }
@@ -74,7 +79,9 @@ test('core registers a generic integration; the secret is shown exactly once', a
 
   const row = page.locator(`[data-integration="${SLUG}"]`);
   await expect(row).toContainText('CI pipeline');
-  await expect(row.getByRole('textbox', { name: 'Endpoint URL' })).toHaveValue(/\/api\/webhooks\/ci-hooks$/);
+  await expect(row.getByRole('textbox', { name: 'Endpoint URL' })).toHaveValue(
+    /\/api\/webhooks\/ci-hooks$/,
+  );
   // The secret never renders again.
   await page.reload();
   await expect(page.getByText(secret)).toHaveCount(0);
@@ -125,7 +132,9 @@ test('GitHub deliveries use the deployment secret', async ({ page, request }) =>
   await dialog.getByLabel('Name').fill('GitHub');
   await dialog.getByLabel('Slug').fill('github');
   await dialog.getByRole('button', { name: 'Create integration' }).click();
-  await expect(page.getByText(/INTEGRATION CREATED — GitHub — .*GITHUB_WEBHOOK_SECRET/)).toBeVisible();
+  await expect(
+    page.getByText(/INTEGRATION CREATED — GitHub — .*GITHUB_WEBHOOK_SECRET/),
+  ).toBeVisible();
   await expect(page.locator('[data-integration="github"]')).toContainText('GITHUB_WEBHOOK_SECRET');
 
   const body = JSON.stringify({ zen: 'Design for failure.', hook_id: 1 });
@@ -167,12 +176,18 @@ test('the delivery log shows statuses and escaped, collapsed payloads', async ({
   await expect(page.getByTestId('retry-delivery')).toHaveCount(0);
 });
 
-test('rotating the secret retires the old one; disabling answers 404', async ({ page, request }) => {
+test('rotating the secret retires the old one; disabling answers 404', async ({
+  page,
+  request,
+}) => {
   await signInAs(page, 'core');
   await page.goto('/integrations');
   const row = page.locator(`[data-integration="${SLUG}"]`);
   await row.getByRole('button', { name: 'Rotate' }).click();
-  await page.getByRole('dialog', { name: /Rotate secret/ }).getByRole('button', { name: 'Rotate secret' }).click();
+  await page
+    .getByRole('dialog', { name: /Rotate secret/ })
+    .getByRole('button', { name: 'Rotate secret' })
+    .click();
   const rotated = await readSecretAndClose(page);
   expect(rotated).not.toBe(secret);
 
@@ -181,13 +196,20 @@ test('rotating the secret retires the old one; disabling answers 404', async ({ 
   expect((await postJave(request, rotated, body)).status()).toBe(202);
 
   await row.getByRole('button', { name: 'Disable' }).click();
-  await page.getByRole('dialog', { name: /Disable/ }).getByRole('button', { name: 'Disable integration' }).click();
+  await page
+    .getByRole('dialog', { name: /Disable/ })
+    .getByRole('button', { name: 'Disable integration' })
+    .click();
   await expect(page.getByText(/INTEGRATION DISABLED — CI pipeline/)).toBeVisible();
-  expect((await postJave(request, rotated, JSON.stringify({ text: 'while off' }))).status()).toBe(404);
+  expect((await postJave(request, rotated, JSON.stringify({ text: 'while off' }))).status()).toBe(
+    404,
+  );
 
   await row.getByRole('button', { name: 'Enable' }).click();
   await expect(page.getByText(/INTEGRATION ENABLED — CI pipeline/)).toBeVisible();
-  expect((await postJave(request, rotated, JSON.stringify({ text: 'back on' }))).status()).toBe(202);
+  expect((await postJave(request, rotated, JSON.stringify({ text: 'back on' }))).status()).toBe(
+    202,
+  );
 });
 
 test('outbound webhooks: create with the event picker, refuse unsafe targets, edit and delete', async ({
@@ -199,8 +221,8 @@ test('outbound webhooks: create with the event picker, refuse unsafe targets, ed
 
   await page.getByTestId('add-webhook').click();
   const dialog = page.getByRole('dialog', { name: 'Add webhook' });
-  await dialog.getByLabel('Name', { exact: true }).fill('Analytics sink');
-  await dialog.getByLabel('URL', { exact: true }).fill('https://127.0.0.1/hook');
+  await dialog.getByRole('textbox', { name: 'Name', exact: true }).fill('Analytics sink');
+  await dialog.getByRole('textbox', { name: 'URL', exact: true }).fill('https://127.0.0.1/hook');
   // Internal events are never offered.
   await expect(dialog.getByText('member.profile_updated')).toHaveCount(0);
   await dialog.getByRole('checkbox', { name: 'project.created' }).check();
@@ -208,7 +230,9 @@ test('outbound webhooks: create with the event picker, refuse unsafe targets, ed
   await dialog.getByRole('button', { name: 'Create webhook' }).click();
   await expect(dialog.getByText(/Webhook URL rejected/)).toBeVisible();
 
-  await dialog.getByLabel('URL', { exact: true }).fill('https://hooks.example.com/jave/secret-path-token');
+  await dialog
+    .getByRole('textbox', { name: 'URL', exact: true })
+    .fill('https://hooks.example.com/jave/secret-path-token');
   await dialog.getByRole('button', { name: 'Create webhook' }).click();
   await readSecretAndClose(page);
 
@@ -229,8 +253,38 @@ test('outbound webhooks: create with the event picker, refuse unsafe targets, ed
   await expect(page.getByText('NO DELIVERIES YET')).toBeVisible();
 
   await page.goto('/integrations?tab=outbound');
-  await page.locator('[data-webhook="Analytics sink"]').getByRole('button', { name: 'Delete' }).click();
-  await page.getByRole('dialog', { name: 'Delete Analytics sink' }).getByRole('button', { name: 'Delete webhook' }).click();
+  await page
+    .locator('[data-webhook="Analytics sink"]')
+    .getByRole('button', { name: 'Delete' })
+    .click();
+  await page
+    .getByRole('dialog', { name: 'Delete Analytics sink' })
+    .getByRole('button', { name: 'Delete webhook' })
+    .click();
   await expect(page.getByText('WEBHOOK DELETED — queued deliveries are skipped.')).toBeVisible();
   await expect(page.getByText('NO OUTBOUND WEBHOOKS')).toBeVisible();
+  await expect(page.getByText('0 outbound webhooks')).toBeVisible();
+});
+
+test('a release feed subscription stays: masked target, event count, health', async ({ page }) => {
+  await signInAs(page, 'core');
+  await page.goto('/integrations?tab=outbound');
+  await page.getByTestId('add-webhook').click();
+  const dialog = page.getByRole('dialog', { name: 'Add webhook' });
+  await dialog.getByRole('textbox', { name: 'Name', exact: true }).fill('Release feed');
+  await dialog
+    .getByRole('textbox', { name: 'URL', exact: true })
+    .fill('https://hooks.example.net/jave/releases/k3y-in-the-path');
+  await dialog.getByRole('checkbox', { name: 'project.shipped' }).check();
+  await dialog.getByRole('checkbox', { name: 'project.release_published' }).check();
+  await dialog.getByRole('checkbox', { name: 'contribution.verified' }).check();
+  await dialog.getByRole('button', { name: 'Create webhook' }).click();
+  await readSecretAndClose(page);
+
+  const row = page.locator('[data-webhook="Release feed"]');
+  await expect(row).toContainText('https://hooks.example.net/…');
+  await expect(row).not.toContainText('k3y-in-the-path');
+  await expect(row).toContainText('3 events');
+  await expect(row).toContainText('ENABLED');
+  await expect(page.getByText('1 outbound webhook', { exact: true })).toBeVisible();
 });

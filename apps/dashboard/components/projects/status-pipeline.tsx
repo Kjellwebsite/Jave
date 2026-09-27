@@ -60,7 +60,7 @@ export function StatusPipeline({ status }: { status: ProjectStatusKey }) {
             key={stage}
             aria-current={state === 'current' ? 'step' : undefined}
             className={cx(
-              'relative flex min-w-0 flex-col gap-2 px-2 py-3 sm:px-4 sm:py-4',
+              'relative flex min-w-0 flex-col gap-2 px-1.5 py-3 sm:px-4 sm:py-4',
               index > 0 && 'border-l border-line-subtle',
               state === 'current' && 'bg-surface-raised',
             )}

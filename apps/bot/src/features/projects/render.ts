@@ -174,20 +174,25 @@ export function projectCard(
   if (options.shared) return { embeds: [cardEmbed(detail)], components: linkRow, ephemeral: false };
 
   const id = detail.id;
-  const controls = [];
   const archived = detail.status === 'archived';
+  // Discord rows hold five buttons: managing the project, then the viewer's own part in it.
+  const manage = [];
   if (detail.viewer.canEdit) {
-    controls.push(button('Status', customId(PROJECTS_NS, 'status', id), 'primary'));
-    controls.push(button('Add milestone', customId(PROJECTS_NS, 'msadd', id)));
+    manage.push(button('Status', customId(PROJECTS_NS, 'status', id), 'primary'));
+    manage.push(button('Add milestone', customId(PROJECTS_NS, 'msadd', id)));
     if (detail.milestones.some((m) => m.status === 'planned' || m.status === 'active'))
-      controls.push(button('Complete milestone', customId(PROJECTS_NS, 'msdone', id)));
+      manage.push(button('Complete milestone', customId(PROJECTS_NS, 'msdone', id)));
+    manage.push(button('Add member', customId(PROJECTS_NS, 'addmember', id)));
   }
+  const personal = [];
   if (detail.viewer.role && !archived)
-    controls.push(button('Record contribution', customId(PROJECTS_NS, 'contribute', id)));
+    personal.push(button('Record contribution', customId(PROJECTS_NS, 'contribute', id)));
   if (detail.viewer.role && detail.viewer.role !== 'owner')
-    controls.push(button('Leave', customId(PROJECTS_NS, 'leave', id), 'danger'));
-  const components = [...(controls.length > 0 ? [row(...controls)] : []), ...linkRow];
-  return { embeds: [cardEmbed(detail)], components, ephemeral: true };
+    personal.push(button('Leave', customId(PROJECTS_NS, 'leave', id), 'danger'));
+  const components = [manage, personal]
+    .filter((controls) => controls.length > 0)
+    .map((controls) => row(...controls));
+  return { embeds: [cardEmbed(detail)], components: [...components, ...linkRow], ephemeral: true };
 }
 
 /** One select option per project (label = title, description = status and team size). */

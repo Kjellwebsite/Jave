@@ -128,7 +128,9 @@ export function ContributionList({
                 label={CONTRIBUTION_STATUS_LABELS[row.status].toUpperCase()}
               />
               <Badge>{row.kindLabel}</Badge>
-              {row.source !== 'manual' ? <Badge tone="info">{row.source.toUpperCase()}</Badge> : null}
+              {row.source !== 'manual' ? (
+                <Badge tone="info">{row.source.toUpperCase()}</Badge>
+              ) : null}
             </div>
             <p className="break-words text-body text-fg">
               {row.href ? (

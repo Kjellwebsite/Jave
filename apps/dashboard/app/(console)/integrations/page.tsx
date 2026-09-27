@@ -42,7 +42,11 @@ export default async function IntegrationsPage({
   const registry = loaded.value;
   const query = await searchParams;
   const tab = integrationTab(query);
-  const viewer = await loadViewer(ctx);
+  const outboundTab = tab === 'outbound' || tab === 'outbound-log';
+  const [viewer, webhooks] = await Promise.all([
+    loadViewer(ctx),
+    outboundTab ? integrations.listOutboundWebhooks(ctx) : Promise.resolve([]),
+  ]);
   const { env, coreConfig } = getRuntime();
   const eventGroups = groupEventTypes(
     integrations.EXTERNAL_EVENT_TYPES.map((type) => ({
@@ -53,6 +57,7 @@ export default async function IntegrationsPage({
   const panelProps = {
     ctx,
     registry,
+    webhooks,
     query,
     timeZone: viewer.timeZone,
     publicUrl: env.JAVE_PUBLIC_URL,
@@ -67,11 +72,13 @@ export default async function IntegrationsPage({
         description="Signed inbound webhooks and outbound event delivery. Integration data never becomes capability on its own."
         meta={
           <Mono dim>
-            {registry.length} {registry.length === 1 ? 'integration' : 'integrations'}
+            {outboundTab
+              ? `${webhooks.length} outbound ${webhooks.length === 1 ? 'webhook' : 'webhooks'}`
+              : `${registry.length} ${registry.length === 1 ? 'integration' : 'integrations'}`}
           </Mono>
         }
         actions={
-          tab === 'outbound' || tab === 'outbound-log' ? (
+          outboundTab ? (
             <CreateOutboundDialog action={createOutboundAction} groups={eventGroups} />
           ) : (
             <CreateIntegrationDialog action={createIntegrationAction} />

@@ -5,7 +5,7 @@ import { Button, EmptyState, Icon, Input, Mono } from '@jave/ui';
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
-import { InlineAction } from './inline-action';
+import { InlineAction } from '../forms/inline-action';
 
 export interface LinkRow {
   id: string;

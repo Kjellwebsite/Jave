@@ -2,9 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { auditLogs, contributions, evidence } from '@jave/database';
 import { projects, type UserActor } from '@jave/core';
-import { createBotHarness, type BotHarness } from '../../testing/harness';
+import { ComponentType } from 'discord.js';
+import { createBotHarness, TEST_GUILD_ID, type BotHarness } from '../../testing/harness';
 import { customId } from '../../interactions/custom-id';
 import type { InteractionUser } from '../../interactions/types';
+import { CONTRIBUTION_TITLE_MAX } from './constants';
+import { titleFromMessage } from './context-menu';
 import { customIds } from './testing';
 
 interface Person {
@@ -335,5 +338,101 @@ describe('contributions', () => {
       user: owner.user,
     });
     expect(garbage.interaction.lastText()).toContain('1/2');
+  });
+
+  describe('Record Contribution (message context menu)', () => {
+    const CHANNEL_ID = '500000000000000002';
+    const MESSAGE_ID = '500000000000000001';
+    const MESSAGE_URL = `https://discord.com/channels/${TEST_GUILD_ID}/${CHANNEL_ID}/${MESSAGE_ID}`;
+
+    function message(by: InteractionUser, content: string, webhookId: string | null = null) {
+      return {
+        id: MESSAGE_ID,
+        channelId: CHANNEL_ID,
+        guildId: TEST_GUILD_ID,
+        content,
+        url: MESSAGE_URL,
+        author: by,
+        createdAt: bot.kit.clock.now(),
+        attachments: [],
+        embedsText: [],
+        webhookId,
+      };
+    }
+
+    /** Prefilled text input values of a modal, by custom id. */
+    function inputValues(modal: unknown): Record<string, string | undefined> {
+      const found: Record<string, string | undefined> = {};
+      const visit = (node: unknown): void => {
+        if (Array.isArray(node)) return node.forEach(visit);
+        if (!node || typeof node !== 'object') return;
+        const record = node as Record<string, unknown>;
+        if (record.type === ComponentType.TextInput && typeof record.custom_id === 'string')
+          found[record.custom_id] = typeof record.value === 'string' ? record.value : undefined;
+        Object.values(record).forEach(visit);
+      };
+      visit(modal);
+      return found;
+    }
+
+    it('opens the modal prefilled from your own message and records it', async () => {
+      const opened = await bot.run({
+        kind: 'message_context',
+        name: 'Record Contribution',
+        user: author.user,
+        targetMessage: message(
+          author.user,
+          '\n   Shipped the telemetry dashboard <@123456789012345678>\nDetails in thread.',
+        ),
+      });
+      const response = opened.interaction.responses[0];
+      expect(response?.type).toBe('modal');
+      const values = inputValues(response?.type === 'modal' ? response.modal : null);
+      expect(values).toMatchObject({
+        title: 'Shipped the telemetry dashboard <@123456789012345678>',
+        url: MESSAGE_URL,
+      });
+      const submitted = await bot.run({
+        kind: 'modal',
+        name: customId('projects', 'contribute', 'none'),
+        user: author.user,
+        modalText: { title: values.title!, url: values.url! },
+        modalSelect: { kind: ['code'] },
+      });
+      expect(submitted.interaction.lastText()).toContain('CONTRIBUTION RECORDED');
+      expect(submitted.interaction.lastText()).not.toMatch(/<@\d+>/);
+      const [row] = await bot.kit.db.select().from(contributions);
+      expect(row).toMatchObject({
+        memberId: author.actor.memberId,
+        status: 'submitted',
+        url: MESSAGE_URL,
+      });
+    });
+
+    it('BREAK: nobody records someone else’s message (or a webhook’s) as their work', async () => {
+      const others = await bot.run({
+        kind: 'message_context',
+        name: 'Record Contribution',
+        user: author.user,
+        targetMessage: message(owner.user, 'Owner shipped the engine'),
+      });
+      expect(others.interaction.responses.some((r) => r.type === 'modal')).toBe(false);
+      expect(others.interaction.lastText()).toContain('NOT YOUR MESSAGE');
+      const webhook = await bot.run({
+        kind: 'message_context',
+        name: 'Record Contribution',
+        user: author.user,
+        targetMessage: message(author.user, 'Deploy finished', '500000000000000009'),
+      });
+      expect(webhook.interaction.lastText()).toContain('NOT YOUR MESSAGE');
+      expect(await bot.kit.db.select().from(contributions)).toHaveLength(0);
+    });
+
+    it('derives a usable title from the first non-empty line only', () => {
+      expect(titleFromMessage('\n\n  Faster parser  \nsecond line')).toBe('Faster parser');
+      expect(titleFromMessage('ok')).toBe('');
+      expect(titleFromMessage('   ')).toBe('');
+      expect(titleFromMessage('x'.repeat(500))).toHaveLength(CONTRIBUTION_TITLE_MAX);
+    });
   });
 });

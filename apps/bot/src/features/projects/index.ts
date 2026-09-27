@@ -6,18 +6,18 @@ import {
   contributionComponentActions,
   contributionModalActions,
 } from './contribute';
-import { addToProjectCommand } from './context-menu';
+import { recordContributionCommand } from './context-menu';
 import { projectComponentActions, projectModalActions } from './project-actions';
 import { projectCommand } from './project-command';
 
 /**
  * Discord surface for projects and contributions: /project, /contribute,
- * the "Add to Project" context menu and the contribution review queue.
+ * the "Record Contribution" message context menu and the review queue.
  * Custom ids route only; every handler calls core as the clicking user.
  */
 export const feature: BotFeature = {
   name: 'projects',
-  commands: [projectCommand, contributeCommand, addToProjectCommand],
+  commands: [projectCommand, contributeCommand, recordContributionCommand],
   components: [
     actionDispatcher(
       PROJECTS_NS,

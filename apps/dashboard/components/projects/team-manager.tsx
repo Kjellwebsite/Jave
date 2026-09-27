@@ -2,17 +2,7 @@
 
 import Link from 'next/link';
 import { Crown, LogOut, UserPlus } from 'lucide-react';
-import {
-  Avatar,
-  Badge,
-  Button,
-  Callout,
-  EmptyState,
-  Input,
-  Mono,
-  NativeSelect,
-  Textarea,
-} from '@jave/ui';
+import { Avatar, Badge, Button, Callout, EmptyState, Input, Mono, NativeSelect } from '@jave/ui';
 import { PROJECT_ROLE_LABELS, type ProjectRoleKey } from '@/lib/project-view';
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
@@ -107,7 +97,7 @@ function MemberActions({ row, props }: { row: TeamMemberRow; props: TeamManagerP
   if (row.role === 'owner' || row.memberId === props.viewerMemberId) return null;
   const canRemove = canAdmin || (canManage && row.role === 'contributor');
   return (
-    <div className="flex flex-wrap justify-end gap-1">
+    <div className="flex flex-wrap gap-1 pl-9 sm:justify-end sm:pl-0">
       {canAdmin ? (
         <ConfirmActionDialog
           eyebrow="TEAM"
@@ -163,7 +153,7 @@ function MemberActions({ row, props }: { row: TeamMemberRow; props: TeamManagerP
             label="Reason"
             description="Optional. Recorded in the audit log."
           >
-            <Textarea name="reason" rows={2} maxLength={REASON_MAX} />
+            <Input name="reason" maxLength={REASON_MAX} autoComplete="off" />
           </FormField>
         </ConfirmActionDialog>
       ) : null}
@@ -231,7 +221,7 @@ export function TeamManager(props: TeamManagerProps) {
             <li
               key={row.memberId}
               data-member={row.handle}
-              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3.5 sm:px-5"
+              className="grid gap-x-4 gap-y-2.5 px-4 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <Avatar name={row.displayName} size="md" />

@@ -27,7 +27,10 @@ async function switchTo(page: Page, persona: Persona): Promise<void> {
 }
 
 async function openTab(page: Page, label: string): Promise<void> {
-  await page.getByRole('navigation', { name: 'Project sections' }).getByRole('link', { name: label }).click();
+  await page
+    .getByRole('navigation', { name: 'Project sections' })
+    .getByRole('link', { name: label })
+    .click();
   await expect(
     page.getByRole('navigation', { name: 'Project sections' }).locator('[aria-current="page"]'),
   ).toHaveText(label);
@@ -62,7 +65,9 @@ test('a verified member starts a project; hostile text stays text', async ({ pag
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(TITLE);
   await expect(page.getByText('PROJECT STARTED')).toBeVisible();
   await expect(page.locator('img[src="x"]')).toHaveCount(0);
-  await expect(page.getByRole('list', { name: 'Project lifecycle' }).locator('[aria-current="step"]')).toContainText('Idea');
+  await expect(
+    page.getByRole('list', { name: 'Project lifecycle' }).locator('[aria-current="step"]'),
+  ).toContainText('Idea');
   expect(dialogs).toBe(0);
 });
 
@@ -75,7 +80,9 @@ test('the owner moves it along the pipeline and plans milestones', async ({ page
   await status.getByLabel('New status').selectOption('building');
   await status.getByRole('button', { name: 'Change status' }).click();
   await expect(page.getByText(/STATUS CHANGED — .* — now BUILDING\./)).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Project lifecycle' }).locator('[aria-current="step"]')).toContainText('Building');
+  await expect(
+    page.getByRole('list', { name: 'Project lifecycle' }).locator('[aria-current="step"]'),
+  ).toContainText('Building');
 
   await openTab(page, 'Milestones');
   await page.getByTestId('add-milestone').click();
@@ -98,7 +105,9 @@ test('the owner moves it along the pipeline and plans milestones', async ({ page
   await link.getByLabel('URL').fill('https://example.org/design?draft=1');
   await link.getByRole('button', { name: 'Add link' }).click();
   await expect(page.getByText('LINK ADDED — Design review.')).toBeVisible();
-  const anchor = page.getByRole('list', { name: 'Links' }).getByRole('link', { name: 'Design review' });
+  const anchor = page
+    .getByRole('list', { name: 'Links' })
+    .getByRole('link', { name: 'Design review' });
   await expect(anchor).toHaveAttribute('href', 'https://example.org/design?draft=1');
   await expect(anchor).toHaveAttribute('rel', /noopener/);
 });
@@ -114,7 +123,9 @@ test('the owner adds a teammate by handle', async ({ page }) => {
   await add.getByLabel('Member handle').fill('@dev_member');
   await add.getByLabel('Role').selectOption('contributor');
   await add.getByRole('button', { name: 'Add member' }).click();
-  await expect(page.getByText('MEMBER ADDED — Dev Member — CONTRIBUTOR. They were notified.')).toBeVisible();
+  await expect(
+    page.getByText('MEMBER ADDED — Dev Member — CONTRIBUTOR. They were notified.'),
+  ).toBeVisible();
   await expect(page.locator('[data-member="dev_member"]')).toContainText('Contributor');
   await expect(page.getByText('Owners cannot leave. Transfer ownership first.')).toBeVisible();
 });
@@ -138,12 +149,13 @@ test('a contributor records work; nobody verifies their own', async ({ page }) =
   await page.goto('/contributions?view=mine');
   const row = page.locator('[data-contribution="Ground link parser"]');
   await expect(row).toContainText('AWAITING REVIEW');
+  await expect(row).toContainText('Yours · someone else reviews it');
   await expect(row.getByRole('button', { name: 'Verify' })).toHaveCount(0);
 
+  // The review queue lists only work the viewer may review: never their own.
   await page.goto('/contributions?view=queue');
-  await expect(page.locator('[data-contribution="Ground link parser"]')).toContainText(
-    'Yours · someone else reviews it',
-  );
+  await expect(page.getByText('QUEUE CLEAR')).toBeVisible();
+  await expect(page.locator('[data-contribution="Ground link parser"]')).toHaveCount(0);
 });
 
 test('the owner verifies it from the review queue', async ({ page }) => {
@@ -154,7 +166,9 @@ test('the owner verifies it from the review queue', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: 'Verify contribution' });
   await dialog.getByLabel('Note').fill('Reviewed the parser against flight logs.');
   await dialog.getByRole('button', { name: 'Verify', exact: true }).click();
-  await expect(page.getByText('CONTRIBUTION VERIFIED — Ground link parser — accepted as evidence.')).toBeVisible();
+  await expect(
+    page.getByText('CONTRIBUTION VERIFIED — Ground link parser — accepted as evidence.'),
+  ).toBeVisible();
 
   await page.goto(`${projectPath}?tab=contributions`);
   const verified = page.locator('[data-contribution="Ground link parser"]');
@@ -168,6 +182,29 @@ test('the owner verifies it from the review queue', async ({ page }) => {
   await expect(feed).toContainText('Milestone done');
 });
 
+test('staff review work on projects they are not on; the item waits in their queue', async ({
+  page,
+}) => {
+  await signInAs(page, 'member');
+  await page.goto(projectPath);
+  await page.getByTestId('record-contribution').click();
+  const record = page.getByRole('dialog', { name: 'Record contribution' });
+  await record.getByLabel('Kind').selectOption('research');
+  await record.getByLabel('What you did').fill('Uplink retry budget study');
+  await record.getByRole('button', { name: 'Record contribution' }).click();
+  await expect(page.getByText(/CONTRIBUTION RECORDED — Uplink retry budget study/)).toBeVisible();
+
+  await switchTo(page, 'operations');
+  await page.goto('/contributions');
+  await expect(
+    page.getByRole('navigation', { name: 'Contribution views' }).locator('[aria-current="page"]'),
+  ).toHaveText('Review queue');
+  const row = page.locator('[data-contribution="Uplink retry budget study"]');
+  await expect(row).toContainText('AWAITING REVIEW');
+  await expect(row.getByRole('button', { name: 'Verify' })).toBeVisible();
+  await expect(row.getByRole('button', { name: 'Reject' })).toBeVisible();
+});
+
 test('BREAK: private projects are invisible to outsiders, by list and by URL', async ({ page }) => {
   await signInAs(page, 'verified');
   await page.goto('/projects/new');
@@ -179,8 +216,15 @@ test('BREAK: private projects are invisible to outsiders, by list and by URL', a
   privatePath = new URL(page.url()).pathname;
 
   await switchTo(page, 'member');
-  const response = await page.goto(privatePath);
-  expect(response?.status()).toBe(404);
+  // A private project reads exactly like a missing one: same status, NOT FOUND,
+  // nothing of it on the page. (The page streams behind its loading state, so
+  // both answer with the same status.)
+  const missing = await page.goto('/projects/no-such-project-anywhere');
+  await expect(page.getByText('NOT FOUND')).toBeVisible();
+  const hidden = await page.goto(privatePath);
+  expect(hidden?.status()).toBe(missing?.status());
+  await expect(page.getByText('NOT FOUND')).toBeVisible();
+  await expect(page.getByText(PRIVATE_TITLE)).toHaveCount(0);
   await page.goto('/projects?q=skunkworks');
   await expect(page.getByText('NO MATCHES')).toBeVisible();
 });
@@ -207,7 +251,10 @@ test('the owner archives; staff restore with a reason', async ({ page }) => {
 test('the directory filters by status and switches to a list', async ({ page }) => {
   await signInAs(page, 'founder');
   await page.goto('/projects');
-  await page.getByRole('navigation', { name: 'Project status' }).getByRole('link', { name: 'Building' }).click();
+  await page
+    .getByRole('navigation', { name: 'Project status' })
+    .getByRole('link', { name: 'Building' })
+    .click();
   await expect(page).toHaveURL(/status=building/);
   await expect(page.locator('[data-project^="orbital-relay"]')).toBeVisible();
   await expect(page.locator('[data-project="quiet-skunkworks"]')).toHaveCount(0);

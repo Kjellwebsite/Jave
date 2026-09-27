@@ -313,12 +313,9 @@ function ProjectTable({ cards }: { cards: readonly ProjectCardData[] }) {
       </TableHead>
       <TableBody>
         {cards.map((card) => (
-          <TableRow key={card.slug} className="relative" data-project={card.slug}>
+          <TableRow key={card.slug} data-project={card.slug}>
             <TableCell>
-              <Link
-                href={projectPath(card.slug)}
-                className="block min-w-0 after:absolute after:inset-0 focus-visible:outline-none"
-              >
+              <Link href={projectPath(card.slug)} className="row-link block min-w-0">
                 <span className="block truncate text-body font-medium text-fg">{card.title}</span>
                 <span className="mt-1 flex items-center gap-2">
                   <VisibilityBadge visibility={card.visibility} />

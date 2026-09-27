@@ -187,7 +187,8 @@ Keeps one staff-facing card per verification in
 `settings.channels.verificationQueue` (new optional field). Enqueued in the
 same transaction as the state change on request, assignment, review start,
 decision, revocation and expiry — only when the channel is set or a card
-already exists. Dedupe key: `verification-card:<id>:<status>:<assignee|none>`.
+already exists. Dedupe key: `verification-card:<id>:<status>:<assignee|none>`,
+with `rerunIfRunning` (a same-key change while the job runs re-runs it).
 
 Payload: `{ verificationId: uuid }` (`queueCardJobPayloadSchema`).
 
@@ -234,6 +235,23 @@ only its own messages.
 No other Discord side effects: subject notices travel through the notification
 system (`notifications.deliver`).
 
+## Surfaces
+
+Full reference: [`docs/commands/verification.md`](../commands/verification.md).
+
+- **Discord** (`apps/bot/src/features/verification`): `/verify request` (type select → your own
+  targets from `listTargetCandidates` → rank for skills → claim + up to 3 evidence links; slash
+  options autocomplete the same candidates), `/verify status`, `/verify queue` (verifiers,
+  paginated select → detail with the controls `verificationAccess` allows: START REVIEW, APPROVE /
+  REJECT with a note modal — skill approvals ask for the rank to grant — and REVOKE), and the
+  **Verifications** user context menu. The `discord.verification.queue_card` handler follows the
+  contract above.
+- **Dashboard** (`apps/dashboard`): `/verification` (the queue for verifiers, a member's own
+  requests otherwise) and `/verification/[id]` (claim, evidence, target preview, decide / revoke).
+- **Surface helpers in core**: `listTargetCandidates` (self-only target pickers, capped at 25)
+  and `verificationAccess` (pure: which controls a viewer can use now, and why not), so surfaces
+  never re-implement the two-person rule or type capabilities.
+
 ## Schema (`packages/database/src/schema/verification.ts`)
 
 Added to `verifications`: `target_key` (normalized target identity),
@@ -278,10 +296,9 @@ Migration: `drizzle/0001_verification.sql`.
   only check). Revocation handles this (see above), but the dashboard should
   show which verifications cite a piece of evidence.
 - Card jobs dedupe on `<id>:<status>:<assignee>` against pending or running
-  jobs. If a transition returns to the key of a card job that has already
-  reported a fresh card but is not yet marked complete, that enqueue is
-  dropped; the card then lags until the next transition (a window of
-  milliseconds).
+  jobs and are enqueued with `rerunIfRunning`: a transition back to the key
+  of a running card job makes that job run once more when it ends, so the
+  card never lags a change.
 - Every integration test file builds and migrates a fresh PGlite database in
   `beforeEach`; under heavy machine load that can exceed the shared 60 s hook
   timeout, so this module's suites raise it (`KIT_SETUP_TIMEOUT_MS`) and the

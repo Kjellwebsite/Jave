@@ -123,7 +123,11 @@ export async function enqueueQueueCard(
     tx,
     VERIFICATION_QUEUE_CARD_JOB,
     { verificationId: verification.id },
-    { dedupeKey: `verification-card:${verification.id}:${verification.status}:${assignee}` },
+    {
+      dedupeKey: `verification-card:${verification.id}:${verification.status}:${assignee}`,
+      // A card job re-syncs from current state: a same-key change while one runs runs it again.
+      rerunIfRunning: true,
+    },
   );
 }
 

@@ -231,14 +231,21 @@ failures; rate limits and 5xx retry.
 
 Role changes are synchronized by the existing `discord.roles.sync` contract.
 
-### Suggested bot surface (not implemented here)
+## Surfaces
 
-- `/apply` → `getMyApplication`; domain select (page 0) → `updateDraft`;
-  modal page 1 (motivation, experience, projects, portfolio, evidence) and
-  page 2 (references, referral) → `updateDraft`; Submit → `submitApplication`.
-  Field labels, placeholders and caps come from `APPLICATION_FORM_FIELDS`.
-- Review modal: recommendation + score + note → `reviewApplication`.
-- Decide modal: internal reason + applicant message → `decideApplication`.
+Full reference: [`docs/commands/applications.md`](../commands/applications.md).
+
+- **Discord** (`apps/bot/src/features/applications`): `/apply start` (panel: domain select,
+  two-page edit modal from `APPLICATION_FORM_FIELDS`, submit with every missing requirement
+  listed, withdraw with its cost stated first), `/apply status` (timeline), `/applications queue`
+  (staff). The `discord.applications.review_card` handler follows the contract above and runs any
+  catch-up or repair render the record step queued at once (`runJobsNow`). Card buttons: CLAIM,
+  REVIEW (recommendation + score + note modal), INTERVIEW (natural or ISO time in the staff
+  member's zone + message modal), ACCEPT / REJECT (confirmation, then internal reason + applicant
+  message modal), VIEW DETAILS (ephemeral, audited staff view).
+- **Dashboard** (`apps/dashboard`): `/applications` (queue, readouts, filters, number search),
+  `/applications/[id]` (staff view and every staff action, conflict-of-interest aware),
+  `/me/application` (applicant self-service, linked from `/me`).
 
 ## Extension points
 

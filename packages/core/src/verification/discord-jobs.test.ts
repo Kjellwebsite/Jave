@@ -8,6 +8,7 @@ import {
   NotFoundError,
   ValidationError,
 } from '../kernel/errors';
+import { claimJobs } from '../jobs/queue';
 import { systemActor } from '../permissions/actor';
 import {
   assignVerifier,
@@ -200,6 +201,28 @@ describe('discord.verification.queue_card contract', KIT_TEST_OPTIONS, () => {
     const decided = await getQueueCard(kit.as(systemActor('job')), requested.id);
     expect(decided.messageId).toBe(card.messageId);
     expect([...channel.messages.entries()]).toEqual([[decided.messageId, decided.revision]]);
+  });
+
+  it('a change back to the state of a running card job makes it run again', async () => {
+    await enableQueueChannel(kit, CHANNEL_ID);
+    const subject = await kit.member();
+    const ops = await kit.member({ roles: ['operations'] });
+    const requested = await requestVerification(kit.as(subject), { target: { type: 'identity' } });
+    // The first card job (pending, unassigned) is in flight on a worker.
+    const [running] = await claimJobs(kit.db, {
+      workerId: 'bot-1',
+      limit: 1,
+      now: kit.clock.now(),
+      types: [VERIFICATION_QUEUE_CARD_JOB],
+    });
+    expect(running!.dedupeKey).toBe(`verification-card:${requested.id}:pending:none`);
+    await assignVerifier(kit.as(ops), {
+      verificationId: requested.id,
+      verifierMemberId: ops.memberId!,
+    });
+    await assignVerifier(kit.as(ops), { verificationId: requested.id, verifierMemberId: null });
+    const [row] = await kit.db.select().from(jobs).where(eq(jobs.id, running!.id));
+    expect(row).toMatchObject({ status: 'running', rerunRequested: true });
   });
 
   it('enqueues nothing when no channel is configured and no card exists', async () => {

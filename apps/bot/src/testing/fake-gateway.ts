@@ -1,6 +1,7 @@
 import {
   DiscordActionError,
   type DiscordGateway,
+  MESSAGE_NONCE_MAX,
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
@@ -234,5 +235,19 @@ export class FakeDiscordGateway implements DiscordGateway {
     this.record('cancelScheduledEvent', eventId, reason);
     const existing = this.scheduledEvents.get(eventId);
     if (existing) existing.cancelled = true;
+  }
+  /** channelId:nonce → message id, like Discord's enforce_nonce window. */
+  readonly nonces = new Map<string, string>();
+  async sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string) {
+    this.record('sendMessageOnce', channelId, payload, nonce);
+    if (nonce.length === 0 || nonce.length > MESSAGE_NONCE_MAX)
+      throw new DiscordActionError('invalid nonce', 50035, true);
+    const key = `${channelId}:${nonce}`;
+    const existing = this.nonces.get(key);
+    if (existing) return { channelId, messageId: existing };
+    const messageId = nextId();
+    this.messages.set(messageId, { channelId, payload });
+    this.nonces.set(key, messageId);
+    return { channelId, messageId };
   }
 }

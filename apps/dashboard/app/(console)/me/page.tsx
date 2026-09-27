@@ -180,12 +180,17 @@ export default async function MePage({ searchParams }: { searchParams: Promise<S
         title="My profile"
         description="How JAVELIN sees you, what you claim, and how JAVE reaches you."
         actions={
-          handle ? (
-            <Link href={`/p/${handle}`} className={buttonStyles({ variant: 'secondary' })}>
-              View public profile
-              <Icon icon={ExternalLink} size="sm" />
+          <>
+            <Link href="/me/application" className={buttonStyles({ variant: 'ghost' })}>
+              My application
             </Link>
-          ) : null
+            {handle ? (
+              <Link href={`/p/${handle}`} className={buttonStyles({ variant: 'secondary' })}>
+                View public profile
+                <Icon icon={ExternalLink} size="sm" />
+              </Link>
+            ) : null}
+          </>
         }
       />
       <LinkTabs

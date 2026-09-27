@@ -19,8 +19,8 @@ import { notifyOperative, notifyTeamOfReveal } from './notify';
 import { assertSafe, type SafetyField } from './safety';
 import { evaluateRoleSchema, roleIdSchema } from './schemas';
 import { suggestScore } from './scoring';
-import { isAwaitingReveal, REVEAL_TRIAL_STATUSES, type RoleRecord } from './state';
-import { type EvaluationRecord, loadEvaluation, loadOutcomes, loadRoleHeader } from './views';
+import { isAwaitingReveal, REVEAL_TRIAL_STATUSES, type RoleRecord, stoppedEarly } from './state';
+import { type EvaluationRecord, loadEvaluation, loadOutcomes } from './views';
 
 export interface EvaluationResult {
   evaluation: EvaluationRecord;
@@ -151,7 +151,6 @@ export async function revealRole(
   const trial = await loadTrial(ctx, role.trialId);
   if (!REVEAL_TRIAL_STATUSES.includes(trial.status))
     throw new InvalidStateError('Reveal only after the trial has ended.');
-  const header = await loadRoleHeader(ctx, role);
 
   return withTransaction(ctx, async (tx) => {
     // Lock before reading the evaluation: a concurrent re-evaluation cannot
@@ -163,6 +162,7 @@ export async function revealRole(
     if (!evaluation?.debrief)
       throw new InvalidStateError('Evaluate the role and write a debrief before revealing.');
     const { debrief, securityCultureScore } = evaluation;
+    const earlyStop = stoppedEarly(current);
     const updated = await transitionRole(
       tx,
       role.id,
@@ -179,9 +179,9 @@ export async function revealRole(
         roleId: role.id,
         trialId: role.trialId,
         teamId: role.teamId,
-        technique: header.scenario.technique,
+        technique: current.technique,
         securityCultureScore,
-        stoppedEarly: role.abortedAt !== null,
+        stoppedEarly: earlyStop,
       },
     });
     await enqueueJob(
@@ -194,14 +194,21 @@ export async function revealRole(
     const notified = await notifyTeamOfReveal(tx, {
       role: updated,
       trialNumber: trial.number,
-      technique: header.scenario.technique,
+      technique: current.technique,
       debrief,
     });
     await recordAudit(tx, {
       action: 'adversarial.role_revealed',
       targetType: AUDIT_TARGET_ROLE,
       targetId: role.id,
-      context: { participantsNotified: notified, stoppedEarly: role.abortedAt !== null },
+      // Disclosed from here on: the audit log may name the trial, team and operative.
+      context: {
+        trialId: role.trialId,
+        teamId: role.teamId,
+        operativeMemberId: role.operativeMemberId,
+        participantsNotified: notified,
+        stoppedEarly: earlyStop,
+      },
     });
     return updated;
   });

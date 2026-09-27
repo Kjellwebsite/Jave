@@ -86,18 +86,29 @@ export const adversarialRoles = pgTable(
       .references(() => adversarialScenarios.id),
     objective: text('objective').notNull(),
     /**
-     * Snapshot of the scenario guardrails and sandbox assets at planning time:
-     * what the second person authorized is exactly what the operative is briefed on,
-     * even if the scenario library changes later.
+     * Snapshot of the scenario at planning time (title, technique, guardrails,
+     * sandbox assets): what the second person authorized is exactly what the
+     * operative is briefed on and the team is debriefed on, even if the
+     * scenario library changes later.
      */
+    scenarioTitle: varchar('scenario_title', { length: 120 }).notNull(),
+    technique: adversarialTechnique('technique').notNull(),
     guardrails: text('guardrails').notNull(),
     sandboxAssets: text('sandbox_assets').notNull(),
     status: adversarialRoleStatus('status').notNull().default('planned'),
+    /**
+     * Increments whenever the plan the authorizer reviews changes before
+     * authorization (a trigger added or withdrawn). The authorizer names the
+     * revision they reviewed; a mismatch refuses the authorization.
+     */
+    planRevision: smallint('plan_revision').notNull().default(1),
     /** Founder/Core authorization is mandatory before briefing. */
     authorizedByUserId: uuid('authorized_by_user_id').references(() => users.id),
     authorizedAt: ts('authorized_at'),
     /** Attestation: scenario uses only fictional data and sandbox accounts. */
     sandboxAttested: boolean('sandbox_attested').notNull().default(false),
+    /** Optional note from the authorizer (staff-only, like the rest of the row). */
+    authorizationNote: text('authorization_note'),
     briefedAt: ts('briefed_at'),
     /** Increments whenever the briefing content changes after the first briefing. */
     briefingRevision: smallint('briefing_revision').notNull().default(1),
@@ -149,6 +160,13 @@ export const adversarialTriggers = pgTable(
     firedAt: ts('fired_at'),
     firedByUserId: uuid('fired_by_user_id').references(() => users.id),
     createdByUserId: uuid('created_by_user_id').references(() => users.id),
+    /**
+     * Second-person approval. Triggers present at authorization are approved
+     * by the authorizer; later ones by a canAuthorizeAdversarial holder other
+     * than their author. Only approved triggers reach the operative.
+     */
+    approvedByUserId: uuid('approved_by_user_id').references(() => users.id),
+    approvedAt: ts('approved_at'),
     createdAt: createdAt(),
   },
   (t) => [index('adversarial_triggers_role_idx').on(t.roleId)],

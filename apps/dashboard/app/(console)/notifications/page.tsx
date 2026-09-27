@@ -3,9 +3,9 @@ import Link from 'next/link';
 import { Inbox } from 'lucide-react';
 import { listMyNotifications, NOTIFICATION_TYPES, type NotificationType } from '@jave/core';
 import { Card, cx, EmptyState, LinkTabs, Mono, PageHeader } from '@jave/ui';
-import { SubmitButton } from '@/components/forms/submit-button';
 import { NextLink } from '@/components/next-link';
 import { MarkAllRead } from '@/components/notifications/mark-all-read';
+import { MarkRead } from '@/components/notifications/mark-read';
 import { safeInternalPath } from '@/lib/safe-url';
 import { firstParam, type SearchParams } from '@/lib/search-params';
 import { formatRelative } from '@/lib/time';
@@ -122,14 +122,7 @@ export default async function NotificationsPage({
                       <Mono dim className="text-[11px]">
                         {typeLabel(item.type)}
                       </Mono>
-                      {unread ? (
-                        <form action={markReadAction}>
-                          <input type="hidden" name="id" value={item.id} />
-                          <SubmitButton size="sm" variant="ghost">
-                            Mark read
-                          </SubmitButton>
-                        </form>
-                      ) : null}
+                      {unread ? <MarkRead action={markReadAction} id={item.id} /> : null}
                     </div>
                   </div>
                 </li>

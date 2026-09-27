@@ -98,7 +98,9 @@ and announces the result with a toast.
 
 **Tables.** `Table` scrolls inside its container so the page never scrolls sideways. Header cells are
 eyebrows. Use `dense` for logs. On phones, hide secondary columns and fold key facts under the
-primary cell. Empty results use `TableEmptyRow` with a way out ("Clear filters").
+primary cell. Empty results use `TableEmptyRow` with a way out ("Clear filters"). A row that opens a
+record gives its primary link the `row-link` utility: the whole row is the target and keyboard focus
+outlines the whole row. Never remove a focus outline without drawing a visible replacement.
 
 **Badges.** `Badge` for categories; `StatusBadge` for state — use `quiet` for the expected state
 (SUCCESS, IN GUILD, GOOD) so exceptions (DENIED, DEPARTED, RESTRICTED) stand out.
@@ -126,6 +128,12 @@ so the current item is on screen.
 | Error      | `ErrorState`                                                   | Never shows internals. Always shows the reference (`E-XXXXXXXX`) that matches the server log. |
 | Restricted | `RestrictedState`                                              | "ACCESS RESTRICTED", the capability required, a way back. Never an error.                     |
 | Success    | `Callout tone="success"` inline, or a toast for dialog actions | Past tense, specific: "ROLE GRANTED — SUPPORTER — Jun Park."                                  |
+
+One-click actions without a form (Mark read, Mark all read) announce every result as a toast through
+`useToastedAction`: success in the success tone, a refusal or failure in the danger tone with its
+reference. Never show a failure with a success icon, and never let a result pass silently. The toast
+comes from the call, not from an effect, so it still appears when the button unmounts with the state
+it changed.
 
 ## 8. Roles
 

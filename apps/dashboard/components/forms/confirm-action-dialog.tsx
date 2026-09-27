@@ -138,7 +138,7 @@ export function ConfirmActionDialog({
           onPendingChange={setPending}
           onSuccess={(message) => {
             setOpen(false);
-            toast(message);
+            toast({ text: message, tone: 'success' });
           }}
         />
       </DialogContent>

@@ -25,17 +25,21 @@ import {
 } from './delivery.service';
 import { ADVERSARIAL_ABORT_JOB, ADVERSARIAL_BRIEF_JOB } from './discord-jobs';
 import { evaluateRole, revealRole } from './evaluation.service';
-import { addTrigger, fireTrigger, recordObservation } from './observations.service';
+import { recordObservation } from './observations.service';
 import {
   abortRole,
+  activateRole,
   authorizeRole,
   briefRole,
   concludeRole,
   planRole,
-  raiseRedFlag,
 } from './roles.service';
+import { raiseRedFlag } from './red-flag.service';
+import { addTrigger, fireTrigger } from './triggers.service';
 import {
+  addApprovedTrigger,
   type AdversarialFixture,
+  authorizeCurrent,
   memberIdOf,
   planDefault,
   runToActive,
@@ -214,10 +218,14 @@ describe('adversarial operations', () => {
         })
         .returning();
       await expect(
-        authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true }),
+        authorizeRole(kit.as(fx.authorizer), {
+          roleId: role.id,
+          planRevision: 1,
+          sandboxAttested: true,
+        }),
       ).rejects.toThrow('Safety check failed');
       await kit.db.delete(adversarialTriggers).where(eq(adversarialTriggers.id, smuggled!.id));
-      await authorizeRole(kit.as(fx.authorizer), { roleId: role.id, sandboxAttested: true });
+      await authorizeCurrent(fx, role.id);
       await kit.db
         .update(adversarialRoles)
         .set({ guardrails: 'Be nice.' })
@@ -230,7 +238,7 @@ describe('adversarial operations', () => {
 
     it('BREAK: aborting cancels every pending briefing revision', async () => {
       const role = await runToActive(fx);
-      await addTrigger(kit.as(fx.founder), {
+      await addApprovedTrigger(fx, {
         roleId: role.id,
         label: 'Second ask',
         description: 'Ask once more, then stop.',
@@ -305,7 +313,7 @@ describe('adversarial operations', () => {
       expect(staffNotes.map((n) => n.title)).toEqual(
         expect.arrayContaining([`BRIEFING NOT DELIVERED — TRIAL #${fx.trialNumber}`]),
       );
-      await addTrigger(kit.as(fx.founder), {
+      await addApprovedTrigger(fx, {
         roleId: role.id,
         label: 'Follow-up',
         description: 'Ask once more, then stop.',
@@ -342,18 +350,14 @@ describe('adversarial operations', () => {
         label: 'Ask',
         description: 'Ask for the sandbox deploy key.',
       });
-      await expect(
-        fireTrigger(kit.as(fx.planner), { roleId: role.id, triggerId: trigger.id }),
-      ).rejects.toBeInstanceOf(InvalidStateError);
-      await kit.db
-        .update(adversarialRoles)
-        .set({ status: 'active', briefedAt: kit.clock.now(), activatedAt: kit.clock.now() })
-        .where(eq(adversarialRoles.id, role.id));
-      await fireTrigger(kit.as(fx.planner), { roleId: role.id, triggerId: trigger.id });
-      await expect(
-        fireTrigger(kit.as(fx.operative), { roleId: role.id, triggerId: trigger.id }),
-      ).rejects.toBeInstanceOf(ConflictError);
-      const late = await addTrigger(kit.as(fx.founder), {
+      await authorizeCurrent(fx, role.id);
+      await briefRole(kit.as(fx.planner), { roleId: role.id });
+      const ref = { roleId: role.id, triggerId: trigger.id };
+      await expect(fireTrigger(kit.as(fx.planner), ref)).rejects.toThrow('only while');
+      await activateRole(kit.as(fx.planner), { roleId: role.id });
+      await fireTrigger(kit.as(fx.planner), ref);
+      await expect(fireTrigger(kit.as(fx.operative), ref)).rejects.toBeInstanceOf(ConflictError);
+      const late = await addApprovedTrigger(fx, {
         roleId: role.id,
         label: 'Late ask',
         description: 'Ask again near the end.',

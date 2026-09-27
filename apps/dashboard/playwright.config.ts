@@ -8,7 +8,8 @@ import { E2E_GITHUB_WEBHOOK_SECRET } from './e2e/deployment-secrets';
  * seeded before the server starts. Dev login (MOCK / DEVELOPMENT ONLY) is
  * enabled by running `next start` with NODE_ENV=test.
  */
-const PORT = 3107;
+/** Override with E2E_PORT when several checkouts run end-to-end suites on one machine. */
+const PORT = Number(process.env.E2E_PORT ?? 3107);
 const BASE_URL = `http://localhost:${PORT}`;
 const DATABASE_URL =
   process.env.E2E_DATABASE_URL ?? 'postgres://jave:jave@localhost:5432/jave_e2e_dash';

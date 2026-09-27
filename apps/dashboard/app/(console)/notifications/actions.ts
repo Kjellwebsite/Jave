@@ -1,19 +1,19 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { isUuid, markNotificationsRead } from '@jave/core';
+import { isUuid, markNotificationsRead, ValidationError } from '@jave/core';
 import type { ActionState } from '@/lib/action-state';
 import { formString } from '@/lib/form-data';
 import { runAction } from '@/server/actions';
 
 /** Marks one notification read. Scoped to the caller's own inbox by the service. */
-export async function markReadAction(data: FormData): Promise<void> {
+export async function markReadAction(_: ActionState, data: FormData): Promise<ActionState> {
   const id = formString(data, 'id');
-  await runAction('notifications.mark_read', async (ctx) => {
-    if (!isUuid(id)) return 'Nothing to mark.';
-    await markNotificationsRead(ctx, [id]);
+  return runAction('notifications.mark_read', async (ctx) => {
+    if (!isUuid(id)) throw new ValidationError('That notification does not exist.');
+    const count = await markNotificationsRead(ctx, [id]);
     revalidatePath('/', 'layout');
-    return 'Marked read.';
+    return count === 0 ? 'Nothing to mark.' : 'Marked read.';
   });
 }
 

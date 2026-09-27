@@ -95,7 +95,12 @@ export async function listTickets(
     newest: [desc(tickets.createdAt), desc(tickets.number)],
     oldest: [asc(tickets.createdAt), asc(tickets.number)],
     activity: [desc(tickets.lastActivityAt), desc(tickets.number)],
-    sla: [sql`${tickets.slaFirstResponseDueAt} asc nulls last`, asc(tickets.number)],
+    // Unanswered first (only their deadline still matters), soonest deadline first.
+    sla: [
+      sql`${tickets.firstResponseAt} is null desc`,
+      sql`${tickets.slaFirstResponseDueAt} asc nulls last`,
+      asc(tickets.number),
+    ],
   }[sort];
   const where = and(...filters);
 

@@ -5,6 +5,7 @@ import {
   FileText,
   Inbox,
   LayoutGrid,
+  LifeBuoy,
   type LucideIcon,
   ScrollText,
   Settings2,
@@ -65,6 +66,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: 'SUPPORT & SAFETY',
     items: [
+      { href: '/tickets', label: 'Tickets', icon: LifeBuoy, capability: null },
       { href: '/moderation', label: 'Moderation', icon: ShieldAlert, capability: 'canModerate' },
     ],
   },

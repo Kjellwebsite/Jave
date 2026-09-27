@@ -48,6 +48,13 @@ export interface MessageDeletion {
   guildId: string | null;
 }
 
+/** Several messages deleted at once (a moderator purge, a bulk delete). */
+export interface MessageBulkDeletion {
+  ids: string[];
+  channelId: string;
+  guildId: string | null;
+}
+
 export interface JoinedMember {
   id: string;
   username: string;

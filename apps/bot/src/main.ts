@@ -1,5 +1,6 @@
-import { EnvError, fullBotEnvSchema, parseEnv } from '@jave/config';
-import { createLogger, systemClock, TtlCache } from '@jave/core';
+import { type BotEnv, EnvError, fullBotEnvSchema, parseEnv } from '@jave/config';
+import { createProviderFromEnv, isAIError } from '@jave/ai';
+import { type ai, createLogger, type Logger, systemClock, TtlCache } from '@jave/core';
 import { createDatabase } from '@jave/database';
 import { createBotApp } from './app';
 import { createDiscordClient, wireClient } from './discord/client';
@@ -8,6 +9,27 @@ import { allFeatures } from './features';
 import { startHealthServer } from './health/server';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+
+/**
+ * JAVE AI from the environment. A misconfigured provider is logged (the
+ * message names the variable, never its value) and AI stays unavailable
+ * instead of taking the whole bot down.
+ */
+function aiDepsFromEnv(env: BotEnv, logger: Logger): ai.AiDeps | undefined {
+  try {
+    return {
+      provider: createProviderFromEnv(env),
+      dailyRequestCeiling: env.AI_DAILY_REQUEST_LIMIT,
+    };
+  } catch (error) {
+    if (!isAIError(error)) throw error;
+    logger.error(
+      { kind: error.kind, reason: error.message },
+      'AI provider misconfigured; AI disabled',
+    );
+    return undefined;
+  }
+}
 
 async function main(): Promise<void> {
   let env;
@@ -43,6 +65,7 @@ async function main(): Promise<void> {
     gateway,
     features: allFeatures(),
     worker: { concurrency: env.JAVE_WORKER_CONCURRENCY, pollMs: env.JAVE_WORKER_POLL_MS },
+    ai: aiDepsFromEnv(env, logger),
   });
 
   wireClient(client, app, env.DISCORD_GUILD_ID, logger);

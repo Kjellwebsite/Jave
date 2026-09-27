@@ -1,8 +1,12 @@
 import {
   Award,
   Bell,
+  CalendarDays,
   ChartNoAxesColumn,
+  Cpu,
   FileText,
+  FlaskConical,
+  Gamepad2,
   Inbox,
   LayoutGrid,
   LifeBuoy,
@@ -11,6 +15,7 @@ import {
   Settings2,
   ShieldAlert,
   ShieldCheck,
+  Swords,
   Target,
   UserRound,
   Users,
@@ -61,7 +66,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
   {
     label: 'OPERATIONS',
-    items: [{ href: '/missions', label: 'Missions', icon: Target, capability: null }],
+    items: [
+      { href: '/trials', label: 'Trials', icon: Swords, capability: 'canManageTrials' },
+      { href: '/events', label: 'Events', icon: CalendarDays, capability: null },
+      { href: '/games', label: 'Games', icon: Gamepad2, capability: null },
+      { href: '/missions', label: 'Missions', icon: Target, capability: null },
+    ],
   },
   {
     label: 'SUPPORT & SAFETY',
@@ -70,7 +80,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/moderation', label: 'Moderation', icon: ShieldAlert, capability: 'canModerate' },
     ],
   },
-  { label: 'INTELLIGENCE', items: [] },
+  {
+    label: 'INTELLIGENCE',
+    items: [
+      { href: '/ai', label: 'JAVE AI', icon: Cpu, capability: 'canUseAI' },
+      { href: '/research', label: 'Research', icon: FlaskConical, capability: 'canViewMembers' },
+    ],
+  },
   {
     label: 'SYSTEM',
     items: [

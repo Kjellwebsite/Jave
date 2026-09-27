@@ -8,6 +8,7 @@ import {
   DisabledError,
   ExternalServiceError,
   InvalidStateError,
+  RateLimitedError,
   ValidationError,
 } from '../kernel/errors';
 import { redactString, truncate } from '../kernel/redact';
@@ -209,6 +210,8 @@ export async function summarizeTicket(
   try {
     raw = await summarizer(input);
   } catch (error) {
+    // The AI module's own refusals (disabled, daily limit) are already calm and exact.
+    if (error instanceof DisabledError || error instanceof RateLimitedError) throw error;
     ctx.logger.warn(
       // Provider errors can echo credentials or prompt text: log only a redacted excerpt.
       {

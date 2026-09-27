@@ -25,6 +25,7 @@ export * from './jobs/worker';
 export * from './jobs/admin.service';
 export * from './settings/schemas';
 export * from './settings/settings.service';
+export * from './settings/role-mapping';
 export * from './notifications/catalog';
 export * from './notifications/quiet-hours';
 export * from './notifications/notifications.service';
@@ -52,5 +53,6 @@ export * as calendar from './calendar';
 export * as games from './games';
 export * as ai from './ai';
 export * as research from './research';
+export * as housekeeping from './housekeeping';
 
 export { coreJobHandlers, coreRecurringJobs, coreSubscribers } from './registry';

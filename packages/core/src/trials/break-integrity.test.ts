@@ -12,6 +12,8 @@ import {
   closeSubmissions,
   createTrial,
   evaluate,
+  getTrialForStaff,
+  memberTrialHistory,
   openRecruitment,
   publishResults,
   remainingTime,
@@ -90,6 +92,18 @@ describe('trials: BREAK — integrity of the public surface and the roster', PGL
     await expect(
       applyRankConsequence(kit.as(core), { trialId, memberId: b!.memberId!, rank: 'C' }),
     ).resolves.toMatchObject({ rank: 'C' });
+
+    // Views show the rank that was granted, never the recommendation in its place.
+    const staff = await getTrialForStaff(kit.as(ops), { trialId });
+    const rowOf = (memberId: string) => staff.results!.rows.find((r) => r.memberId === memberId)!;
+    expect(rowOf(b!.memberId!)).toMatchObject({
+      recommendedRank: 'A',
+      rankApplied: true,
+      appliedRank: 'C',
+    });
+    expect(rowOf(a!.memberId!)).toMatchObject({ rankApplied: false, appliedRank: null });
+    const [history] = await memberTrialHistory(kit.as(ops), { memberId: b!.memberId! });
+    expect(history).toMatchObject({ recommendedRank: 'A', rankApplied: true, appliedRank: 'C' });
   });
 
   it('BREAK: members who lost eligibility after selection are removed, not placed on a team', async () => {

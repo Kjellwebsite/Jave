@@ -242,7 +242,10 @@ export async function getQueueStats(db: Database, now: Date): Promise<QueueStats
       failedRecently: sql<number>`count(*) filter (where ${jobs.status} = 'pending' and ${jobs.attempts} > 0)::int`,
       oldestPending: sql<Date | null>`min(${jobs.runAt}) filter (where ${jobs.status} = 'pending' and ${jobs.runAt} <= ${now})`,
     })
-    .from(jobs);
+    .from(jobs)
+    // Completed and cancelled jobs pile up (pruned after days): only live and
+    // dead jobs count here, found through the status index, not a full scan.
+    .where(inArray(jobs.status, ['pending', 'running', 'dead']));
   const oldest = row?.oldestPending ? new Date(row.oldestPending) : null;
   return {
     pending: row?.pending ?? 0,

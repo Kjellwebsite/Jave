@@ -1,4 +1,8 @@
-import { DISCORD_ROLE_SYNC_JOB, NOTIFICATION_DELIVER_JOB } from '@jave/core';
+import {
+  DISCORD_ROLE_RETIRE_JOB,
+  DISCORD_ROLE_SYNC_JOB,
+  NOTIFICATION_DELIVER_JOB,
+} from '@jave/core';
 import type { CommandDefinition } from '../../interactions/types';
 import type { BotFeature } from '../types';
 import { handleMemberJoin, handleMemberLeave } from './gateway';
@@ -7,10 +11,13 @@ import { notificationDeliveryHandler } from './notification-delivery';
 import { onboardingComponents, onboardingModals, startCommand } from './onboarding';
 import { profileCommand, profileComponents, profileContextCommand } from './profile';
 import { rankCommand } from './rank';
-import { roleSyncHandler } from './role-sync';
+import { roleRetireHandler, roleSyncHandler } from './role-sync';
+import { jobComponents } from './job-admin';
+import { settingsCommand, settingsComponents } from './settings-command';
+import { setupComponents } from './setup';
 import { statusCommand } from './status';
 
-/** Identity, onboarding, ranks, help and diagnostics. */
+/** Identity, onboarding, ranks, help, diagnostics, setup and settings. */
 export function coreFeature(catalog: () => readonly CommandDefinition[]): BotFeature {
   return {
     name: 'core',
@@ -21,11 +28,19 @@ export function coreFeature(catalog: () => readonly CommandDefinition[]): BotFea
       profileContextCommand,
       rankCommand,
       statusCommand,
+      settingsCommand,
     ],
-    components: [onboardingComponents, profileComponents],
+    components: [
+      onboardingComponents,
+      profileComponents,
+      settingsComponents,
+      setupComponents,
+      jobComponents,
+    ],
     modals: [onboardingModals],
     jobHandlers: (services) => ({
       [DISCORD_ROLE_SYNC_JOB]: roleSyncHandler(services),
+      [DISCORD_ROLE_RETIRE_JOB]: roleRetireHandler(services),
       [NOTIFICATION_DELIVER_JOB]: notificationDeliveryHandler(services),
     }),
     onMemberJoin: handleMemberJoin,

@@ -18,8 +18,12 @@ export interface BotServices {
   runJobsNow(jobIds: readonly number[]): Promise<void>;
   health(): Promise<HealthReport>;
   /**
-   * AI provider built from the environment (AI_PROVIDER…). Absent when the
-   * deployment has no AI configured; features then report AI as DISABLED.
+   * AI provider (built once from the environment by main.ts; the test harness
+   * uses the MOCK / DEVELOPMENT ONLY MockProvider) and the deployment's daily
+   * request ceiling. AI_PROVIDER=disabled yields the disabled provider; the
+   * field is absent only when the AI configuration is invalid (logged at
+   * startup, the `ai` health check reads down). Either way features report
+   * AI as DISABLED and never fabricate an answer.
    */
   ai?: ai.AiDeps;
 }

@@ -23,6 +23,7 @@ export * from './features.service';
 export * from './structured-output';
 export * from './proposals.service';
 export * from './usage.service';
+export * from './requests.service';
 export { ticketSummarizer, ticketTranscript } from './ticket-summary';
 export * from './discord-jobs';
 export { startOfUtcDay, nextUtcMidnight, countToday } from './ledger';

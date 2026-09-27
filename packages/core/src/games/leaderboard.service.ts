@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { gamePlayers, gameSessions, members } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
 import { parseInput } from '../kernel/validation';
+import { visibleProfilesCondition } from '../identity/visibility';
 import { requireViewer } from '../calendar/guards';
 import { MIN_RANKED_PLAYERS } from './constants';
 import { getGame } from './registry';
@@ -27,11 +28,16 @@ export interface Leaderboard {
   entries: LeaderboardEntry[];
 }
 
+/** Profiles a board posted to a channel may show: never staff-only ones. */
+const CHANNEL_VISIBILITIES = ['public', 'members'] as const;
+
 /**
  * Per-game leaderboard over ranked sessions (two or more players; solo
  * practice never counts). Only members who opted in via showOnLeaderboards,
- * in good standing and not deleted, appear. Game stats are just that — they
- * are never capability.
+ * in good standing and not deleted, appear — and, like every board, never
+ * someone whose profile the viewer could not open. Ranks are computed over
+ * the visible rows, so a hidden player leaves no gap. Game stats are just
+ * that — they are never capability.
  */
 export async function getLeaderboard(
   ctx: ServiceContext,
@@ -65,6 +71,10 @@ export async function getLeaderboard(
         eq(members.showOnLeaderboards, true),
         eq(members.standing, 'good'),
         isNull(members.deletedAt),
+        visibleProfilesCondition(ctx),
+        q.audience === 'channel'
+          ? inArray(members.profileVisibility, CHANNEL_VISIBILITIES)
+          : undefined,
       ),
     )
     .groupBy(members.id, members.handle, members.displayName)

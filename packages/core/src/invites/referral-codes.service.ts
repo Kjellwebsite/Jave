@@ -292,12 +292,15 @@ export async function claimReferralCode(
   }
   if (!live && stay) {
     // This stay was already attributed and closed (invalidated, self-invite): not re-openable.
-    const [closed] = await ctx.db
-      .select({ id: referrals.id })
+    const [existing] = await ctx.db
+      .select({ referralCode: referrals.referralCode })
       .from(referrals)
       .where(and(eq(referrals.inviteeUserId, actor.userId), gte(referrals.joinedAt, stay.from)))
       .limit(1);
-    if (closed) throw new InvalidStateError('Your referral for this join can no longer change.');
+    // A concurrent claim that committed after the checks above: the same answer
+    // as losing the race at the insert.
+    if (existing?.referralCode) throw new ConflictError('You have already used a referral code.');
+    if (existing) throw new InvalidStateError('Your referral for this join can no longer change.');
   }
   if (now.getTime() - joinedAt.getTime() > REFERRAL_CLAIM_WINDOW_DAYS * DAY) {
     throw new InvalidStateError(

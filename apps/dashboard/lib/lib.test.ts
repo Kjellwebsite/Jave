@@ -166,6 +166,7 @@ describe('navigation', () => {
       'PEOPLE',
       'OPERATIONS',
       'SUPPORT & SAFETY',
+      'INTELLIGENCE',
     ]);
     expect(member.map((group) => group.label)).not.toContain('SYSTEM');
     const founder = visibleNav(NAV_GROUPS, [
@@ -178,8 +179,11 @@ describe('navigation', () => {
       '/members',
       '/ranking',
       '/achievements',
+      '/events',
+      '/games',
       '/missions',
       '/tickets',
+      '/research',
       '/audit',
       '/settings',
     ]);
@@ -187,6 +191,8 @@ describe('navigation', () => {
     expect(signedIn.flatMap((group) => group.items.map((item) => item.href))).toEqual([
       '/overview',
       '/achievements',
+      '/events',
+      '/games',
       '/missions',
       '/tickets',
     ]);

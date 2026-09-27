@@ -8,7 +8,10 @@ import { databaseEnvSchema, parseEnv } from '@jave/config';
 import { seedMissionFixtures } from './missions-seed';
 import { seedModerationFixturesAt } from './moderation-seed';
 import { seedDashboardFixtures } from './seed';
+import { seedAiResearchFixtures } from './seed-ai-research';
+import { seedEventsAndGames } from './seed-events-games';
 import { seedTicketFixtures } from './tickets-seed';
+import { seedTrialFixtures } from './seed-trials';
 
 const E2E_DATABASE_NAME = /e2e/i;
 
@@ -33,7 +36,10 @@ async function main(): Promise<void> {
   });
   if (migrate.status !== 0) throw new Error('migration failed');
   await seedDashboardFixtures(DATABASE_URL);
+  await seedAiResearchFixtures(DATABASE_URL);
+  await seedEventsAndGames(DATABASE_URL);
   await seedTicketFixtures(DATABASE_URL);
+  await seedTrialFixtures(DATABASE_URL);
   await seedMissionFixtures(DATABASE_URL);
   // Last: its quarantine refuses the quarantined member's writes in earlier fixtures.
   await seedModerationFixturesAt(DATABASE_URL);

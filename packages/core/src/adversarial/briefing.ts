@@ -15,10 +15,18 @@ import type { OutcomeCounts } from './scoring';
  * there is no code path that renders an operative briefing without them.
  */
 
+/**
+ * How the stop word works, exactly as JAVE enforces it (stop-word.service.ts):
+ * the operative's and staff's RED FLAG stops at once; participants are never
+ * told the word, so their use of it alerts managers instead — and the
+ * operative, bound by the standard prohibition to stop when anyone says it,
+ * pauses until staff check in.
+ */
 export const STOP_PROTOCOL = [
   `STOP WORD: ${STOP_WORD}.`,
-  `If anyone — you, a participant or staff — says or types ${STOP_WORD}, the exercise ends immediately.`,
-  'Stop all adversarial activity, send nothing further, and report to staff at once.',
+  `Press the ${STOP_WORD} button under your briefing, or type ${STOP_WORD} anywhere in the server, and the exercise ends immediately. Staff can end it the same way. Direct messages to JAVE are not read.`,
+  `Participants are never told the stop word. If one says it in your team channel, pause all adversarial activity at once: staff are alerted and will check in with you. If it sounds like a call to stop, or you are unsure, raise ${STOP_WORD} yourself.`,
+  'Once stopped: cease all adversarial activity, send nothing further, and report to staff.',
   'No questions asked, no penalty.',
 ].join(' ');
 

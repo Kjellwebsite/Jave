@@ -175,7 +175,7 @@ export async function ensureMember(
         ctx,
         DISCORD_ROLE_SYNC_JOB,
         { memberId: member.id },
-        { dedupeKey: `roles-sync:${member.id}` },
+        { dedupeKey: `roles-sync:${member.id}`, rerunIfRunning: true },
       );
     }
   }
@@ -274,7 +274,7 @@ export async function recordGuildJoin(
     ctx,
     DISCORD_ROLE_SYNC_JOB,
     { memberId: member.id },
-    { dedupeKey: `roles-sync:${member.id}` },
+    { dedupeKey: `roles-sync:${member.id}`, rerunIfRunning: true },
   );
   const accountAgeDays = Math.floor(
     (now.getTime() - snowflakeToDate(profile.discordId).getTime()) / 86_400_000,

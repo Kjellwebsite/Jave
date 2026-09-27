@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { getProfile, projects, ValidationError } from '@jave/core';
+import { projects, ValidationError } from '@jave/core';
 import type { ActionState } from '@/lib/action-state';
 import { formEnum, formOptional } from '@/lib/form-data';
 import { PROJECT_ROLE_LABELS } from '@/lib/project-view';
@@ -38,11 +38,15 @@ export async function addMemberAction(_: ActionState, data: FormData): Promise<A
     'project.add_member',
     async (ctx) => {
       const projectId = uuidField(data, 'projectId', 'project');
-      const profile = await getProfile(ctx, { handle: handleField(data, 'handle') });
       const role = roleOf(data);
-      await projects.addProjectMember(ctx, { projectId, memberId: profile.memberId, role });
+      // Resolved by core after its manage check, whatever the profile's visibility.
+      const added = await projects.addProjectMemberByHandle(ctx, {
+        projectId,
+        handle: handleField(data, 'handle'),
+        role,
+      });
       refreshProjects();
-      return `MEMBER ADDED — ${profile.displayName} — ${PROJECT_ROLE_LABELS[role].toUpperCase()}. They were notified.`;
+      return `MEMBER ADDED — ${await teammateName(ctx, projectId, added.memberId)} — ${PROJECT_ROLE_LABELS[role].toUpperCase()}. They were notified.`;
     },
     { fieldNames: ['handle', 'role'] },
   );

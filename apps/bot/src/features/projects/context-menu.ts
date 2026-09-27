@@ -10,7 +10,7 @@ import {
   LINE_TEXT_MAX,
   PROJECTS_NS,
 } from './constants';
-import { manageableProjects, memberIdOf } from './lookup';
+import { addableProjects, memberIdOf } from './lookup';
 import { contributionModal } from './modals';
 import { projectOptions } from './render';
 
@@ -83,9 +83,8 @@ export const addToProjectCommand: CommandDefinition = {
     if (!target || target.bot) throw new NotFoundError('JVLN profile');
     const memberId = await memberIdOf(h, target);
     const name = userText(target.globalName ?? target.username, LINE_TEXT_MAX);
-    const candidates = (await manageableProjects(h)).filter(
-      (detail) => !detail.members.some((member) => member.memberId === memberId),
-    );
+    requireMember(h.ctx);
+    const candidates = await addableProjects(h, memberId);
     if (candidates.length === 0) {
       return h.respond({
         embeds: [

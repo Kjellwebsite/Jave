@@ -168,7 +168,8 @@ export default async function ProjectsPage({
       >
         {filters.status ? <input type="hidden" name="status" value={filters.status} /> : null}
         {filters.view === 'list' ? <input type="hidden" name="view" value="list" /> : null}
-        <Toolbar className="grid grid-cols-2 gap-2.5 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+        {/* Phones stack the selects (full labels, no clipping); Apply shares a row with the layout toggle. */}
+        <Toolbar className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 sm:grid-cols-2 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
           <label className="relative col-span-2 min-w-0 md:col-span-1">
             <span className="sr-only">Search projects</span>
             <Icon
@@ -190,14 +191,16 @@ export default async function ProjectsPage({
             aria-label="Scope"
             defaultValue={filters.scope}
             options={SCOPE_OPTIONS}
+            className="col-span-2 sm:col-span-1"
           />
           <NativeSelect
             name="sort"
             aria-label="Sort"
             defaultValue={filters.sort}
             options={optionsFrom(PROJECT_SORT_LABELS)}
+            className="col-span-2 sm:col-span-1"
           />
-          <div className="col-span-2 flex gap-2 md:col-span-1">
+          <div className="flex min-w-0 gap-2">
             <Button type="submit" variant="secondary" className="flex-1 md:flex-none">
               Apply
             </Button>
@@ -210,11 +213,7 @@ export default async function ProjectsPage({
               </Link>
             ) : null}
           </div>
-          <div
-            role="group"
-            aria-label="Layout"
-            className="col-span-2 flex justify-end gap-1 md:col-span-1"
-          >
+          <div role="group" aria-label="Layout" className="flex justify-end gap-1">
             <ViewLink href={hrefFor(filters, { view: 'grid' })} active={filters.view === 'grid'}>
               <Icon icon={LayoutGrid} size="sm" label="Grid" />
             </ViewLink>

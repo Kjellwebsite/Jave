@@ -149,14 +149,30 @@ test('the owner edits details; linking a repository needs a verified account or 
   await expect(repoLink).toHaveAttribute('rel', /noopener/);
 });
 
-test('the owner adds a teammate by handle', async ({ page }) => {
-  await signInAs(page, 'verified');
+/** Set the signed-in member's profile visibility on /me; returns the previous value. */
+async function setProfileVisibility(page: Page, visibility: string): Promise<string> {
+  await page.goto('/me');
+  const select = page.getByLabel('Profile visibility');
+  const previous = await select.inputValue();
+  await select.selectOption(visibility);
+  await page.getByRole('button', { name: 'Save profile' }).click();
+  await expect(page.getByText('Profile saved.')).toBeVisible();
+  return previous;
+}
+
+test('the owner adds a teammate by handle, even one with a staff-only profile', async ({
+  page,
+}) => {
+  await signInAs(page, 'member');
+  const previous = await setProfileVisibility(page, 'staff');
+
+  await switchTo(page, 'verified');
   await page.goto(`${projectPath}?tab=team`);
   await page.getByTestId('add-member').click();
   const add = page.getByRole('dialog', { name: 'Add member' });
   await add.getByLabel('Member handle').fill('@nobody_by_that_handle');
   await add.getByRole('button', { name: 'Add member' }).click();
-  await expect(add.getByText('Profile not found.')).toBeVisible();
+  await expect(add.getByText('Member not found.')).toBeVisible();
   await add.getByLabel('Member handle').fill('@dev_member');
   await add.getByLabel('Role').selectOption('contributor');
   await add.getByRole('button', { name: 'Add member' }).click();
@@ -165,6 +181,9 @@ test('the owner adds a teammate by handle', async ({ page }) => {
   ).toBeVisible();
   await expect(page.locator('[data-member="dev_member"]')).toContainText('Contributor');
   await expect(page.getByText('Owners cannot leave. Transfer ownership first.')).toBeVisible();
+
+  await switchTo(page, 'member');
+  await setProfileVisibility(page, previous);
 });
 
 test('a contributor records work; nobody verifies their own', async ({ page }) => {

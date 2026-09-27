@@ -24,7 +24,7 @@ export const PROVIDER_LABELS: Readonly<Record<ProviderKey, string>> = {
 
 export const PROVIDER_HINTS: Readonly<Record<ProviderKey, string>> = {
   github:
-    'Pull requests, pushes and releases on linked repositories. Signed with the deployment secret GITHUB_WEBHOOK_SECRET.',
+    'Pull requests, pushes and releases on linked repositories. Signed with GITHUB_WEBHOOK_SECRET; content type application/json.',
   generic:
     'Any sender that signs with the JAVE v1 scheme. Optionally relays a summary to a Discord channel.',
   sidus: 'Research feed. Stored and marked ignored until a processor is configured.',

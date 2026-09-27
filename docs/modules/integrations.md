@@ -69,6 +69,17 @@ Order of checks:
 4. **Identifiers** — missing/invalid delivery id or event → `400 missing_delivery_headers`.
 5. **JSON** — malformed, non-object or nested deeper than 64 → `400`.
    NUL characters (unstorable in Postgres) are stripped; `__proto__` keys stay data.
+   GitHub deliveries sent with GitHub's form content type
+   (`application/x-www-form-urlencoded`, body `payload=<url-encoded JSON>`)
+   have their `payload` field decoded only after the signature over the raw
+   form body verified; a form body without it → `400 missing_form_payload`.
+   `application/json` is the recommended GitHub setting. JAVE-signed bodies
+   are always JSON.
+
+   Steps 4–5 run only for verified senders; each refusal there is recorded as
+   the integration's `lastError` (`delivery rejected: <reason>`), which the
+   dashboard shows, since nothing else is stored for it.
+
 6. **Persist** — `webhook_deliveries` row + `integrations.process_delivery`
    job in one transaction → `202 { ok, deliveryId }`.
    Idempotency: `(integration, delivery id)` **and** `(integration, signature digest)`

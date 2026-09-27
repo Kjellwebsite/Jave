@@ -46,7 +46,7 @@ export function InboundPanel({ registry, timeZone, publicUrl }: PanelProps) {
                   </div>
                   <p className="text-small text-fg-subtle">
                     {integration.secretSource === 'environment'
-                      ? 'Verified with the deployment secret GITHUB_WEBHOOK_SECRET.'
+                      ? 'Verified with the deployment secret GITHUB_WEBHOOK_SECRET. On GitHub, set Content type to application/json.'
                       : integration.hasSecret
                         ? `JAVE v1 signature. Secret issued ${integration.secretRotatedAt ? formatTimestamp(integration.secretRotatedAt, timeZone) : '—'}.`
                         : 'No signing secret stored. Rotate to issue one.'}

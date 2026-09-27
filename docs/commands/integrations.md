@@ -64,6 +64,11 @@ Warnings appear when `JAVE_ENCRYPTION_KEY` (secrets cannot be stored) or
 | `POST /api/webhooks/github` | Integration with slug `github`, verified with `GITHUB_WEBHOOK_SECRET`.            |
 | `POST /api/webhooks/{slug}` | Any registered integration (JAVE v1 signature, or GitHub's for GitHub providers). |
 
+GitHub repository or organization webhook settings: **Payload URL** — the
+endpoint shown on `/integrations`; **Content type** — `application/json`
+(GitHub's default form type is decoded too); **Secret** — the value of
+`GITHUB_WEBHOOK_SECRET`; events — pull requests, pushes, releases.
+
 Both call `server/webhooks/inbound.ts`:
 
 1. rate limit — 120 requests per minute per slug and sender address (keyed
@@ -75,6 +80,8 @@ Both call `server/webhooks/inbound.ts`:
    which verifies the signature, replay window and idempotency;
 4. the pipeline's status and JSON body are returned with `Cache-Control: no-store`
    (`202` accepted, `200 {duplicate: true}`, `401`, `404`, `400`, `503`).
+   A `400` for a verified sender (bad delivery headers, unreadable JSON) also
+   sets the integration's last error, shown on the Inbound tab.
    Unexpected failures answer `500 { error: 'internal_error', reference }`.
 
 No session cookie is read; the routes are outside the dashboard's CSRF origin

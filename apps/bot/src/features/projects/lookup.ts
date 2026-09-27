@@ -1,11 +1,4 @@
-import {
-  can,
-  findMemberByDiscordId,
-  isUuid,
-  NotFoundError,
-  projects,
-  requireMember,
-} from '@jave/core';
+import { can, findMemberByDiscordId, isUuid, NotFoundError, projects } from '@jave/core';
 import type { AutocompleteChoice, HandlerContext, InteractionUser } from '../../interactions/types';
 import { clip } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
@@ -103,18 +96,13 @@ export async function openMilestoneChoices(
 }
 
 /**
- * Active projects the viewer may edit (owner/maintainer; staff: every visible
- * project), newest activity first, at most one picker's worth. Rights come
- * from core's own project view, never re-derived here.
+ * Active projects the viewer manages (owner/maintainer; staff: every
+ * project) that this member is not on yet, newest activity first — filtered
+ * by core before the picker limit, so none is hidden behind busier ones.
  */
-export async function manageableProjects(h: HandlerContext): Promise<projects.ProjectDetail[]> {
-  const actor = requireMember(h.ctx);
-  const page = await projects.listProjects(h.ctx, {
-    memberId: manageScope(h) === 'mine' ? actor.memberId : undefined,
-    limit: PICKER_LIMIT,
-  });
-  const details = await Promise.all(
-    page.items.map((summary) => projects.getProject(h.ctx, { projectId: summary.id })),
-  );
-  return details.filter((detail) => detail.viewer.canEdit && detail.status !== 'archived');
+export function addableProjects(
+  h: HandlerContext,
+  memberId: string,
+): Promise<projects.ProjectSummary[]> {
+  return projects.listAddableProjects(h.ctx, { memberId, limit: PICKER_LIMIT });
 }

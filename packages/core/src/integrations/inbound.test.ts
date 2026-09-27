@@ -56,6 +56,8 @@ describe('inbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
   });
 
   const anon = () => kit.as(anonymousActor);
+  const integrationRow = async (slug: string) =>
+    (await kit.db.select().from(integrations).where(eq(integrations.slug, slug)))[0];
   let deliveryCounter = 0;
 
   function generic(
@@ -200,12 +202,91 @@ describe('inbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
       ).toHaveLength(0);
     });
 
-    it('BREAK: malformed JSON (validly signed) → 400', async () => {
+    it('BREAK: malformed JSON (validly signed) → 400, recorded as the last error', async () => {
       expect(await generic(null, { body: '{"unterminated": ' })).toEqual({
         status: 400,
         body: { error: 'malformed_json' },
       });
       expect((await generic(null, { body: '[1,2,3]' })).body).toEqual({ error: 'not_an_object' });
+      expect(await kit.db.select().from(webhookDeliveries)).toHaveLength(0);
+      expect(await integrationRow('ci-hooks')).toMatchObject({
+        lastError: 'delivery rejected: not_an_object',
+        lastErrorAt: kit.clock.now(),
+      });
+    });
+
+    describe("GitHub's form content type", () => {
+      const FORM = 'application/x-www-form-urlencoded';
+
+      function githubRaw(rawBody: string, headers: Record<string, string>, secret?: string) {
+        deliveryCounter++;
+        return receiveWebhook(anon(), {
+          slug: 'github',
+          rawBody,
+          headers: {
+            'x-hub-signature-256': signGithub(secret ?? TEST_GITHUB_SECRET, rawBody),
+            'x-github-delivery': `form-${deliveryCounter}`,
+            'x-github-event': 'ping',
+            ...headers,
+          },
+          secrets: { github: TEST_GITHUB_SECRET },
+        });
+      }
+
+      const formBody = (payload: unknown) =>
+        new URLSearchParams({ payload: JSON.stringify(payload) }).toString();
+
+      it('decodes the payload field after verifying the signature over the raw form body', async () => {
+        const payload = { zen: 'Speak like a human & mean it.', hook_id: 1 };
+        const response = await githubRaw(formBody(payload), {
+          'content-type': `${FORM}; charset=utf-8`,
+        });
+        expect(response.status).toBe(202);
+        const [delivery] = await kit.db.select().from(webhookDeliveries);
+        expect(delivery).toMatchObject({ eventType: 'ping', payload });
+        await kit.drain(handlers);
+        const [processed] = await kit.db.select().from(webhookDeliveries);
+        expect(processed).toMatchObject({ status: 'processed' });
+      });
+
+      it('BREAK: a form body signed with another secret is refused before decoding', async () => {
+        const response = await githubRaw(
+          formBody({ zen: 'x' }),
+          { 'content-type': FORM },
+          'forged',
+        );
+        expect(response).toEqual({ status: 401, body: { error: 'invalid_signature' } });
+        expect(await kit.db.select().from(webhookDeliveries)).toHaveLength(0);
+      });
+
+      it('BREAK: a form body without the payload field → 400, recorded as the last error', async () => {
+        const response = await githubRaw('other=1', { 'content-type': FORM });
+        expect(response).toEqual({ status: 400, body: { error: 'missing_form_payload' } });
+        expect((await githubRaw('payload=%7Bnope', { 'content-type': FORM })).body).toEqual({
+          error: 'malformed_json',
+        });
+        expect(await kit.db.select().from(webhookDeliveries)).toHaveLength(0);
+        expect((await integrationRow('github'))!.lastError).toBe(
+          'delivery rejected: malformed_json',
+        );
+      });
+
+      it('BREAK: JAVE-signed senders are never form-decoded', async () => {
+        const rawBody = formBody({ text: 'deploy' });
+        const timestamp = String(Math.floor(kit.clock.now().getTime() / 1000));
+        const response = await receiveWebhook(anon(), {
+          slug: 'ci-hooks',
+          rawBody,
+          headers: {
+            'content-type': FORM,
+            'x-jave-timestamp': timestamp,
+            'x-jave-signature': signJave(genericSecret, timestamp, rawBody),
+            'x-jave-delivery': 'form-generic',
+          },
+          secrets: {},
+        });
+        expect(response.body).toEqual({ error: 'malformed_json' });
+      });
     });
 
     it('BREAK: unknown, malformed and disabled slugs all look the same (404)', async () => {
@@ -232,7 +313,10 @@ describe('inbound webhooks', { timeout: DB_TEST_TIMEOUT_MS }, () => {
         },
         secrets: { github: TEST_GITHUB_SECRET },
       });
-      expect(noDelivery.status).toBe(400);
+      expect(noDelivery).toEqual({ status: 400, body: { error: 'missing_delivery_headers' } });
+      expect((await integrationRow('github'))!.lastError).toBe(
+        'delivery rejected: missing_delivery_headers',
+      );
       const noSecret = await receiveWebhook(anon(), {
         slug: 'github',
         rawBody,

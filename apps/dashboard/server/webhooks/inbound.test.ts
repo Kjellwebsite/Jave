@@ -57,13 +57,13 @@ function deps(
 
 function githubRequest(
   body: string,
-  options: { delivery?: string; secret?: string; signature?: string } = {},
+  options: { delivery?: string; secret?: string; signature?: string; contentType?: string } = {},
 ) {
   deliveryCounter++;
   return new Request(`${URL_BASE}github`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': options.contentType ?? 'application/json',
       'X-GitHub-Event': 'ping',
       'X-GitHub-Delivery': options.delivery ?? `gh-${deliveryCounter}`,
       'X-Hub-Signature-256':
@@ -162,6 +162,34 @@ describe('POST /api/webhooks/github', () => {
     );
     expect(await replayedWithNewId.json()).toEqual({ ok: true, duplicate: true });
     expect(await kit.db.select().from(webhookDeliveries)).toHaveLength(1);
+  });
+
+  it("accepts GitHub's default form content type (payload=<url-encoded JSON>)", async () => {
+    const payload = { zen: 'Half measures are as bad as nothing at all.', hook_id: 2 };
+    const body = new URLSearchParams({ payload: JSON.stringify(payload) }).toString();
+    const response = await handleInboundWebhook(
+      githubRequest(body, { contentType: 'application/x-www-form-urlencoded' }),
+      'github',
+      deps(),
+    );
+    expect(response.status).toBe(202);
+    const [row] = await kit.db.select().from(webhookDeliveries);
+    expect(row).toMatchObject({ eventType: 'ping', payload });
+  });
+
+  it('BREAK: a signed delivery that cannot be read is surfaced as the last error', async () => {
+    const response = await handleInboundWebhook(
+      githubRequest('payload=%7Bbroken', { contentType: 'application/x-www-form-urlencoded' }),
+      'github',
+      deps(),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'malformed_json' });
+    const [github] = (await integrations.listIntegrations(kit.as(admin))).filter(
+      (integration) => integration.slug === 'github',
+    );
+    expect(github!.lastError).toBe('delivery rejected: malformed_json');
+    expect(await kit.db.select().from(webhookDeliveries)).toHaveLength(0);
   });
 
   it('answers 503 when the deployment has no GitHub secret', async () => {

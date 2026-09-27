@@ -76,7 +76,7 @@ export async function createIntegrationAction(
       refresh();
       return created.signingSecret
         ? `INTEGRATION CREATED — ${created.integration.name}. Copy the signing secret now; it is not shown again.`
-        : `INTEGRATION CREATED — ${created.integration.name} — ${PROVIDER_LABELS[provider]} deliveries are verified with GITHUB_WEBHOOK_SECRET.`;
+        : `INTEGRATION CREATED — ${created.integration.name} — ${PROVIDER_LABELS[provider]} deliveries are verified with GITHUB_WEBHOOK_SECRET. On GitHub, paste the endpoint URL and set Content type to application/json.`;
     },
     holder,
     INTEGRATION_FIELDS,

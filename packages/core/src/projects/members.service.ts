@@ -7,7 +7,8 @@ import { parseInput } from '../kernel/validation';
 import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
 import { notify } from '../notifications/notifications.service';
-import { requireMember } from '../permissions/authorize';
+import { can, requireMember } from '../permissions/authorize';
+import { HANDLE_PATTERN } from '../identity/discord';
 import {
   activeRole,
   assertNotArchived,
@@ -38,6 +39,20 @@ const assignableRole = z.enum(['maintainer', 'contributor']);
 export const addProjectMemberSchema = z.object({
   projectId: z.uuid(),
   memberId: z.uuid(),
+  role: assignableRole.default('contributor'),
+});
+
+/** Longest handle input accepted (a handle is at most 32 characters, plus an optional `@`). */
+const HANDLE_INPUT_MAX = 64;
+
+export const addProjectMemberByHandleSchema = z.object({
+  projectId: z.uuid(),
+  /** As typed: `mara` or `@mara`, any case. */
+  handle: z
+    .string()
+    .trim()
+    .max(HANDLE_INPUT_MAX)
+    .transform((value) => value.replace(/^@/, '').toLowerCase()),
   role: assignableRole.default('contributor'),
 });
 
@@ -72,13 +87,23 @@ function assertCanManageRole(access: ProjectAccess, targetRole: ProjectRole): vo
   }
 }
 
+const TARGET_COLUMNS = { id: members.id, userId: members.userId, standing: members.standing };
+
 async function loadTargetMember(ctx: ServiceContext, memberId: string) {
   const [row] = await ctx.db
-    .select({ id: members.id, userId: members.userId, standing: members.standing })
+    .select(TARGET_COLUMNS)
     .from(members)
     .where(and(eq(members.id, memberId), isNull(members.deletedAt)));
   if (!row) throw new NotFoundError('Member');
   return row;
+}
+
+async function findTargetByHandle(ctx: ServiceContext, handle: string) {
+  const [row] = await ctx.db
+    .select(TARGET_COLUMNS)
+    .from(members)
+    .where(and(eq(members.handle, handle), isNull(members.deletedAt)));
+  return row ?? null;
 }
 
 async function notifyMember(
@@ -101,6 +126,14 @@ async function notifyMember(
   });
 }
 
+type TargetMember = Awaited<ReturnType<typeof loadTargetMember>>;
+
+function canJoinProjects(target: TargetMember): boolean {
+  return target.standing !== 'banned' && target.standing !== 'quarantined';
+}
+
+const CANNOT_JOIN = 'That member cannot join projects right now.';
+
 /** Add a member (maintainer/contributor). Rejoining reactivates the previous row. */
 export async function addProjectMember(
   ctx: ServiceContext,
@@ -110,9 +143,41 @@ export async function addProjectMember(
   const access = await loadManageableProject(ctx, data.projectId);
   assertCanManageRole(access, data.role);
   const target = await loadTargetMember(ctx, data.memberId);
-  if (target.standing === 'banned' || target.standing === 'quarantined') {
-    throw new InvalidStateError('That member cannot join projects right now.');
+  if (!canJoinProjects(target)) throw new InvalidStateError(CANNOT_JOIN);
+  return insertMembership(ctx, access, target.id, data.role);
+}
+
+/**
+ * Add a member by profile handle (a typed form). The handle is resolved only
+ * after the manage check, and independently of profile visibility — the
+ * same people can be added as through Discord. An unknown handle and a
+ * banned or quarantined member both answer "Member not found" (standing is
+ * private) unless the viewer may see private profiles.
+ */
+export async function addProjectMemberByHandle(
+  ctx: ServiceContext,
+  input: z.input<typeof addProjectMemberByHandleSchema>,
+) {
+  const data = parseInput(addProjectMemberByHandleSchema, input);
+  const access = await loadManageableProject(ctx, data.projectId);
+  assertCanManageRole(access, data.role);
+  const target = HANDLE_PATTERN.test(data.handle)
+    ? await findTargetByHandle(ctx, data.handle)
+    : null;
+  if (!target) throw new NotFoundError('Member');
+  if (!canJoinProjects(target)) {
+    if (!can(ctx, 'canViewPrivateProfiles')) throw new NotFoundError('Member');
+    throw new InvalidStateError(CANNOT_JOIN);
   }
+  return insertMembership(ctx, access, target.id, data.role);
+}
+
+async function insertMembership(
+  ctx: ServiceContext,
+  access: ProjectAccess,
+  targetId: string,
+  role: z.infer<typeof assignableRole>,
+) {
   const { project } = access;
 
   return withTransaction(ctx, async (t) => {
@@ -121,7 +186,7 @@ export async function addProjectMember(
     const [existing] = await t.db
       .select()
       .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, project.id), eq(projectMembers.memberId, target.id)));
+      .where(and(eq(projectMembers.projectId, project.id), eq(projectMembers.memberId, targetId)));
     if (existing && existing.leftAt === null) {
       throw new ConflictError('That member is already on this project.');
     }
@@ -136,31 +201,31 @@ export async function addProjectMember(
     const [row] = existing
       ? await t.db
           .update(projectMembers)
-          .set({ role: data.role, joinedAt: now, leftAt: null })
+          .set({ role, joinedAt: now, leftAt: null })
           .where(eq(projectMembers.id, existing.id))
           .returning()
       : await t.db
           .insert(projectMembers)
-          .values({ projectId: project.id, memberId: target.id, role: data.role, joinedAt: now })
+          .values({ projectId: project.id, memberId: targetId, role, joinedAt: now })
           .returning();
     await recordAudit(t, {
       action: 'project.member_added',
       targetType: 'project',
       targetId: project.id,
-      context: { memberId: target.id, role: data.role },
+      context: { memberId: targetId, role },
     });
     const eventId = await publishEvent(t, {
       type: 'project.member_added',
       aggregateType: 'project',
       aggregateId: project.id,
-      subjectMemberId: target.id,
-      payload: { ...projectEventBase(project), memberId: target.id, role: data.role },
+      subjectMemberId: targetId,
+      payload: { ...projectEventBase(project), memberId: targetId, role },
     });
     await notifyMember(
       t,
       project,
-      target.id,
-      `${project.title} — you were added as ${ROLE_LABELS[data.role]}.`,
+      targetId,
+      `${project.title} — you were added as ${ROLE_LABELS[role]}.`,
       `project:${project.id}:member:${eventId}`,
     );
     return row!;

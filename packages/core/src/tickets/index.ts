@@ -66,7 +66,13 @@ export type {
 } from './views';
 
 // Services
-export { archiveTicket, closeTicket, openTicket, reopenTicket } from './lifecycle.service';
+export {
+  archiveTicket,
+  assertCanOpenTicket,
+  closeTicket,
+  openTicket,
+  reopenTicket,
+} from './lifecycle.service';
 export {
   claimTicket,
   resumeTicket,

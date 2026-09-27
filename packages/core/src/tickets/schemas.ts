@@ -16,6 +16,7 @@ import {
   SUBJECT_MAX_LENGTH,
   SUBJECT_MIN_LENGTH,
   TICKET_CATEGORIES,
+  TICKET_NUMBER_MAX,
   TICKET_PRIORITIES,
   TICKET_STATUSES,
   type TicketCategory,
@@ -187,6 +188,8 @@ export const listTicketsSchema = pageSchema.extend({
   breached: z.boolean().optional(),
   /** Handler-only. */
   openerUserId: z.uuid().optional(),
+  /** Exactly this ticket number (`#0042` → 42), within the caller's scope. */
+  number: z.coerce.number().int().min(1).max(TICKET_NUMBER_MAX).optional(),
   search: singleLine(1, SEARCH_MAX_LENGTH).optional(),
   sort: z.enum(['newest', 'oldest', 'activity', 'sla']).default('newest'),
 });

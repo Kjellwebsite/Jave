@@ -6,7 +6,7 @@ import { createDiscordClient, wireClient } from './discord/client';
 import { DiscordJsGateway } from './discord/discord-gateway';
 import { allFeatures } from './features';
 import { startHealthServer } from './health/server';
-import { type BotIntegrations, integrationsFromEnv } from './integrations';
+import { integrationsFromEnv } from './integrations';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -23,20 +23,16 @@ async function main(): Promise<void> {
   }
 
   const logger = createLogger({ name: 'jave-bot', level: env.LOG_LEVEL });
-  let integrations: BotIntegrations;
-  try {
-    integrations = integrationsFromEnv(env);
-  } catch (error) {
-    // The factories name the offending variable, never its value.
-    console.error(
-      `Invalid AI / Sidus configuration: ${error instanceof Error ? error.message : 'unknown error'}`,
-    );
-    process.exit(1);
+  // An invalid AI or Sidus configuration leaves that integration unavailable
+  // (logged by variable name, never its value) instead of taking the bot down.
+  const integrations = integrationsFromEnv(env);
+  for (const problem of integrations.problems) {
+    logger.error(problem, 'integration misconfigured; unavailable');
   }
   logger.info(
     {
-      aiProvider: integrations.ai.provider.name,
-      aiModel: integrations.ai.provider.defaultModel,
+      aiProvider: integrations.ai?.provider.name ?? 'unavailable',
+      aiModel: integrations.ai?.provider.defaultModel,
       sidus: integrations.researchJobs.sidus.configured,
     },
     'integrations configured',

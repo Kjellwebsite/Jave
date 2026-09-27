@@ -3,6 +3,7 @@ import type { HandlerContext } from '../../interactions/types';
 import { field, panel } from '../../ui/components';
 import { alignRows, discordTime, userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
+import { aiDepsOf } from './deps';
 
 /** How many features / members the org view lists. */
 const TOP_ROWS = 5;
@@ -18,7 +19,7 @@ function count(value: number): string {
  * see the heaviest members today. Never prompts or answers.
  */
 export async function aiUsageReport(h: HandlerContext): Promise<void> {
-  const mine = await ai.getUsage(h.ctx, h.services.ai);
+  const mine = await ai.getUsage(h.ctx, aiDepsOf(h.services));
   const fields = [
     field(
       'You today',

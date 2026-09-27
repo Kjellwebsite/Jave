@@ -6,15 +6,15 @@ import {
   DisabledProvider,
   MOCK_PROVIDER_NAME,
 } from '@jave/ai';
-import { ai, research, type ServiceContext, type tickets } from '@jave/core';
+import { type ai, research } from '@jave/core';
 import { getRuntime } from './runtime';
 
 /**
  * The dashboard's AI and Sidus integration, built once per process from the
- * environment. Unlike the bot (which refuses to start), a misconfigured
- * provider degrades to disabled here and the /ai page names the variable to
- * fix — the rest of the console keeps working. Errors name variables, never
- * their values.
+ * environment and shared by every page (the /ai console, research, the
+ * tickets summary panel). As in the bot, a misconfigured provider degrades to
+ * disabled and the /ai page names the variable to fix — the rest of the
+ * console keeps working. Errors name variables, never their values.
  */
 export interface DashboardIntegrations {
   ai: ai.AiDeps;
@@ -93,16 +93,6 @@ export function getIntegrations(): DashboardIntegrations {
 /** The AI dependencies every `ai.*` call from the dashboard takes. */
 export function getAiDeps(): ai.AiDeps {
   return getIntegrations().ai;
-}
-
-/**
- * The tickets AI summary extension point for a dashboard request: core's
- * guarded AI path with this process's provider, as the signed-in member.
- * Usage: `tickets.summarizeTicket(ctx, ticketId, ticketSummarizerFor(ctx))`.
- * With AI disabled it refuses with the AI module's own DisabledError.
- */
-export function ticketSummarizerFor(ctx: ServiceContext): tickets.TicketSummarizer {
-  return ai.ticketSummarizer(ctx, getAiDeps(), 'dashboard');
 }
 
 /**

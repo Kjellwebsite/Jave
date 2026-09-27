@@ -3,6 +3,7 @@ import type { HandlerContext } from '../../interactions/types';
 import { replyWithAnswer, UNVERIFIED_SOURCES_NOTICE, withAiLimits } from './answers';
 import { researchBrief } from './research-brief';
 import type { SummarizableMessage } from './messages';
+import { aiDepsOf } from './deps';
 
 /**
  * The AI calls behind every Discord surface. Each one runs as the invoking
@@ -15,14 +16,18 @@ const SURFACE = 'discord';
 
 export async function runAsk(h: HandlerContext, question: string, context?: string) {
   await withAiLimits(h, async () => {
-    const answer = await ai.ask(h.ctx, h.services.ai, { question, context, surface: SURFACE });
+    const answer = await ai.ask(h.ctx, aiDepsOf(h.services), {
+      question,
+      context,
+      surface: SURFACE,
+    });
     await replyWithAnswer(h, { kicker: 'JAVE AI · ASK', title: 'Answer' }, answer);
   });
 }
 
 export async function runResearch(h: HandlerContext, question: string) {
   await withAiLimits(h, async () => {
-    const result = await ai.research(h.ctx, h.services.ai, { question, surface: SURFACE });
+    const result = await ai.research(h.ctx, aiDepsOf(h.services), { question, surface: SURFACE });
     await replyWithAnswer(
       h,
       { kicker: 'JAVE AI · RESEARCH', title: 'Research brief' },
@@ -34,7 +39,7 @@ export async function runResearch(h: HandlerContext, question: string) {
 
 export async function runSummarizeText(h: HandlerContext, text: string) {
   await withAiLimits(h, async () => {
-    const answer = await ai.summarize(h.ctx, h.services.ai, { text, surface: SURFACE });
+    const answer = await ai.summarize(h.ctx, aiDepsOf(h.services), { text, surface: SURFACE });
     await replyWithAnswer(h, { kicker: 'JAVE AI · SUMMARIZE', title: 'Summary' }, answer);
   });
 }
@@ -44,7 +49,7 @@ export async function runSummarizeMessages(
   messages: readonly SummarizableMessage[],
 ) {
   await withAiLimits(h, async () => {
-    const answer = await ai.summarize(h.ctx, h.services.ai, {
+    const answer = await ai.summarize(h.ctx, aiDepsOf(h.services), {
       messages: [...messages],
       surface: SURFACE,
     });
@@ -54,21 +59,21 @@ export async function runSummarizeMessages(
 
 export async function runAnalyze(h: HandlerContext, text: string) {
   await withAiLimits(h, async () => {
-    const answer = await ai.analyze(h.ctx, h.services.ai, { text, surface: SURFACE });
+    const answer = await ai.analyze(h.ctx, aiDepsOf(h.services), { text, surface: SURFACE });
     await replyWithAnswer(h, { kicker: 'JAVE AI · ANALYZE', title: 'Analysis' }, answer);
   });
 }
 
 export async function runExplain(h: HandlerContext, text: string) {
   await withAiLimits(h, async () => {
-    const answer = await ai.explain(h.ctx, h.services.ai, { text, surface: SURFACE });
+    const answer = await ai.explain(h.ctx, aiDepsOf(h.services), { text, surface: SURFACE });
     await replyWithAnswer(h, { kicker: 'JAVE AI · EXPLAIN', title: 'Explanation' }, answer);
   });
 }
 
 export async function runBrainstorm(h: HandlerContext, topic: string, constraints?: string) {
   await withAiLimits(h, async () => {
-    const answer = await ai.brainstorm(h.ctx, h.services.ai, {
+    const answer = await ai.brainstorm(h.ctx, aiDepsOf(h.services), {
       topic,
       constraints,
       surface: SURFACE,

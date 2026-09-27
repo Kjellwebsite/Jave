@@ -7,6 +7,7 @@ import { discordTime } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
 import { paginate } from './pages';
 import { ExpiringStore } from './store';
+import { aiDepsOf } from './deps';
 
 export const AI_NS = 'ai';
 
@@ -101,7 +102,7 @@ export async function replyWithAnswer(
   answer: AnswerSource,
   extraNotices: readonly string[] = [],
 ): Promise<void> {
-  const usage = await ai.getUsage(h.ctx, h.services.ai);
+  const usage = await ai.getUsage(h.ctx, aiDepsOf(h.services));
   const notices = [
     ...(answer.provider === MOCK_PROVIDER_NAME ? [MOCK_NOTICE] : []),
     ...answer.warnings.map((warning) => WARNING_COPY[warning]),

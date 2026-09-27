@@ -108,6 +108,17 @@ export function wireClient(client: Client, app: BotApp, guildId: string, logger:
     );
   });
 
+  client.on(Events.MessageBulkDelete, (messages, channel) => {
+    if (channel.guildId !== guildId) return;
+    guard('messageDeleteBulk', () =>
+      app.events.messageDeleteBulk({
+        ids: [...messages.keys()],
+        channelId: channel.id,
+        guildId: channel.guildId,
+      }),
+    );
+  });
+
   client.on(Events.GuildMemberAdd, (member) => {
     if (member.guild.id !== guildId) return;
     guard('guildMemberAdd', () =>

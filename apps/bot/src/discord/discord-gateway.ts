@@ -11,6 +11,7 @@ import {
   PermissionFlagsBits,
   RESTJSONErrorCodes,
   type TextChannel,
+  ThreadAutoArchiveDuration,
   type ThreadChannel,
 } from 'discord.js';
 import {
@@ -24,7 +25,16 @@ import {
   type ReadableMessage,
   type ScheduledEventSpec,
   type SentMessage,
+  type ThreadAutoArchiveMinutes,
+  type ThreadState,
 } from './gateway';
+
+const AUTO_ARCHIVE_DURATION: Record<ThreadAutoArchiveMinutes, ThreadAutoArchiveDuration> = {
+  60: ThreadAutoArchiveDuration.OneHour,
+  1440: ThreadAutoArchiveDuration.OneDay,
+  4320: ThreadAutoArchiveDuration.ThreeDays,
+  10080: ThreadAutoArchiveDuration.OneWeek,
+};
 
 /** Discord error codes that retrying will never fix. */
 const PERMANENT_CODES = new Set<number>([
@@ -349,7 +359,10 @@ export class DiscordJsGateway implements DiscordGateway {
     await attempt('delete channel', async () => void (await channel.delete(reason)));
   }
 
-  async createPrivateThread(parentChannelId: string, spec: { name: string; reason: string }) {
+  async createPrivateThread(
+    parentChannelId: string,
+    spec: { name: string; reason: string; autoArchiveMinutes?: ThreadAutoArchiveMinutes },
+  ) {
     const parent = await this.textChannel(parentChannelId);
     if (parent.isThread())
       throw new DiscordActionError('cannot create a thread inside a thread', null, true);
@@ -359,6 +372,9 @@ export class DiscordJsGateway implements DiscordGateway {
         type: ChannelType.PrivateThread,
         invitable: false,
         reason: spec.reason,
+        ...(spec.autoArchiveMinutes
+          ? { autoArchiveDuration: AUTO_ARCHIVE_DURATION[spec.autoArchiveMinutes] }
+          : {}),
       }),
     );
     return thread.id;
@@ -378,6 +394,16 @@ export class DiscordJsGateway implements DiscordGateway {
     const thread = await this.textChannel(threadId);
     if (!thread.isThread()) throw new DiscordActionError(`${threadId} is not a thread`, null, true);
     await attempt('update thread', async () => void (await thread.edit({ ...state, reason })));
+  }
+
+  async fetchThreadState(threadId: string): Promise<ThreadState> {
+    const channel = await attempt('fetch thread', () =>
+      this.client.channels.fetch(threadId, { force: true }),
+    );
+    if (!channel?.isThread()) {
+      throw new DiscordActionError(`${threadId} is not a thread`, null, true);
+    }
+    return { archived: channel.archived ?? false, locked: channel.locked ?? false };
   }
 
   async createScheduledEvent(spec: ScheduledEventSpec & { reason: string }) {

@@ -78,6 +78,14 @@ export interface ReadableMessage {
   url: string;
 }
 
+/** Idle periods after which Discord archives a thread (the values its API accepts). */
+export type ThreadAutoArchiveMinutes = 60 | 1440 | 4320 | 10080;
+
+export interface ThreadState {
+  archived: boolean;
+  locked: boolean;
+}
+
 /** A Discord API failure normalized for job handlers. */
 export class DiscordActionError extends Error {
   constructor(
@@ -133,7 +141,7 @@ export interface DiscordGateway {
   deleteChannel(channelId: string, reason: string): Promise<void>;
   createPrivateThread(
     parentChannelId: string,
-    spec: { name: string; reason: string },
+    spec: { name: string; reason: string; autoArchiveMinutes?: ThreadAutoArchiveMinutes },
   ): Promise<string>;
   addThreadMember(threadId: string, userId: string): Promise<void>;
   setThreadState(
@@ -141,6 +149,8 @@ export interface DiscordGateway {
     state: { locked?: boolean; archived?: boolean },
     reason: string,
   ): Promise<void>;
+  /** Current archived/locked flags, read fresh from Discord (not the cache). */
+  fetchThreadState(threadId: string): Promise<ThreadState>;
 
   // Scheduled events
   createScheduledEvent(spec: ScheduledEventSpec & { reason: string }): Promise<string>;

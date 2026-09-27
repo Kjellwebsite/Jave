@@ -15,6 +15,7 @@ import { authorName, summarizable, targetText } from './messages';
 import { proposalPreview, expiredControl } from './proposals';
 import { runAsk, runExplain, runSummarizeMessages } from './run';
 import { ExpiringStore } from './store';
+import { aiDepsOf } from './deps';
 
 /**
  * Message context menus (right-click a message → Apps). The member can only
@@ -125,7 +126,7 @@ export const createTaskContext: CommandDefinition = {
   async execute(h) {
     const { text } = targetText(h.interaction.targetMessage);
     await withAiLimits(h, async () => {
-      const draft = await ai.draftTask(h.ctx, h.services.ai, {
+      const draft = await ai.draftTask(h.ctx, aiDepsOf(h.services), {
         brief: text.slice(0, ai.MAX_DRAFT_BRIEF_LENGTH),
         surface: 'discord',
       });

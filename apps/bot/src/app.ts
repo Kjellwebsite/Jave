@@ -1,5 +1,4 @@
 import {
-  type ai,
   coreJobHandlers,
   coreRecurringJobs,
   createContext,
@@ -12,12 +11,13 @@ import {
   Worker,
 } from '@jave/core';
 import type { Database } from '@jave/database';
-import type { Clock, CoreConfig, Logger, TtlCache } from '@jave/core';
+import type { ai, Clock, CoreConfig, Logger, TtlCache } from '@jave/core';
 import type { DiscordGateway } from './discord/gateway';
 import type { BotFeature } from './features/types';
 import type {
   IncomingMessage,
   JoinedMember,
+  MessageBulkDeletion,
   MessageDeletion,
   MessageUpdate,
 } from './gateway-events/types';
@@ -36,8 +36,12 @@ export interface BotAppOptions {
   gateway: DiscordGateway;
   features: BotFeature[];
   worker: { concurrency: number; pollMs: number };
-  /** AI provider + daily ceiling, built from the environment (main.ts) or a mock (tests). */
-  ai: ai.AiDeps;
+  /**
+   * AI provider + daily ceiling, built from the environment (main.ts) or the
+   * MOCK / DEVELOPMENT ONLY MockProvider (tests). Absent when the AI
+   * configuration is invalid; see BotServices.ai.
+   */
+  ai?: ai.AiDeps;
   /**
    * Research job dependencies: metadata resolvers and the Sidus client built
    * from SIDUS_API_URL / SIDUS_API_KEY. Default: the core defaults (public
@@ -64,6 +68,7 @@ export interface GatewayDispatcher {
   memberJoin(member: JoinedMember): Promise<void>;
   memberLeave(userId: string): Promise<void>;
   invitesChanged(): Promise<void>;
+  messageDeleteBulk(deletion: MessageBulkDeletion): Promise<void>;
 }
 
 /** Merge job handler maps, refusing duplicates (two owners for one job type is a bug). */
@@ -105,7 +110,7 @@ export function createBotApp(options: BotAppOptions): BotApp {
           gateway: options.gateway,
           worker,
           pollMs: options.worker.pollMs,
-          ai: options.ai.provider,
+          ai: options.ai?.provider,
           extra: options.extraHealthChecks,
         }),
       ),
@@ -179,6 +184,7 @@ export function createBotApp(options: BotAppOptions): BotApp {
     memberJoin: (m) => fanOut('onMemberJoin', (fn) => fn(services, m)),
     memberLeave: (id) => fanOut('onMemberLeave', (fn) => fn(services, id)),
     invitesChanged: () => fanOut('onInvitesChanged', (fn) => fn(services)),
+    messageDeleteBulk: (d) => fanOut('onMessageDeleteBulk', (fn) => fn(services, d)),
   };
 
   return {

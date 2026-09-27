@@ -186,11 +186,14 @@ bounded by the kind's capability), `canManageMissions`, `canBroadcast`, `canView
   queue with CONFIRM / REJECT, draft forms (announcement, mission) and the request ledger.
 - **Wiring**: the bot builds `AiDeps` once in `apps/bot/src/integrations.ts` (`BotServices.ai`;
   the test harness uses the MOCK / DEVELOPMENT ONLY `MockProvider`); the dashboard in
-  `apps/dashboard/server/ai.ts` (a misconfigured provider degrades to disabled there and the /ai
-  page names the variable). `/jave status` and `/readyz` carry an `ai` check (disabled / ok /
-  down from `provider.health()`, cached 60 s, non-critical). Ticket summaries use
-  `ai.ticketSummarizer(ctx, services.ai, surface)`; `tickets.summarizeTicket` passes the AI
-  module's own `DisabledError` / `RateLimitedError` through unchanged.
+  `apps/dashboard/server/ai.ts`, shared by `/ai`, `/research` and the tickets summary panel. In
+  both, a misconfigured provider degrades to unavailable instead of taking the process down: it
+  is logged by variable name (never its value), the bot's `ai` health check reads down and the
+  /ai page names the variable. `/jave status` and `/readyz` carry an `ai` check (disabled / ok /
+  down from `provider.health()`, cached 60 s, non-critical). The tickets surfaces wire
+  `ai.ticketSummarizer(ctx, deps, surface)` into `tickets.summarizeTicket` (feature
+  `ticket_summary`; the tickets module's instructions travel as the trusted request), which
+  passes the AI module's own `DisabledError` / `RateLimitedError` through unchanged.
 
 ## Known limitations
 

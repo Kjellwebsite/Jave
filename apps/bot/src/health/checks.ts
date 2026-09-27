@@ -22,40 +22,46 @@ export interface HealthDeps {
   gateway: DiscordGateway;
   worker: Pick<Worker, 'status'> | null;
   pollMs: number;
-  ai: AIProvider;
+  /** Absent when the AI configuration is invalid (see BotServices.ai). */
+  ai: AIProvider | undefined;
   extra?: HealthCheck[];
 }
 
 type CheckResult = Omit<HealthResult, 'name'>;
 
+/** Detail for an invalid AI configuration; the startup log names the variable. */
+export const AI_MISCONFIGURED_DETAIL = 'AI provider misconfigured (see the startup log)';
+
 /**
- * `ai`: disabled when AI_PROVIDER=disabled, otherwise ok/down from
- * `provider.health()`. Results are cached for AI_HEALTH_CACHE_MS and
- * concurrent probes share one in-flight call. Non-critical.
+ * `ai`: disabled when AI_PROVIDER=disabled, down when the AI configuration is
+ * invalid (no provider), otherwise ok/down from `provider.health()`. Results
+ * are cached for AI_HEALTH_CACHE_MS and concurrent probes share one in-flight
+ * call. Non-critical: the bot keeps serving everything else.
  */
-export function aiHealthCheck(provider: AIProvider, clock: Clock): HealthCheck {
+export function aiHealthCheck(provider: AIProvider | undefined, clock: Clock): HealthCheck {
   let cached: { at: number; result: CheckResult } | null = null;
   let inFlight: Promise<CheckResult> | null = null;
-  const probe = async (): Promise<CheckResult> => {
+  const probe = async (live: AIProvider): Promise<CheckResult> => {
     try {
-      const health = await provider.health();
+      const health = await live.health();
       return health.ok
-        ? { status: 'ok', detail: `${provider.name} ${GLYPH.dot} ${provider.defaultModel}` }
+        ? { status: 'ok', detail: `${live.name} ${GLYPH.dot} ${live.defaultModel}` }
         : { status: 'down', detail: health.detail };
     } catch {
-      return { status: 'down', detail: `${provider.name} health check failed` };
+      return { status: 'down', detail: `${live.name} health check failed` };
     }
   };
   return {
     name: 'ai',
     critical: false,
     run: async () => {
+      if (!provider) return { status: 'down', detail: AI_MISCONFIGURED_DETAIL };
       if (provider.name === DISABLED_PROVIDER_NAME) {
         return { status: 'disabled', detail: 'AI_PROVIDER=disabled' };
       }
       const now = clock.now().getTime();
       if (cached && now - cached.at < AI_HEALTH_CACHE_MS) return cached.result;
-      inFlight ??= probe().finally(() => {
+      inFlight ??= probe(provider).finally(() => {
         inFlight = null;
       });
       const result = await inFlight;

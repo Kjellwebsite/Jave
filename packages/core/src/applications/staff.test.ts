@@ -63,6 +63,23 @@ describe('applications: staff workflow', () => {
       expect(byNumber.items.map((i) => i.id)).toEqual([b.applicationId]);
     });
 
+    it('counts each application’s reviews in the list', async () => {
+      const ops = await kit.member({ roles: ['operations'] });
+      const second = await kit.member({ roles: ['operations'] });
+      const a = await submittedApplicant(kit);
+      const b = await submittedApplicant(kit);
+      for (const reviewer of [ops, second]) {
+        await reviewApplication(kit.as(reviewer), {
+          applicationId: b.applicationId,
+          recommendation: 'accept',
+          score: 4,
+        });
+      }
+      const listed = await listApplications(kit.as(ops));
+      const counts = Object.fromEntries(listed.items.map((item) => [item.id, item.reviewCount]));
+      expect(counts).toEqual({ [a.applicationId]: 0, [b.applicationId]: 2 });
+    });
+
     it('returns the full staff view and audits the read', async () => {
       const ops = await kit.member({ roles: ['operations'] });
       const referrer = await kit.member();

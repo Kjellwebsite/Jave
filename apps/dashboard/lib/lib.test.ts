@@ -188,6 +188,8 @@ describe('navigation', () => {
       label: 'Projects',
     });
     expect(navContext('/notifications')).toEqual({ group: 'ACCOUNT', label: 'Notifications' });
+    expect(navContext('/me/application')).toEqual({ group: 'ACCOUNT', label: 'My application' });
+    expect(navContext('/me')).toEqual({ group: 'ACCOUNT', label: 'My profile' });
     expect(navContext('/nowhere')).toBeNull();
     expect(isActivePath('/membership', '/members')).toBe(false);
   });

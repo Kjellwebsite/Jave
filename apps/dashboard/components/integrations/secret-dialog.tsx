@@ -154,7 +154,7 @@ export function SecretDialog({ trigger, eyebrow, title, description, ...form }: 
           onPendingChange={setPending}
           onDone={(message) => {
             setOpen(false);
-            toast(message);
+            toast({ text: message, tone: 'success' });
           }}
         />
       </DialogContent>

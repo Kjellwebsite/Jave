@@ -10,19 +10,39 @@ import { authorize } from '../permissions/authorize';
 import { canSeeSubject, visibleSubjectCondition } from './targets';
 import {
   type CaseEndReason,
+  isLiveAction,
   LIVE_ACTIONS,
   loadLiveCases,
   type ModCaseRecord,
   type ModSource,
   timeoutInForce,
 } from './case-engine';
-import { MAX_CASE_HISTORY } from './constants';
+import { MAX_CASE_HISTORY, MAX_CASE_NUMBER } from './constants';
 import { caseReference, type ModAction } from './copy';
 
 export interface CasePerson {
   userId: string;
   discordId: string;
   name: string;
+}
+
+/**
+ * Discord state as surfaces show it: `discordSync`, except that a timeout,
+ * quarantine or ban that ended (lifted, superseded, revoked) before the bot
+ * applied it reads `not_applied` — its apply job was cancelled or is skipped
+ * (`getCaseForSync`), so it is no longer pending. If an in-flight apply still
+ * lands, the case reads `applied` and the reversal is re-sent.
+ */
+export type CaseDiscordState = ModCaseRecord['discordSync'] | 'not_applied';
+
+export function discordStateOf(
+  record: Pick<ModCaseRecord, 'action' | 'discordSync' | 'endedAt' | 'revokedAt'>,
+): CaseDiscordState {
+  const endedFirst =
+    record.discordSync === 'pending' &&
+    isLiveAction(record.action) &&
+    (record.endedAt !== null || record.revokedAt !== null);
+  return endedFirst ? 'not_applied' : record.discordSync;
 }
 
 export interface ModCaseView {
@@ -41,6 +61,8 @@ export interface ModCaseView {
   securityEventId: string | null;
   revertsCaseId: string | null;
   discordSync: ModCaseRecord['discordSync'];
+  /** What to show for Discord sync (see `CaseDiscordState`). */
+  discordState: CaseDiscordState;
   discordError: string | null;
   discordSyncedAt: Date | null;
   /** True while a timeout / quarantine / ban is in force. */
@@ -119,6 +141,7 @@ function toView(row: CaseRow, now: Date): ModCaseView {
     securityEventId: record.securityEventId,
     revertsCaseId: record.revertsCaseId,
     discordSync: record.discordSync,
+    discordState: discordStateOf(record),
     discordError: record.discordError,
     discordSyncedAt: record.discordSyncedAt,
     inForce: inForce(record, now),
@@ -148,6 +171,8 @@ export async function getCase(ctx: ServiceContext, caseId: string): Promise<ModC
 }
 
 export const listCasesSchema = pageSchema.extend({
+  /** The case number (CASE-0042 → 42). */
+  number: z.coerce.number().int().positive().max(MAX_CASE_NUMBER).optional(),
   targetUserId: z.uuid().optional(),
   moderatorUserId: z.uuid().optional(),
   action: z.enum(modAction.enumValues).optional(),
@@ -166,6 +191,7 @@ export async function listCases(
   const q = parseInput(listCasesSchema, input);
   await authorize(ctx, 'canModerate', { type: 'mod_case' });
   const filters: SQL[] = [];
+  if (q.number !== undefined) filters.push(eq(modCases.number, q.number));
   if (q.targetUserId) filters.push(eq(modCases.targetUserId, q.targetUserId));
   if (q.moderatorUserId) filters.push(eq(modCases.moderatorUserId, q.moderatorUserId));
   if (q.action) filters.push(eq(modCases.action, q.action));
@@ -207,6 +233,8 @@ export interface CaseHistorySummary {
 
 export interface CaseHistory {
   target: CasePerson;
+  /** The subject is a bot or webhook account: no punitive action applies. */
+  isBot: boolean;
   summary: CaseHistorySummary;
   /** Most recent first, capped. */
   cases: ModCaseView[];
@@ -267,6 +295,7 @@ export async function getCaseHistory(
       discordId: user.discordId,
       name: user.displayName ?? user.username,
     },
+    isBot: user.isBot,
     summary: {
       warnings: warnings?.value ?? 0,
       timeoutUntil: timeoutInForce(live.timeout, now) ? (live.timeout?.expiresAt ?? null) : null,

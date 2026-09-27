@@ -4,10 +4,12 @@ import {
   type FormEvent,
   type ReactElement,
   type ReactNode,
+  startTransition,
+  useActionState,
+  useCallback,
   useEffect,
   useRef,
   useState,
-  useTransition,
 } from 'react';
 import { Button, Dialog, DialogClose, DialogContent, DialogTrigger } from '@jave/ui';
 import { type ActionState, IDLE_STATE } from '@/lib/action-state';
@@ -34,7 +36,7 @@ interface ConfirmFormProps extends Pick<
   'confirmLabel' | 'tone' | 'action' | 'hidden' | 'children'
 > {
   onPendingChange: (pending: boolean) => void;
-  onSuccess: (message: string) => void;
+  onSuccess: () => void;
 }
 
 function ConfirmForm({
@@ -46,8 +48,19 @@ function ConfirmForm({
   onPendingChange,
   onSuccess,
 }: ConfirmFormProps) {
-  const [state, setState] = useState<ActionState>(IDLE_STATE);
-  const [pending, startTransition] = useTransition();
+  const toast = useToast();
+  // The success toast is raised by the call itself: an action that revalidates
+  // the page often removes this dialog's trigger (Claim, Submit, Accept…), and
+  // an effect in an unmounted form never runs, so the result would go unannounced.
+  const announced = useCallback(
+    async (previous: ActionState, data: FormData): Promise<ActionState> => {
+      const next = await action(previous, data);
+      if (next.status === 'success') toast({ text: next.message, tone: 'success' });
+      return next;
+    },
+    [action, toast],
+  );
+  const [state, dispatch, pending] = useActionState(announced, IDLE_STATE);
   const callbacks = useRef({ onPendingChange, onSuccess });
 
   useEffect(() => {
@@ -58,24 +71,19 @@ function ConfirmForm({
     callbacks.current.onPendingChange(pending);
   }, [pending]);
 
-  /**
-   * The action is awaited here rather than through useActionState, so the
-   * success announcement still happens when the action's refresh unmounts
-   * this dialog (e.g. the row it belongs to leaves the list).
-   */
+  useEffect(() => {
+    if (state.status === 'success') callbacks.current.onSuccess();
+  }, [state]);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    startTransition(async () => {
-      const next = await action(state, data);
-      setState(next);
-      if (next.status === 'success') callbacks.current.onSuccess(next.message);
-    });
+    startTransition(() => dispatch(data));
   }
 
   return (
     <ActionStateProvider value={state}>
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form action={dispatch} onSubmit={handleSubmit} className="space-y-5">
         {Object.entries(hidden).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
         ))}
@@ -119,7 +127,6 @@ export function ConfirmActionDialog({
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState(0);
   const [pending, setPending] = useState(false);
-  const toast = useToast();
 
   return (
     <Dialog
@@ -136,10 +143,7 @@ export function ConfirmActionDialog({
           key={session}
           {...form}
           onPendingChange={setPending}
-          onSuccess={(message) => {
-            setOpen(false);
-            toast({ text: message, tone: 'success' });
-          }}
+          onSuccess={() => setOpen(false)}
         />
       </DialogContent>
     </Dialog>

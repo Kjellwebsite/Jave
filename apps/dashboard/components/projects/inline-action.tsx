@@ -42,7 +42,7 @@ export function InlineAction({
     startTransition(async () => {
       const next = await action(IDLE_STATE, data);
       setState(next);
-      if (next.status === 'success') toast(next.message);
+      if (next.status === 'success') toast({ text: next.message, tone: 'success' });
     });
   }
 

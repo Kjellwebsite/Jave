@@ -43,7 +43,14 @@ jobs:
         run: pnpm db:check && pnpm --filter @jave/database exec drizzle-kit generate --name ci-drift-check && git diff --exit-code packages/database/drizzle
       - name: Migrate a real Postgres
         run: pnpm db:migrate
-      - name: Unit + integration tests
+      - name: Unit + integration tests (PGlite)
+        run: pnpm test
+      - name: Unit + integration tests (real Postgres, production driver)
+        # Same suite through postgres-js with a real pool: catches driver-only
+        # bugs and exercises row-lock interleaving PGlite cannot.
+        env:
+          JAVE_TEST_BACKEND: postgres
+          JAVE_TEST_POSTGRES_URL: postgres://jave:jave@localhost:5432/postgres
         run: pnpm test
       - name: Build
         run: pnpm build

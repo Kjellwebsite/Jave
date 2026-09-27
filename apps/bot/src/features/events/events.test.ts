@@ -4,7 +4,6 @@ import { auditLogs, eventRsvps, events, jobs, members } from '@jave/database';
 import { calendar, HOUR, MINUTE, updateSettings } from '@jave/core';
 import { DiscordActionError } from '../../discord/gateway';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
-import type { InteractionUser } from '../../interactions/types';
 import { customId } from '../../interactions/custom-id';
 
 const EVENTS_CHANNEL = '600000000000000001';
@@ -14,7 +13,7 @@ const START = new Date('2026-03-05T18:00:00Z');
 
 describe('events feature', () => {
   let bot: BotHarness;
-  let staff: { user: InteractionUser; actor: { memberId: string | null } };
+  let staff: Awaited<ReturnType<BotHarness['member']>>;
 
   beforeEach(async () => {
     bot = await createBotHarness();
@@ -241,6 +240,34 @@ describe('events feature', () => {
       expect(panel.components).toEqual([]);
       expect(panel.embeds![0]!.description).toContain('Venue flooded.');
     });
+
+    it('objects created while the event is cancelled are cancelled by the follow-up at once', async () => {
+      const sendMessage = bot.gateway.sendMessage.bind(bot.gateway);
+      bot.gateway.sendMessage = async (channelId, payload) => {
+        // Staff cancel on the dashboard while this run is posting the announcement.
+        const [row] = await bot.kit.db.select().from(events).limit(1);
+        await calendar.cancelEvent(bot.kit.as(staff.actor), {
+          eventId: row!.id,
+          reason: 'Room double booked.',
+        });
+        return sendMessage(channelId, payload);
+      };
+      const id = await createEvent();
+      const row = await eventRow(id);
+      expect(row.status).toBe('cancelled');
+      // Only the follow-up the callback queued ran: the cancellation's own job is still pending.
+      const cancelJobs = await bot.kit.db
+        .select({ status: jobs.status, dedupeKey: jobs.dedupeKey })
+        .from(jobs)
+        .where(eq(jobs.type, calendar.DISCORD_EVENTS_CANCEL_JOB));
+      expect(cancelJobs.filter((job) => job.status === 'completed')).toHaveLength(1);
+      expect(bot.gateway.scheduledEvents.get(row.discordScheduledEventId!)!.status).toBe(
+        'canceled',
+      );
+      const panel = bot.gateway.messages.get(row.announcementMessageId!)!.payload;
+      expect(panel.components).toEqual([]);
+      expect(panel.embeds![0]!.description).toContain('Room double booked.');
+    });
   });
 
   describe('members', () => {
@@ -262,6 +289,14 @@ describe('events feature', () => {
         '01 DECLINE',
       ]);
       expect(pickerRow!.components[0]!.type).toBe(3);
+      const viewWithoutEvent = await bot.run({
+        kind: 'slash',
+        name: 'events',
+        subcommand: 'view',
+        user: member.user,
+      });
+      expect(viewWithoutEvent.interaction.lastPayload()!.components).toHaveLength(2);
+      expect(viewWithoutEvent.interaction.lastText()).toContain('`01` **Build Night**');
 
       const rsvp = await bot.run({
         kind: 'button',
@@ -557,11 +592,31 @@ describe('events feature', () => {
           name: customId('events', 'cancel', id),
           modalText: { reason: 'mine now' },
         },
+        {
+          kind: 'select' as const,
+          name: customId('events', 'report-pick', id),
+          values: ['11111111-1111-4111-8111-111111111111'],
+        },
+        {
+          kind: 'modal' as const,
+          name: customId('events', 'report', '11111111-1111-4111-8111-111111111111'),
+          modalText: { scoreA: '9', scoreB: '0' },
+          modalSelect: { winner: ['score'] },
+        },
       ];
       for (const attempt of attempts) {
         const { interaction } = await bot.run({ ...attempt, user: member.user });
         expect(interaction.lastText(), attempt.name).toContain('ACCESS RESTRICTED');
+        expect(interaction.responses[0]?.type, attempt.name).not.toBe('modal');
       }
+      const report = await bot.run({
+        kind: 'slash',
+        name: 'events',
+        subcommand: 'report',
+        user: member.user,
+        options: { event: id },
+      });
+      expect(report.interaction.lastText()).toContain('ACCESS RESTRICTED');
       const cancelModal = await bot.run({
         kind: 'button',
         name: customId('events', 'cancel', id),

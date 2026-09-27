@@ -8,8 +8,8 @@ import { EventHeader } from '@/components/events/event-header';
 import { LifecycleControls } from '@/components/events/lifecycle-controls';
 import { OverviewTab } from '@/components/events/overview-tab';
 import { BracketTab, TeamsTab } from '@/components/events/tournament-tabs';
+import { MemberOnlyPage } from '@/components/events/member-only-page';
 import { NextLink } from '@/components/next-link';
-import { RestrictedPage } from '@/components/restricted-page';
 import { firstParam, offsetParam, type SearchParams, toQueryString } from '@/lib/search-params';
 import { toDateTimeLocal } from '@/lib/zoned-time';
 import { requireConsoleContext } from '@/server/context';
@@ -89,9 +89,7 @@ export default async function EventPage({
   if (!isUuid(id)) notFound();
   const loaded = await guarded(() => calendar.getEvent(ctx, { eventId: id }));
   if (!loaded.ok) {
-    return (
-      <RestrictedPage eyebrow="OPERATIONS / EVENTS" title="Event" capability="canViewMembers" />
-    );
+    return <MemberOnlyPage eyebrow="OPERATIONS / EVENTS" title="Event" />;
   }
   const event = loaded.value;
   const query = await searchParams;

@@ -191,6 +191,27 @@ function parsePayload<T>(
   return parsed.data;
 }
 
+/**
+ * Run the follow-up syncs a callback queued (a cancel or late sync for
+ * objects stored after the state moved on) now rather than on the next poll.
+ * Called after the event lock is released: those jobs take the same lock.
+ */
+async function runFollowUps(
+  services: BotServices,
+  ctx: ServiceContext,
+  work: Promise<Record<string, unknown>>,
+): Promise<Record<string, unknown>> {
+  try {
+    return await work;
+  } finally {
+    if (ctx.effects.jobIds.length > 0) {
+      await services.runJobsNow(ctx.effects.jobIds).catch((error: unknown) => {
+        ctx.logger.warn({ err: error }, 'follow-up event sync did not run now; the poll loop will');
+      });
+    }
+  }
+}
+
 function publishHandler(services: BotServices, lock: KeyedLock): JobHandler {
   return async (ctx, payload) => {
     const { eventId, revision } = parsePayload(
@@ -198,7 +219,7 @@ function publishHandler(services: BotServices, lock: KeyedLock): JobHandler {
       payload,
       calendar.DISCORD_EVENTS_PUBLISH_JOB,
     );
-    return lock.run(eventId, async () => {
+    const work = lock.run(eventId, async (): Promise<Record<string, unknown>> => {
       const publication = await calendar.getEventPublication(ctx, eventId);
       if (revision !== undefined && publication.revision > revision) {
         return { skipped: 'superseded' };
@@ -231,6 +252,7 @@ function publishHandler(services: BotServices, lock: KeyedLock): JobHandler {
         createdAnnouncement: created.announcement?.messageId ?? null,
       };
     });
+    return runFollowUps(services, ctx, work);
   };
 }
 

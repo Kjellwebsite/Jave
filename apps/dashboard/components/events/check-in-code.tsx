@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, startTransition, useActionState } from 'react';
+import { type FormEvent, startTransition, useActionState, useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { Button, Input, Mono } from '@jave/ui';
 import { IDLE_STATE } from '@/lib/action-state';
@@ -23,13 +23,17 @@ export interface CheckInCodeIssuerProps {
 /**
  * Staff: issue or rotate the check-in code. The code appears once, here, in
  * this browser's memory; JAVE stores only a hash and cannot show it again.
+ * Rotating invalidates the code attendees may be holding, so it is confirmed.
  */
 export function CheckInCodeIssuer({ eventId, action, issued }: CheckInCodeIssuerProps) {
   const [state, dispatch, pending] = useActionState(action, IDLE_STATE);
+  const [confirming, setConfirming] = useState(false);
+  const rotates = issued || hasIssuedCode(state);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    setConfirming(false);
     startTransition(() => dispatch(data));
   }
 
@@ -54,19 +58,43 @@ export function CheckInCodeIssuer({ eventId, action, issued }: CheckInCodeIssuer
       )}
       <form onSubmit={handleSubmit} action={dispatch} className="flex flex-wrap items-center gap-3">
         <input type="hidden" name="eventId" value={eventId} />
-        <Button
-          type="submit"
-          variant={issued ? 'secondary' : 'primary'}
-          iconLeft={KeyRound}
-          loading={pending}
-        >
-          {issued || hasIssuedCode(state) ? 'Issue a new code' : 'Issue check-in code'}
-        </Button>
-        <p className="text-small text-fg-subtle">
-          {issued || hasIssuedCode(state)
-            ? 'A new code replaces the current one immediately.'
-            : 'Members enter it with /events checkin or on this page.'}
-        </p>
+        {rotates && !confirming ? (
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              iconLeft={KeyRound}
+              loading={pending}
+              onClick={() => setConfirming(true)}
+            >
+              Issue a new code
+            </Button>
+            <p className="text-small text-fg-subtle">
+              A new code replaces the current one immediately.
+            </p>
+          </>
+        ) : rotates ? (
+          <>
+            <Button type="submit" variant="danger" iconLeft={KeyRound} loading={pending}>
+              Replace code
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
+              Keep current code
+            </Button>
+            <p className="w-full text-small text-fg-subtle">
+              Members holding the current code can no longer check in with it.
+            </p>
+          </>
+        ) : (
+          <>
+            <Button type="submit" variant="primary" iconLeft={KeyRound} loading={pending}>
+              Issue check-in code
+            </Button>
+            <p className="text-small text-fg-subtle">
+              Members enter it with /events checkin or on this page.
+            </p>
+          </>
+        )}
       </form>
     </div>
   );

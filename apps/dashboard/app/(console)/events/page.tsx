@@ -20,8 +20,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@jave/ui';
+import { MemberOnlyPage } from '@/components/events/member-only-page';
 import { NextLink } from '@/components/next-link';
-import { RestrictedPage } from '@/components/restricted-page';
 import {
   capacityLabel,
   EVENT_KIND_LABELS,
@@ -46,12 +46,9 @@ const SCOPE_LABELS: Record<Scope, string> = { upcoming: 'Upcoming', past: 'Past'
 function EventRow({ event, timeZone }: { event: calendar.EventView; timeZone: string }) {
   const when = formatTimestamp(event.startsAt, timeZone);
   return (
-    <TableRow className="relative">
+    <TableRow>
       <TableCell>
-        <Link
-          href={`/events/${event.id}`}
-          className="flex min-w-0 flex-col gap-1 after:absolute after:inset-0 focus-visible:outline-none"
-        >
+        <Link href={`/events/${event.id}`} className="row-link flex min-w-0 flex-col gap-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-body font-medium text-fg">{event.title}</span>
             <Badge className="hidden sm:inline-flex">{EVENT_KIND_LABELS[event.kind]}</Badge>
@@ -104,7 +101,7 @@ export default async function EventsPage({
   const offset = offsetParam(params.offset);
   const result = await guarded(() => calendar.listEvents(ctx, { scope, limit: PAGE_SIZE, offset }));
   if (!result.ok)
-    return <RestrictedPage eyebrow="OPERATIONS" title="Events" capability="canViewMembers" />;
+    return <MemberOnlyPage eyebrow="OPERATIONS" title="Events" />;
   const page = result.value;
   const viewer = await loadViewer(ctx);
   const staff = can(ctx, 'canManageEvents');

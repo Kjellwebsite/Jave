@@ -19,8 +19,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@jave/ui';
+import { MemberOnlyPage } from '@/components/events/member-only-page';
 import { NextLink } from '@/components/next-link';
-import { RestrictedPage } from '@/components/restricted-page';
 import { firstParam, type SearchParams, toQueryString } from '@/lib/search-params';
 import { requireConsoleContext } from '@/server/context';
 import { loadViewer } from '@/server/data/viewer';
@@ -106,7 +106,7 @@ export default async function GamesPage({ searchParams }: { searchParams: Promis
     games.getLeaderboard(ctx, { gameKey: game.key, metric, limit: BOARD_LIMIT }),
   );
   if (!board.ok)
-    return <RestrictedPage eyebrow="OPERATIONS" title="Games" capability="canViewMembers" />;
+    return <MemberOnlyPage eyebrow="OPERATIONS" title="Games" />;
   const viewer = await loadViewer(ctx);
   const linkMembers = can(ctx, 'canViewMembers');
   const entries = board.value.entries;

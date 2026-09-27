@@ -5,7 +5,7 @@ import { discordTime, userText } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
 import {
   HISTORY_LIMIT,
-  LIST_NOTICE_TITLE_MAX,
+  INLINE_TITLE_MAX,
   LIST_LIMIT,
   PICK_PURPOSE,
   PICKER_LIMIT,
@@ -32,7 +32,7 @@ const RSVP_NOTICE: Record<calendar.RsvpStatus, string> = {
 
 /** "RSVP RECORDED — GOING — Build Night." — the line above the list after an RSVP from it. */
 function listNotice(result: calendar.RsvpResult, title: string): string {
-  const name = userText(title, LIST_NOTICE_TITLE_MAX);
+  const name = userText(title, INLINE_TITLE_MAX);
   if (result.status === 'waitlist') {
     const position = result.waitlistPosition === null ? '' : ` #${result.waitlistPosition}`;
     return `WAITLIST${position} — ${name}. You move up automatically when a spot opens.`;

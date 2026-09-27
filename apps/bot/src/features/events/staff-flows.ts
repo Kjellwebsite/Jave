@@ -9,6 +9,7 @@ import {
   EVENT_KINDS,
   type EventKindChoice,
   MAX_DRAW_TEAM_SIZE,
+  NAME_DISPLAY_MAX,
 } from './constants';
 import { showEventCard } from './member-flows';
 import {
@@ -221,6 +222,7 @@ export async function generateBracket(
 
 /** /events report: the ready matches to choose from. */
 export async function pickMatch(h: HandlerContext, eventId: string): Promise<void> {
+  if (!isEventStaff(h.ctx)) return respondStaffOnly(h);
   const [view, bracket] = await Promise.all([
     calendar.getEvent(h.ctx, { eventId }),
     calendar.getBracket(h.ctx, { eventId }),
@@ -244,6 +246,7 @@ export async function pickMatch(h: HandlerContext, eventId: string): Promise<voi
 }
 
 export async function openReport(h: HandlerContext, eventId: string, matchId: string) {
+  if (!isEventStaff(h.ctx)) return respondStaffOnly(h);
   const bracket = await calendar.getBracket(h.ctx, { eventId });
   const match = bracket.rounds.flatMap((round) => round.matches).find((m) => m.id === matchId);
   if (!match || !match.teamA || !match.teamB) throw new NotFoundError('Match');
@@ -275,8 +278,8 @@ export async function submitReport(h: HandlerContext, matchId: string): Promise<
     match && match.scoreA !== null && match.scoreB !== null
       ? ` ${match.scoreA} : ${match.scoreB}`
       : ' by forfeit';
-  const champion = bracket.champion ? ` CHAMPION — ${userText(bracket.champion.name, 64)}.` : '';
+  const champion = bracket.champion ? ` CHAMPION — ${userText(bracket.champion.name, NAME_DISPLAY_MAX)}.` : '';
   await showBracket(h, bracket.eventId, {
-    notice: `RESULT RECORDED — ${userText(winner?.name ?? 'Winner', 64)} wins${score}.${champion}`,
+    notice: `RESULT RECORDED — ${userText(winner?.name ?? 'Winner', NAME_DISPLAY_MAX)} wins${score}.${champion}`,
   });
 }

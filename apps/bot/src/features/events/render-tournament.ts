@@ -8,7 +8,9 @@ import { COLORS, GLYPH, LIMITS } from '../../ui/theme';
 import {
   EVENT_ACTION,
   EVENTS_NS,
+  INLINE_TITLE_MAX,
   MAX_DRAW_TEAM_SIZE,
+  NAME_DISPLAY_MAX,
   PICKER_LIMIT,
   TEAM_FIELD_LIMIT,
 } from './constants';
@@ -168,7 +170,7 @@ export function bracketPanel(
   if (options.dashboardUrl)
     components.push(row(linkButton('Open on dashboard', options.dashboardUrl)));
   const champion = bracket.champion
-    ? `${GLYPH.dot} CHAMPION ${userText(bracket.champion.name, 64)}`
+    ? `${GLYPH.dot} CHAMPION ${userText(bracket.champion.name, NAME_DISPLAY_MAX)}`
     : '';
   return {
     embeds: [
@@ -202,8 +204,8 @@ export function teamsPanel(
     .slice(0, TEAM_FIELD_LIMIT)
     .map((team) =>
       field(
-        `${team.name}${team.seed === null ? '' : ` ${GLYPH.dot} seed ${team.seed}`}`,
-        team.members.map((member) => userText(member.displayName, 64)).join(', ') || GLYPH.unknown,
+        `${userText(team.name, NAME_DISPLAY_MAX)}${team.seed === null ? '' : ` ${GLYPH.dot} seed ${team.seed}`}`,
+        team.members.map((member) => userText(member.displayName, NAME_DISPLAY_MAX)).join(', ') || GLYPH.unknown,
         true,
       ),
     );
@@ -287,14 +289,14 @@ export function historyPanel(
   const lines = page.items.map((item) => {
     const attended = item.checkedInAt ? ` ${GLYPH.dot} ATTENDED ${GLYPH.verified}` : '';
     const state = item.eventStatus === 'cancelled' ? ` ${GLYPH.dot} CANCELLED` : '';
-    return `${discordTime(item.startsAt, 'd')} ${GLYPH.bar} **${userText(item.title, 80)}** ${GLYPH.dot} ${kindLabel(item.kind)} ${GLYPH.dot} ${HISTORY_STATUS[item.rsvpStatus]}${attended}${state}`;
+    return `${discordTime(item.startsAt, 'd')} ${GLYPH.bar} **${userText(item.title, INLINE_TITLE_MAX)}** ${GLYPH.dot} ${kindLabel(item.kind)} ${GLYPH.dot} ${HISTORY_STATUS[item.rsvpStatus]}${attended}${state}`;
   });
   const attended = page.items.filter((item) => item.checkedInAt).length;
   return {
     embeds: [
       panel({
         kicker: 'EVENT HISTORY',
-        title: userText(displayName, 64),
+        title: userText(displayName, NAME_DISPLAY_MAX),
         description: lines.length > 0 ? lines.join('\n') : 'No event responses recorded yet.',
         footer:
           page.total > page.items.length

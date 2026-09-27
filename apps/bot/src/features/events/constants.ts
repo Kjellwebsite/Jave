@@ -59,15 +59,21 @@ export const DEFAULT_DURATION_MINUTES = 120;
 export const LIST_LIMIT = 10;
 /** Events in /events list that get their own row of RSVP buttons (row five is the picker). */
 export const LIST_RSVP_ROWS = 4;
-/** Event titles quoted in a one-line notice are clipped to this length. */
-export const LIST_NOTICE_TITLE_MAX = 80;
+/** Event titles quoted inline (a notice, a list line) are clipped to this length. */
+export const INLINE_TITLE_MAX = 80;
+/** Team and member names inside panels are clipped to this length. */
+export const NAME_DISPLAY_MAX = 64;
+/** A cancellation reason shown on a panel is clipped to this length. */
+export const CANCEL_REASON_DISPLAY_MAX = 500;
+/** Discord's limit for select option labels and label descriptions in modals. */
+export const COMPONENT_TEXT_MAX = 100;
 export const PICKER_LIMIT = 25;
 export const HISTORY_LIMIT = 10;
 export const DESCRIPTION_PREVIEW_MAX = 1500;
 export const ANNOUNCEMENT_DESCRIPTION_MAX = 1800;
 export const LOCATION_TEXT_MAX = 100;
-export const OPTION_LABEL_MAX = 100;
-export const OPTION_DESCRIPTION_MAX = 100;
+export const OPTION_LABEL_MAX = COMPONENT_TEXT_MAX;
+export const OPTION_DESCRIPTION_MAX = COMPONENT_TEXT_MAX;
 export const MODAL_LABEL_MAX = 45;
 export const TEAM_FIELD_LIMIT = 24;
 export const MAX_DRAW_TEAM_SIZE = 12;

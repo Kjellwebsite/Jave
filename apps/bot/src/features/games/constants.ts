@@ -46,5 +46,11 @@ export const METRIC_LABEL: Record<LeaderboardMetricChoice, string> = {
   sessions: 'Sessions',
 };
 
+/** Clip lengths for engine text on the panel (the bank's own limits are lower; these are guards). */
+export const OPTION_TEXT_MAX = 200;
+export const PROMPT_TEXT_MAX = 500;
+export const FACT_TEXT_MAX = 300;
+export const END_REASON_MAX = 300;
+
 /** Audit-log reason on Discord for panel clean-up. */
 export const RENDER_REASON = 'JAVELIN game panel';

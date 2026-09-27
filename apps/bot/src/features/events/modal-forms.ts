@@ -10,6 +10,7 @@ import { customId } from '../../interactions/custom-id';
 import type { ModalPayload } from '../../interactions/types';
 import { clip } from '../../ui/format';
 import {
+  COMPONENT_TEXT_MAX,
   DEFAULT_DURATION_MINUTES,
   DURATION_OPTIONS,
   EVENT_ACTION,
@@ -75,7 +76,7 @@ export function createEventModal(
         ),
       new LabelBuilder()
         .setLabel('Start')
-        .setDescription(clip(`YYYY-MM-DD HH:mm in ${timeZone}, or ISO 8601 with an offset.`, 100))
+        .setDescription(clip(`YYYY-MM-DD HH:mm in ${timeZone}, or ISO 8601 with an offset.`, COMPONENT_TEXT_MAX))
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.start)
@@ -117,7 +118,7 @@ export function checkInModal(eventId: string, eventTitle: string): ModalPayload 
     .addLabelComponents(
       new LabelBuilder()
         .setLabel('Check-in code')
-        .setDescription(clip(`Shared by the host of ${eventTitle}.`, 100))
+        .setDescription(clip(`Shared by the host of ${eventTitle}.`, COMPONENT_TEXT_MAX))
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.code)
@@ -138,7 +139,7 @@ export function cancelEventModal(eventId: string, eventTitle: string): ModalPayl
     .addLabelComponents(
       new LabelBuilder()
         .setLabel('Reason')
-        .setDescription(clip(`Sent to everyone who responded to ${eventTitle}.`, 100))
+        .setDescription(clip(`Sent to everyone who responded to ${eventTitle}.`, COMPONENT_TEXT_MAX))
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.reason)
@@ -177,8 +178,8 @@ export function reportMatchModal(matchId: string, teamA: string, teamB: string):
             .setRequired(true)
             .addOptions(
               { label: 'By score', value: WINNER_BY_SCORE, default: true },
-              { label: clip(`${teamA} wins`, 100), value: 'a' },
-              { label: clip(`${teamB} wins`, 100), value: 'b' },
+              { label: clip(`${teamA} wins`, COMPONENT_TEXT_MAX), value: 'a' },
+              { label: clip(`${teamB} wins`, COMPONENT_TEXT_MAX), value: 'b' },
             ),
         ),
     )

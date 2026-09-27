@@ -78,7 +78,7 @@ export const eventsCommand: CommandDefinition = {
     .setName('events')
     .setDescription('JAVELIN events: RSVP, check-in, teams and brackets.')
     .addSubcommand((sub) => sub.setName('list').setDescription('Upcoming events.'))
-    .addSubcommand(withEvent('view', 'Open an event: details, your RSVP, controls.'))
+    .addSubcommand(withEvent('view', 'Open an event: details, your RSVP, controls.', false))
     .addSubcommand(withEvent('checkin', 'Check in with the code the host shares.', false))
     .addSubcommand((sub) =>
       sub
@@ -135,8 +135,11 @@ export const eventsCommand: CommandDefinition = {
     switch (options.subcommand()) {
       case 'list':
         return showEventList(h);
-      case 'view':
-        return showEventCard(h, chosenEvent(h));
+      case 'view': {
+        // Without an event: the upcoming list, whose picker opens any of them.
+        const value = options.string(EVENT_OPTION);
+        return value ? showEventCard(h, requireId(value)) : showEventList(h);
+      }
       case 'checkin': {
         const value = options.string(EVENT_OPTION);
         return value ? openCheckIn(h, requireId(value)) : pickCheckInEvent(h);

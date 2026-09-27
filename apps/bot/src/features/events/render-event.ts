@@ -8,9 +8,11 @@ import { clip, discordTime, userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
 import {
   ANNOUNCEMENT_DESCRIPTION_MAX,
+  CANCEL_REASON_DISPLAY_MAX,
   DESCRIPTION_PREVIEW_MAX,
   EVENT_ACTION,
   EVENTS_NS,
+  INLINE_TITLE_MAX,
   LIST_RSVP_ROWS,
   LOCATION_TEXT_MAX,
   OPTION_DESCRIPTION_MAX,
@@ -200,7 +202,7 @@ export function announcementMessage(publication: calendar.EventPublication): Mes
 /** The announcement after a cancellation: reason, no buttons. */
 export function cancelledAnnouncement(publication: calendar.EventPublication): MessagePayload {
   const reason = publication.cancelReason
-    ? userText(publication.cancelReason, 500)
+    ? userText(publication.cancelReason, CANCEL_REASON_DISPLAY_MAX)
     : 'No reason given.';
   return {
     embeds: [
@@ -279,7 +281,7 @@ export function eventCard(
     );
   }
   if (event.status === 'cancelled' && event.cancelReason) {
-    fields.push(field('Cancelled', userText(event.cancelReason, 500)));
+    fields.push(field('Cancelled', userText(event.cancelReason, CANCEL_REASON_DISPLAY_MAX)));
   }
   const description = [
     options.notice,
@@ -360,7 +362,7 @@ function listLine(event: calendar.EventView, index: number): string {
       : `${event.counts.going}/${event.capacity} going`;
   const live = event.status === 'live' ? ` ${GLYPH.dot} **LIVE**` : '';
   const mine = event.myRsvp ? ` ${GLYPH.dot} YOU: ${RSVP_LABEL[event.myRsvp.status]}` : '';
-  return `\`${listNumber(index)}\` **${userText(event.title, 80)}**${live}\n${kindLabel(event.kind)} ${GLYPH.dot} ${discordTime(event.startsAt, 'f')} ${GLYPH.dot} ${going}${mine}`;
+  return `\`${listNumber(index)}\` **${userText(event.title, INLINE_TITLE_MAX)}**${live}\n${kindLabel(event.kind)} ${GLYPH.dot} ${discordTime(event.startsAt, 'f')} ${GLYPH.dot} ${going}${mine}`;
 }
 
 /**

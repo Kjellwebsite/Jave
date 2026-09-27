@@ -5,10 +5,14 @@ import { button, field, panel, row } from '../../ui/components';
 import { discordTime, userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
 import {
+  END_REASON_MAX,
+  FACT_TEXT_MAX,
   GAME_ACTION,
   GAMES_NS,
   LOBBY_ROWS,
   OPTION_LETTERS,
+  OPTION_TEXT_MAX,
+  PROMPT_TEXT_MAX,
   SCOREBOARD_ROWS,
   TAP,
 } from './constants';
@@ -111,7 +115,7 @@ function scoreboardLines(
 function optionLines(view: TriviaView): string[] {
   return (view.question?.options ?? []).map((option, index) => {
     const letter = `\`${OPTION_LETTERS[index] ?? String(index + 1)}\``;
-    const text = userText(option, 200);
+    const text = userText(option, OPTION_TEXT_MAX);
     if (view.correctIndex === null) return `${letter} ${text}`;
     return index === view.correctIndex
       ? `${GLYPH.verified} ${letter} **${text}**`
@@ -128,7 +132,7 @@ function triviaPanel(render: Render, view: TriviaView): MessagePayload {
         question.difficulty.toUpperCase(),
       )
     : kicker(render);
-  const prompt = question ? `**${userText(question.prompt, 500)}**` : '';
+  const prompt = question ? `**${userText(question.prompt, PROMPT_TEXT_MAX)}**` : '';
   if (view.phase === 'question' && question && view.closesAt !== null) {
     return {
       embeds: [
@@ -176,7 +180,7 @@ function triviaPanel(render: Render, view: TriviaView): MessagePayload {
         description: [
           prompt,
           optionLines(view).join('\n'),
-          view.fact ? `_${userText(view.fact, 300)}_` : '',
+          view.fact ? `_${userText(view.fact, FACT_TEXT_MAX)}_` : '',
           next,
         ]
           .filter(Boolean)
@@ -281,7 +285,7 @@ function endedPanel(render: Render): MessagePayload {
       panel({
         kicker: kicker(render, 'ENDED'),
         title: 'Game ended',
-        description: userText(render.session.endReason ?? 'The game was stopped.', 300),
+        description: userText(render.session.endReason ?? 'The game was stopped.', END_REASON_MAX),
         color: COLORS.steel,
       }),
     ],

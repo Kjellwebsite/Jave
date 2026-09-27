@@ -83,6 +83,16 @@ test.describe('events — staff', () => {
     await page.getByRole('button', { name: 'Issue check-in code' }).click();
     const code = page.getByTestId('check-in-code');
     await expect(code).toContainText(/[A-Z0-9]{4}-[A-Z0-9]{4}/);
+    const first = await code.locator('p.type-data').innerText();
+
+    // Rotating is confirmed first: attendees may be holding the current code.
+    await page.getByRole('button', { name: 'Issue a new code' }).click();
+    await page.getByRole('button', { name: 'Keep current code' }).click();
+    await expect(code).toContainText(first);
+    await page.getByRole('button', { name: 'Issue a new code' }).click();
+    await page.getByRole('button', { name: 'Replace code' }).click();
+    await expect(code.locator('p.type-data')).not.toHaveText(first);
+
     await page.reload();
     await expect(page.getByTestId('check-in-code')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Issue a new code' })).toBeVisible();

@@ -160,27 +160,33 @@ describe('content security policy', () => {
 
 describe('navigation', () => {
   it('shows each entry only with its capability and drops empty groups', () => {
-    const member = visibleNav(NAV_GROUPS, ['canViewMembers']);
-    expect(member.map((group) => group.label)).toEqual(['OVERVIEW', 'PEOPLE']);
-    const founder = visibleNav(NAV_GROUPS, [
-      'canViewMembers',
-      'canViewAuditLogs',
-      'canViewSettings',
-    ]);
-    expect(founder.flatMap((group) => group.items.map((item) => item.href))).toEqual([
-      '/overview',
-      '/members',
-      '/ranking',
-      '/audit',
-      '/settings',
-    ]);
-    expect(
-      visibleNav(NAV_GROUPS, []).flatMap((group) => group.items.map((item) => item.href)),
-    ).toEqual(['/overview']);
+    const hrefs = (capabilities: string[]) =>
+      visibleNav(NAV_GROUPS, capabilities).flatMap((group) => group.items.map((item) => item.href));
+    const everyone = NAV_GROUPS.flatMap((group) => group.items)
+      .filter((item) => item.capability === null)
+      .map((item) => item.href);
+    expect(hrefs([])).toEqual(everyone);
+    expect(everyone).toEqual(expect.arrayContaining(['/overview', '/projects', '/contributions']));
+
+    const member = hrefs(['canViewMembers']);
+    expect(member).toEqual(expect.arrayContaining(['/members', '/ranking']));
+    expect(member).not.toContain('/audit');
+    expect(member).not.toContain('/integrations');
+
+    const staff = hrefs(['canViewMembers', 'canViewAuditLogs', 'canManageIntegrations']);
+    expect(staff).toEqual(expect.arrayContaining(['/audit', '/integrations']));
+    expect(staff).not.toContain('/settings');
+
+    for (const group of visibleNav(NAV_GROUPS, [])) expect(group.items.length).toBeGreaterThan(0);
+    expect(visibleNav(NAV_GROUPS, []).map((group) => group.label)).not.toContain('SYSTEM');
   });
 
   it('resolves page context from nested paths', () => {
     expect(navContext('/members/123')).toEqual({ group: 'PEOPLE', label: 'Members' });
+    expect(navContext('/projects/rocket-engine')).toEqual({
+      group: 'OPERATIONS',
+      label: 'Projects',
+    });
     expect(navContext('/notifications')).toEqual({ group: 'ACCOUNT', label: 'Notifications' });
     expect(navContext('/nowhere')).toBeNull();
     expect(isActivePath('/membership', '/members')).toBe(false);

@@ -1,12 +1,15 @@
 import {
   Bell,
   ChartNoAxesColumn,
+  FolderKanban,
+  GitPullRequestArrow,
   LayoutGrid,
   type LucideIcon,
   ScrollText,
   Settings2,
   UserRound,
   Users,
+  Webhook,
 } from 'lucide-react';
 import type { Capability } from '@jave/core';
 
@@ -39,13 +42,30 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/ranking', label: 'Ranking', icon: ChartNoAxesColumn, capability: 'canViewMembers' },
     ],
   },
-  { label: 'OPERATIONS', items: [] },
+  {
+    label: 'OPERATIONS',
+    items: [
+      { href: '/projects', label: 'Projects', icon: FolderKanban, capability: null },
+      {
+        href: '/contributions',
+        label: 'Contributions',
+        icon: GitPullRequestArrow,
+        capability: null,
+      },
+    ],
+  },
   { label: 'SUPPORT & SAFETY', items: [] },
   { label: 'INTELLIGENCE', items: [] },
   {
     label: 'SYSTEM',
     items: [
       { href: '/audit', label: 'Audit Log', icon: ScrollText, capability: 'canViewAuditLogs' },
+      {
+        href: '/integrations',
+        label: 'Integrations',
+        icon: Webhook,
+        capability: 'canManageIntegrations',
+      },
       { href: '/settings', label: 'Settings', icon: Settings2, capability: 'canViewSettings' },
     ],
   },

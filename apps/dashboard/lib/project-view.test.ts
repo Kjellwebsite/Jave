@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeActivity, pipelineState } from './project-view';
+import { describeActivity, milestoneProgress, pipelineState, projectPath } from './project-view';
 
 const base = { actor: null, people: {}, payload: {} };
 
@@ -15,10 +15,18 @@ describe('pipelineState', () => {
 describe('describeActivity', () => {
   it('describes status changes, restores and ships', () => {
     expect(
-      describeActivity({ ...base, type: 'project.status_changed', payload: { from: 'idea', to: 'building' } }),
+      describeActivity({
+        ...base,
+        type: 'project.status_changed',
+        payload: { from: 'idea', to: 'building' },
+      }),
     ).toMatchObject({ title: 'IDEA → BUILDING', tone: 'info' });
     expect(
-      describeActivity({ ...base, type: 'project.status_changed', payload: { from: 'testing', to: 'shipped' } }),
+      describeActivity({
+        ...base,
+        type: 'project.status_changed',
+        payload: { from: 'testing', to: 'shipped' },
+      }),
     ).toMatchObject({ tone: 'success' });
     expect(
       describeActivity({
@@ -57,19 +65,39 @@ describe('describeActivity', () => {
 
   it('describes details, links, milestones, repository and GitHub activity', () => {
     expect(
-      describeActivity({ ...base, type: 'project.updated', payload: { change: 'details', fields: ['title', 'summary'] } }),
+      describeActivity({
+        ...base,
+        type: 'project.updated',
+        payload: { change: 'details', fields: ['title', 'summary'] },
+      }),
     ).toMatchObject({ title: 'Details updated', detail: 'title, summary' });
     expect(
-      describeActivity({ ...base, type: 'project.updated', payload: { change: 'link_added', label: 'Docs' } }),
+      describeActivity({
+        ...base,
+        type: 'project.updated',
+        payload: { change: 'link_added', label: 'Docs' },
+      }),
     ).toMatchObject({ title: 'Link added', detail: 'Docs' });
     expect(
-      describeActivity({ ...base, type: 'project.repo_linked', payload: { repo: null, previous: 'a/b' } }),
+      describeActivity({
+        ...base,
+        type: 'project.repo_linked',
+        payload: { repo: null, previous: 'a/b' },
+      }),
     ).toMatchObject({ title: 'GitHub repository unlinked', detail: 'a/b' });
     expect(
-      describeActivity({ ...base, type: 'project.github_push', payload: { commitCount: 1, headline: null } }),
+      describeActivity({
+        ...base,
+        type: 'project.github_push',
+        payload: { commitCount: 1, headline: null },
+      }),
     ).toMatchObject({ title: 'Pushed 1 commit', detail: null });
     expect(
-      describeActivity({ ...base, type: 'project.release_published', payload: { tag: 'v1.0.0', name: 'One' } }),
+      describeActivity({
+        ...base,
+        type: 'project.release_published',
+        payload: { tag: 'v1.0.0', name: 'One' },
+      }),
     ).toMatchObject({ title: 'Release v1.0.0', detail: 'One' });
   });
 
@@ -82,7 +110,29 @@ describe('describeActivity', () => {
     expect(line.title).toBe('UNKNOWN → UNKNOWN');
     expect(describeActivity({ ...base, type: 'something.new' }).title).toBe('something.new');
     expect(
-      describeActivity({ ...base, type: 'project.github_push', payload: { commitCount: '9999' } }).title,
+      describeActivity({ ...base, type: 'project.github_push', payload: { commitCount: '9999' } })
+        .title,
     ).toBe('Pushed 0 commits');
+  });
+});
+
+describe('projectPath', () => {
+  it('builds the canonical path and encodes anything unexpected', () => {
+    expect(projectPath('rocket-engine')).toBe('/projects/rocket-engine');
+    expect(projectPath('a/../b?x')).toBe('/projects/a%2F..%2Fb%3Fx');
+  });
+});
+
+describe('milestoneProgress', () => {
+  it('counts done milestones out of the ones still in scope', () => {
+    expect(
+      milestoneProgress([
+        { status: 'done' },
+        { status: 'active' },
+        { status: 'planned' },
+        { status: 'dropped' },
+      ]),
+    ).toEqual({ done: 1, total: 3 });
+    expect(milestoneProgress([])).toEqual({ done: 0, total: 0 });
   });
 });

@@ -218,6 +218,20 @@ Required Discord permissions in the channel: **View Channel, Send Messages, Embe
 `external_account.self_verification_blocked` (durable, denied). Secrets and
 full outbound URLs never appear in audit context.
 
+## Surfaces
+
+Full reference: [docs/commands/integrations.md](../commands/integrations.md).
+
+- **Discord** (`apps/bot/src/features/integrations`): `/github link | status | verify`
+  and the `discord.integrations.relay` job handler.
+- **Dashboard** `/integrations` (`canManageIntegrations`): registry (create with the
+  signing secret shown once, rotate, enable/disable, relay channel), inbound delivery
+  log with collapsed, escaped payloads and retry, outbound webhooks CRUD with an
+  external-event picker, outbound delivery log.
+- **HTTP**: `POST /api/webhooks/github` and `POST /api/webhooks/{slug}`
+  (`apps/dashboard/server/webhooks/inbound.ts`): per slug+address rate limit,
+  1 MiB streaming cap, raw body to `receiveWebhook`, no cookies, no CSRF origin check.
+
 ## Extension points
 
 - **Processors**: `DEFAULT_PROCESSORS` has one explicit entry per provider.

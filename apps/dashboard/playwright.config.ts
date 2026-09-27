@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_GITHUB_WEBHOOK_SECRET } from './e2e/deployment-secrets';
 
 /**
  * End-to-end tests against a production build (`next build` runs first via
@@ -42,6 +43,8 @@ export default defineConfig({
       JAVE_PUBLIC_URL: BASE_URL,
       JAVE_SESSION_SECRET: randomBytes(32).toString('hex'),
       JAVE_DEV_AUTH: 'true',
+      JAVE_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+      GITHUB_WEBHOOK_SECRET: E2E_GITHUB_WEBHOOK_SECRET,
     },
   },
 });

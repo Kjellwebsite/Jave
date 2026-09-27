@@ -4,14 +4,13 @@ import {
   type FormEvent,
   type ReactElement,
   type ReactNode,
-  startTransition,
-  useActionState,
   useEffect,
   useRef,
   useState,
+  useTransition,
 } from 'react';
 import { Button, Dialog, DialogClose, DialogContent, DialogTrigger } from '@jave/ui';
-import { IDLE_STATE } from '@/lib/action-state';
+import { type ActionState, IDLE_STATE } from '@/lib/action-state';
 import { useToast } from '../toast';
 import { ActionFeedback, ActionStateProvider, type FormAction } from './action-form';
 
@@ -47,7 +46,8 @@ function ConfirmForm({
   onPendingChange,
   onSuccess,
 }: ConfirmFormProps) {
-  const [state, dispatch, pending] = useActionState(action, IDLE_STATE);
+  const [state, setState] = useState<ActionState>(IDLE_STATE);
+  const [pending, startTransition] = useTransition();
   const callbacks = useRef({ onPendingChange, onSuccess });
 
   useEffect(() => {
@@ -58,19 +58,24 @@ function ConfirmForm({
     callbacks.current.onPendingChange(pending);
   }, [pending]);
 
-  useEffect(() => {
-    if (state.status === 'success') callbacks.current.onSuccess(state.message);
-  }, [state]);
-
+  /**
+   * The action is awaited here rather than through useActionState, so the
+   * success announcement still happens when the action's refresh unmounts
+   * this dialog (e.g. the row it belongs to leaves the list).
+   */
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    startTransition(() => dispatch(data));
+    startTransition(async () => {
+      const next = await action(state, data);
+      setState(next);
+      if (next.status === 'success') callbacks.current.onSuccess(next.message);
+    });
   }
 
   return (
     <ActionStateProvider value={state}>
-      <form action={dispatch} onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-5">
         {Object.entries(hidden).map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
         ))}

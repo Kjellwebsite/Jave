@@ -40,7 +40,13 @@ afterEach(async () => {
   await kit.close();
 });
 
-function deps(overrides: Partial<{ ctx: ServiceContext; githubSecret: string | undefined; clientKey: string }> = {}) {
+function deps(
+  overrides: Partial<{
+    ctx: ServiceContext;
+    githubSecret: string | undefined;
+    clientKey: string;
+  }> = {},
+) {
   return {
     ctx: kit.as(anonymousActor),
     githubSecret: GITHUB_SECRET,
@@ -49,7 +55,10 @@ function deps(overrides: Partial<{ ctx: ServiceContext; githubSecret: string | u
   };
 }
 
-function githubRequest(body: string, options: { delivery?: string; secret?: string; signature?: string } = {}) {
+function githubRequest(
+  body: string,
+  options: { delivery?: string; secret?: string; signature?: string } = {},
+) {
   deliveryCounter++;
   return new Request(`${URL_BASE}github`, {
     method: 'POST',
@@ -107,7 +116,10 @@ describe('POST /api/webhooks/github', () => {
       .select()
       .from(webhookDeliveries)
       .where(eq(webhookDeliveries.id, json.deliveryId));
-    expect(row).toMatchObject({ eventType: 'ping', payload: { zen: 'Keep it logically awesome.' } });
+    expect(row).toMatchObject({
+      eventType: 'ping',
+      payload: { zen: 'Keep it logically awesome.' },
+    });
   });
 
   it('BREAK: refuses a wrong or missing signature', async () => {
@@ -130,9 +142,17 @@ describe('POST /api/webhooks/github', () => {
 
   it('answers a redelivery as a duplicate without reprocessing', async () => {
     const body = JSON.stringify({ zen: 'once' });
-    const first = await handleInboundWebhook(githubRequest(body, { delivery: 'gh-dup' }), 'github', deps());
+    const first = await handleInboundWebhook(
+      githubRequest(body, { delivery: 'gh-dup' }),
+      'github',
+      deps(),
+    );
     expect(first.status).toBe(202);
-    const again = await handleInboundWebhook(githubRequest(body, { delivery: 'gh-dup' }), 'github', deps());
+    const again = await handleInboundWebhook(
+      githubRequest(body, { delivery: 'gh-dup' }),
+      'github',
+      deps(),
+    );
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ ok: true, duplicate: true });
     const replayedWithNewId = await handleInboundWebhook(
@@ -157,7 +177,11 @@ describe('POST /api/webhooks/github', () => {
 
 describe('POST /api/webhooks/[slug] (JAVE v1)', () => {
   it('accepts a valid timestamped signature', async () => {
-    const response = await handleInboundWebhook(javeRequest('{"text":"green"}'), 'ci-hooks', deps());
+    const response = await handleInboundWebhook(
+      javeRequest('{"text":"green"}'),
+      'ci-hooks',
+      deps(),
+    );
     expect(response.status).toBe(202);
   });
 
@@ -190,9 +214,9 @@ describe('POST /api/webhooks/[slug] (JAVE v1)', () => {
       expect(response.status, slug).toBe(404);
       expect(await response.json()).toEqual({ error: 'not_found' });
     }
-    const [ci] = await integrations.listIntegrations(kit.as(admin)).then((all) =>
-      all.filter((integration) => integration.slug === 'ci-hooks'),
-    );
+    const [ci] = await integrations
+      .listIntegrations(kit.as(admin))
+      .then((all) => all.filter((integration) => integration.slug === 'ci-hooks'));
     await integrations.setIntegrationEnabled(kit.as(admin), {
       integrationId: ci!.id,
       enabled: false,
@@ -205,12 +229,13 @@ describe('POST /api/webhooks/[slug] (JAVE v1)', () => {
 describe('size cap', () => {
   it('BREAK: refuses a declared oversize body before reading it', async () => {
     const { stream, state } = countingStream(new Uint8Array(1024), 4);
-    const request = new Request(`${URL_BASE}github`, {
+    const init: StreamingInit = {
       method: 'POST',
       headers: { 'content-length': String(integrations.MAX_WEBHOOK_BODY_BYTES + 1) },
       body: stream,
       duplex: 'half',
-    } satisfies StreamingInit);
+    };
+    const request = new Request(`${URL_BASE}github`, init);
     const response = await handleInboundWebhook(request, 'github', deps());
     expect(response.status).toBe(413);
     expect(await response.json()).toEqual({ error: 'payload_too_large' });
@@ -221,11 +246,8 @@ describe('size cap', () => {
     const chunkSize = 64 * 1024;
     const chunks = 64;
     const { stream, state } = countingStream(new Uint8Array(chunkSize).fill(32), chunks);
-    const request = new Request(`${URL_BASE}github`, {
-      method: 'POST',
-      body: stream,
-      duplex: 'half',
-    } satisfies StreamingInit);
+    const init: StreamingInit = { method: 'POST', body: stream, duplex: 'half' };
+    const request = new Request(`${URL_BASE}github`, init);
     const response = await handleInboundWebhook(request, 'github', deps());
     expect(response.status).toBe(413);
     expect(state.cancelled).toBe(true);
@@ -248,7 +270,11 @@ describe('size cap', () => {
 describe('rate limit', () => {
   it('BREAK: limits each sender per slug, independently of other senders', async () => {
     for (let i = 0; i < WEBHOOK_RATE_LIMIT.limit; i++) {
-      const response = await handleInboundWebhook(githubRequest('{}', { secret: 'wrong' }), 'github', deps());
+      const response = await handleInboundWebhook(
+        githubRequest('{}', { secret: 'wrong' }),
+        'github',
+        deps(),
+      );
       expect(response.status).toBe(401);
     }
     const limited = await handleInboundWebhook(githubRequest('{}'), 'github', deps());

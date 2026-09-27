@@ -3,7 +3,8 @@
  * activity feed. Pure: no I/O, no core imports beyond types.
  */
 
-export type ProjectStatusKey = 'idea' | 'planning' | 'building' | 'testing' | 'shipped' | 'archived';
+export type ProjectStatusKey =
+  'idea' | 'planning' | 'building' | 'testing' | 'shipped' | 'archived';
 export type ProjectVisibilityKey = 'public' | 'members' | 'private';
 export type ProjectRoleKey = 'owner' | 'maintainer' | 'contributor';
 export type ContributionStatusKey = 'submitted' | 'verified' | 'rejected';
@@ -94,6 +95,31 @@ export const MILESTONE_STATUS_TONE: Readonly<Record<MilestoneStatusKey, Tone>> =
   done: 'success',
   dropped: 'neutral',
 };
+
+export const PROJECT_SORT_LABELS = {
+  updated_desc: 'Recently updated',
+  created_desc: 'Newest',
+  title: 'Title',
+} as const;
+
+export type ProjectSortKey = keyof typeof PROJECT_SORT_LABELS;
+
+/** Canonical dashboard path of a project (slugs are stable). */
+export function projectPath(slug: string): string {
+  return `/projects/${encodeURIComponent(slug)}`;
+}
+
+/** Done milestones out of the ones still in scope (dropped ones do not count). */
+export function milestoneProgress(milestones: readonly { status: MilestoneStatusKey }[]): {
+  done: number;
+  total: number;
+} {
+  const inScope = milestones.filter((milestone) => milestone.status !== 'dropped');
+  return {
+    done: inScope.filter((milestone) => milestone.status === 'done').length,
+    total: inScope.length,
+  };
+}
 
 /** Where the pipeline stands: stages before the current one read as passed. */
 export function pipelineState(
@@ -224,7 +250,11 @@ export function describeActivity(input: ActivityInput): ActivityLine {
       const repo = text(payload, 'repo');
       return repo
         ? { title: 'GitHub repository linked', detail: repo, tone: 'neutral' }
-        : { title: 'GitHub repository unlinked', detail: text(payload, 'previous'), tone: 'neutral' };
+        : {
+            title: 'GitHub repository unlinked',
+            detail: text(payload, 'previous'),
+            tone: 'neutral',
+          };
     }
     case 'project.github_push': {
       const count = typeof payload.commitCount === 'number' ? payload.commitCount : 0;

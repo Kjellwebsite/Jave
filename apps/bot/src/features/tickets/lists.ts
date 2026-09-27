@@ -11,7 +11,7 @@ import {
   LIST_LIMIT,
   TICKETS_NS,
 } from './constants';
-import { PRIORITY_LABELS } from './labels';
+import { PRIORITY_LABELS, STATUS_LABELS } from './labels';
 import { SUPPORT_KICKER, ticketChoiceName, ticketInfoPanel, ticketLine } from './render';
 import { requireHandling } from './resolve';
 
@@ -19,10 +19,25 @@ const ACTIVE = [...tickets.ACTIVE_STATUSES];
 const TICKET_NUMBER_QUERY = /^#?(\d{1,6})$/;
 const SEARCH_MAX = 64;
 
-function moreFooter(shown: number, total: number): string | undefined {
+export function moreFooter(shown: number, total: number): string | undefined {
   return total > shown
     ? `Showing ${shown} of ${total}. The full list is in the dashboard.`
     : undefined;
+}
+
+/** A select that opens one of the listed tickets (routing only; core authorizes the view). */
+export function viewSelectRow(items: readonly tickets.TicketSummary[]) {
+  return row(
+    stringSelect(
+      customId(TICKETS_NS, ACTION.view),
+      'Open a ticket',
+      items.map((item) => ({
+        value: item.id,
+        label: ticketChoiceName(item, CHOICE_NAME_MAX),
+        description: `${STATUS_LABELS[item.status]} ${GLYPH.dot} ${PRIORITY_LABELS[item.priority].label}`,
+      })),
+    ),
+  );
 }
 
 /** /ticket mine — your own tickets (requester view, even for staff). */
@@ -43,6 +58,7 @@ export async function showMine(h: HandlerContext): Promise<void> {
         footer: moreFooter(page.items.length, page.total),
       }),
     ],
+    components: page.items.length ? [viewSelectRow(page.items)] : undefined,
     ephemeral: true,
   });
 }

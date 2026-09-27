@@ -16,6 +16,8 @@ export const ACTION = {
   summary: 'summary',
   /** Queue select: claim the chosen ticket. */
   queueClaim: 'queue-claim',
+  /** List select (/ticket mine, Member tickets): open the chosen ticket. */
+  view: 'view',
 } as const;
 
 /** Modal field ids. */
@@ -52,6 +54,8 @@ export const SUBJECT_EXCERPT = 60;
 export const CARD_SUBJECT_MAX = 200;
 /** Opening-message excerpt on the card (after escaping). */
 export const CARD_EXCERPT_MAX = 1500;
+/** The handler's name in the CLAIMED announcement. */
+export const ASSIGNEE_NAME_MAX = 64;
 /** A one-line announcement (claim, waiting, reopen) in the thread. */
 export const ANNOUNCEMENT_TEXT_MAX = 1500;
 /** A close reason on the closing card. */

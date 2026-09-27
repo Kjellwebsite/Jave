@@ -41,7 +41,10 @@ describe('listTickets sort "sla"', INTEGRATION_SUITE, () => {
     });
     kit.clock.advance(MINUTE);
     const low = await openAs(kit, await opener(), { priority: 'low', subject: 'Low, unanswered' });
-    const high = await openAs(kit, await opener(), { priority: 'high', subject: 'High, unanswered' });
+    const high = await openAs(kit, await opener(), {
+      priority: 'high',
+      subject: 'High, unanswered',
+    });
 
     const page = await listTickets(kit.as(staff), { sort: 'sla' });
     expect(page.items.map((item) => item.id)).toEqual([high.id, low.id, answered.id]);

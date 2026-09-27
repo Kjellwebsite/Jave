@@ -42,7 +42,7 @@ function readouts({ counts, performance }: QueueStatsProps): Readout[] {
       label: 'FIRST RESPONSE',
       value: median === null ? '—' : formatMinutes(median),
       quiet: median === null,
-      hint: `Median · ${formatCount(performance.firstResponse.responded)} answered`,
+      hint: `Median of ${formatCount(performance.firstResponse.responded)}`,
     },
     {
       key: 'breach-rate',

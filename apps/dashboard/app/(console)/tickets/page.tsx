@@ -128,31 +128,33 @@ export default async function TicketsPage({
       .map((person) => ({ value: person.userId, label: person.displayName })),
   ];
 
-  const empty =
-    filtered || filters.status !== (staff ? 'active' : 'all') ? (
-      <EmptyState
-        compact
-        title="NO MATCHES"
-        description="No ticket matches these filters."
-        action={
-          <Link href="/tickets" className={buttonStyles({ size: 'sm' })}>
-            Clear filters
-          </Link>
-        }
-      />
-    ) : staff ? (
-      <EmptyState
-        icon={LifeBuoy}
-        title="QUEUE CLEAR"
-        description="No active tickets. New tickets appear here the moment they are opened."
-      />
-    ) : (
-      <EmptyState
-        icon={LifeBuoy}
-        title="NO TICKETS"
-        description="When you need JAVELIN staff, open a ticket. Replies arrive in a private Discord thread."
-      />
-    );
+  const narrowed = filtered || filters.status !== (staff ? 'active' : 'all');
+  // A member with no tickets at all gets the empty state alone: nothing to filter yet.
+  const showFilters = staff || narrowed || page.total > 0;
+  const empty = narrowed ? (
+    <EmptyState
+      compact
+      title="NO MATCHES"
+      description="No ticket matches these filters."
+      action={
+        <Link href="/tickets" className={buttonStyles({ size: 'sm' })}>
+          Clear filters
+        </Link>
+      }
+    />
+  ) : staff ? (
+    <EmptyState
+      icon={LifeBuoy}
+      title="QUEUE CLEAR"
+      description="No active tickets. New tickets appear here the moment they are opened."
+    />
+  ) : (
+    <EmptyState
+      icon={LifeBuoy}
+      title="NO TICKETS"
+      description="When you need JAVELIN staff, open a ticket. Replies arrive in a private Discord thread."
+    />
+  );
 
   return (
     <div className="space-y-8">
@@ -189,108 +191,114 @@ export default async function TicketsPage({
         ) : null}
 
         <Card padding="none">
-          <form
-            method="get"
-            action="/tickets"
-            role="search"
-            aria-label="Filter tickets"
-            className="border-b border-line-subtle p-4"
-          >
-            {filters.scope ? <input type="hidden" name="scope" value={filters.scope} /> : null}
-            <Toolbar
-              className={
-                staff
-                  ? 'grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-[minmax(0,1.5fr)_repeat(6,minmax(0,1fr))_auto]'
-                  : 'grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-[minmax(0,1.5fr)_repeat(4,minmax(0,1fr))_auto]'
-              }
+          {showFilters ? (
+            <form
+              method="get"
+              action="/tickets"
+              role="search"
+              aria-label="Filter tickets"
+              className="border-b border-line-subtle p-4"
             >
-              <label className="relative col-span-2 min-w-0 md:col-span-4 xl:col-span-1">
-                <span className="sr-only">Search tickets</span>
-                <Icon
-                  icon={Search}
-                  size="sm"
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle"
-                />
-                <Input
-                  name="q"
-                  type="search"
-                  defaultValue={filters.q ?? ''}
-                  placeholder="Subject"
-                  maxLength={SEARCH_MAX_LENGTH}
-                  className="pl-8"
-                />
-              </label>
-              <NativeSelect
-                name="status"
-                aria-label="Status"
-                defaultValue={filters.status}
-                options={STATUS_OPTIONS}
-              />
-              <NativeSelect
-                name="category"
-                aria-label="Category"
-                defaultValue={filters.category ?? ''}
-                placeholder="Category"
-                options={optionsOf(CATEGORY_LABELS)}
-              />
-              <NativeSelect
-                name="priority"
-                aria-label="Priority"
-                defaultValue={filters.priority ?? ''}
-                placeholder="Priority"
-                options={optionsOf(PRIORITY_LABELS)}
-              />
-              {staff ? (
-                <>
-                  <NativeSelect
-                    name="assignee"
-                    aria-label="Handler"
-                    defaultValue={filters.assignee ?? ''}
-                    placeholder="Handler"
-                    options={assigneeOptions}
+              {filters.scope ? <input type="hidden" name="scope" value={filters.scope} /> : null}
+              <Toolbar
+                className={
+                  staff
+                    ? 'grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-[minmax(0,1.5fr)_repeat(6,minmax(0,1fr))_auto]'
+                    : 'grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-[minmax(0,1.5fr)_repeat(4,minmax(0,1fr))_auto]'
+                }
+              >
+                <label className="relative col-span-2 min-w-0 md:col-span-4 xl:col-span-1">
+                  <span className="sr-only">Search tickets</span>
+                  <Icon
+                    icon={Search}
+                    size="sm"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle"
                   />
-                  <NativeSelect
-                    name="sla"
-                    aria-label="First-response target"
-                    defaultValue={filters.sla ?? ''}
-                    placeholder="Target"
-                    options={SLA_OPTIONS}
+                  <Input
+                    name="q"
+                    type="search"
+                    defaultValue={filters.q ?? ''}
+                    placeholder="Subject"
+                    maxLength={SEARCH_MAX_LENGTH}
+                    className="pl-8"
                   />
-                </>
-              ) : null}
-              <NativeSelect
-                name="sort"
-                aria-label="Sort"
-                defaultValue={filters.sort}
-                options={staff ? STAFF_SORTS : OWN_SORTS}
-              />
-              <div className="col-span-2 flex gap-2 md:col-span-4 xl:col-span-1">
-                <Button type="submit" variant="primary" className="flex-1 xl:flex-none">
-                  Apply
-                </Button>
-                {filtered ? (
-                  <Link
-                    href={`/tickets${toQueryString({ scope: filters.scope })}`}
-                    className={buttonStyles({ variant: 'ghost' })}
-                  >
-                    Reset
-                  </Link>
+                </label>
+                <NativeSelect
+                  name="status"
+                  aria-label="Status"
+                  defaultValue={filters.status}
+                  options={STATUS_OPTIONS}
+                />
+                <NativeSelect
+                  name="category"
+                  aria-label="Category"
+                  defaultValue={filters.category ?? ''}
+                  placeholder="Category"
+                  options={optionsOf(CATEGORY_LABELS)}
+                />
+                <NativeSelect
+                  name="priority"
+                  aria-label="Priority"
+                  defaultValue={filters.priority ?? ''}
+                  placeholder="Priority"
+                  options={optionsOf(PRIORITY_LABELS)}
+                />
+                {staff ? (
+                  <>
+                    <NativeSelect
+                      name="assignee"
+                      aria-label="Handler"
+                      defaultValue={filters.assignee ?? ''}
+                      placeholder="Handler"
+                      options={assigneeOptions}
+                    />
+                    <NativeSelect
+                      name="sla"
+                      aria-label="First-response target"
+                      defaultValue={filters.sla ?? ''}
+                      placeholder="Target"
+                      options={SLA_OPTIONS}
+                    />
+                  </>
                 ) : null}
-              </div>
-            </Toolbar>
-          </form>
+                <NativeSelect
+                  name="sort"
+                  aria-label="Sort"
+                  defaultValue={filters.sort}
+                  options={staff ? STAFF_SORTS : OWN_SORTS}
+                />
+                <div className="col-span-2 flex gap-2 md:col-span-4 xl:col-span-1">
+                  <Button type="submit" variant="primary" className="flex-1 xl:flex-none">
+                    Apply
+                  </Button>
+                  {filtered ? (
+                    <Link
+                      href={`/tickets${toQueryString({ scope: filters.scope })}`}
+                      className={buttonStyles({ variant: 'ghost' })}
+                    >
+                      Reset
+                    </Link>
+                  ) : null}
+                </div>
+              </Toolbar>
+            </form>
+          ) : null}
 
-          <QueueTable
-            rows={rows}
-            staff={staff}
-            renderedAt={now}
-            empty={empty}
-            bulk={
-              staff
-                ? { claim: bulkClaimAction, priority: bulkPriorityAction, close: bulkCloseAction }
-                : null
-            }
-          />
+          {showFilters ? (
+            <QueueTable
+              rows={rows}
+              staff={staff}
+              renderedAt={now}
+              empty={empty}
+              bulk={
+                staff
+                  ? { claim: bulkClaimAction, priority: bulkPriorityAction, close: bulkCloseAction }
+                  : null
+              }
+            />
+          ) : (
+            empty
+          )}
 
           {page.total > 0 ? (
             <div className="border-t border-line-subtle px-5 py-3">

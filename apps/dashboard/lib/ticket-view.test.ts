@@ -54,11 +54,13 @@ describe('slaReadout', () => {
   });
 
   it('shows settled outcomes without ticking', () => {
-    expect(slaReadout({ state: 'met', dueAt: at(60), firstResponseMinutes: 14.5 }, open, at(90)))
-      .toEqual({ label: 'Met in 14m', tone: 'success', ticking: false });
+    expect(
+      slaReadout({ state: 'met', dueAt: at(60), firstResponseMinutes: 14.5 }, open, at(90)),
+    ).toEqual({ label: 'Met in 14m', tone: 'success', ticking: false });
     expect(slaReadout({ ...pending, state: 'breached' }, open, at(90)).label).toBe('Missed');
-    expect(slaReadout({ state: 'none', dueAt: null, firstResponseMinutes: null }, open, at(1)))
-      .toEqual({ label: 'No target', tone: 'neutral', ticking: false });
+    expect(
+      slaReadout({ state: 'none', dueAt: null, firstResponseMinutes: null }, open, at(1)),
+    ).toEqual({ label: 'No target', tone: 'neutral', ticking: false });
   });
 
   it('never counts down on a closed ticket', () => {

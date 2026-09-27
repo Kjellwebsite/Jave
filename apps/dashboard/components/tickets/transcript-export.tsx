@@ -85,7 +85,7 @@ export function TranscriptExport({
       }
       const filename = FILENAME.exec(disposition)?.[1] ?? FALLBACK_FILENAME;
       saveBlob(await response.blob(), filename);
-      toast(`TRANSCRIPT EXPORTED — ${reference}.`);
+      toast({ text: `TRANSCRIPT EXPORTED — ${reference}.`, tone: 'success' });
     } catch {
       setError({ message: 'The network request failed. Check your connection and try again.' });
     } finally {

@@ -6,7 +6,7 @@ import { DiscordActionError, type MessagePayload } from '../../discord/gateway';
 import { customId } from '../../interactions/custom-id';
 import type { BotHarness } from '../../testing/harness';
 import { ACTION, DISCORD_ERROR, FIELD, TICKETS_NS } from './constants';
-import { TRANSCRIPT_STEP_ERROR } from './jobs/close-thread';
+import { resumeStep, stepErrorMessage } from './jobs/close-thread';
 import {
   ARCHIVE_CHANNEL_ID,
   HOOK_TIMEOUT,
@@ -248,7 +248,7 @@ describe('tickets — Discord job handlers', SUITE, () => {
       await closeAs(requester.user, ticket.id, 'Resolved.');
       const [failed] = await jobsOfType(bot, tickets.CLOSE_THREAD_JOB);
       expect(failed).toMatchObject({ status: 'pending' });
-      expect(failed!.lastError).toContain(TRANSCRIPT_STEP_ERROR);
+      expect(failed!.lastError?.startsWith(stepErrorMessage('transcript', ''))).toBe(true);
       bot.kit.clock.advance(HOUR);
       await bot.drain();
       const [done] = await jobsOfType(bot, tickets.CLOSE_THREAD_JOB);
@@ -258,6 +258,47 @@ describe('tickets — Discord job handlers', SUITE, () => {
       );
       expect(closingCards).toHaveLength(1);
       expect(postedTo(bot, ARCHIVE_CHANNEL_ID)).toHaveLength(1);
+    });
+
+    it('a transient lock failure resumes at the lock: one closing card, then the transcript', async () => {
+      const requester = await person(bot, ['verified']);
+      const ticket = await openViaDiscord(bot, requester.user);
+      const setState = bot.gateway.setThreadState.bind(bot.gateway);
+      let failedOnce = false;
+      bot.gateway.setThreadState = async (...args: Parameters<typeof setState>) => {
+        if (!failedOnce) {
+          failedOnce = true;
+          throw new DiscordActionError('edit thread failed: 503', SERVER_ERROR, false);
+        }
+        return setState(...args);
+      };
+      await closeAs(requester.user, ticket.id, 'Resolved.');
+      const [failed] = await jobsOfType(bot, tickets.CLOSE_THREAD_JOB);
+      expect(failed).toMatchObject({ status: 'pending' });
+      expect(resumeStep(failed!)).toBe('lock');
+      expect(postedTo(bot, ARCHIVE_CHANNEL_ID)).toHaveLength(0);
+
+      bot.kit.clock.advance(HOUR);
+      await bot.drain();
+      const [done] = await jobsOfType(bot, tickets.CLOSE_THREAD_JOB);
+      expect(done).toMatchObject({ status: 'completed' });
+      expect(done!.result).toMatchObject({ resumedAt: 'lock', archive: { uploaded: true } });
+      const closingCards = postedTo(bot, ticket.threadId).filter((m) =>
+        textOf(m).includes('#0001 · CLOSED'),
+      );
+      expect(closingCards).toHaveLength(1);
+      expect(bot.gateway.channels.get(ticket.threadId)).toMatchObject({
+        locked: true,
+        archived: true,
+      });
+    });
+
+    it('resumes from the step a failed run names, and from the start otherwise', () => {
+      expect(resumeStep({ lastError: null })).toBe('finalize');
+      expect(resumeStep({ lastError: 'recovered: worker lease expired' })).toBe('finalize');
+      expect(resumeStep({ lastError: stepErrorMessage('lock', 'boom') })).toBe('lock');
+      expect(resumeStep({ lastError: stepErrorMessage('transcript', 'x') })).toBe('transcript');
+      expect(resumeStep({ lastError: 'close step bogus failed: x' })).toBe('finalize');
     });
 
     it('a missing archive permission dead-letters after the thread is closed', async () => {

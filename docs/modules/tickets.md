@@ -270,6 +270,28 @@ Rate-limited by `settings.ai.dailyRequestsPerUser` per handler; honours
 - Requester DM with transcript on close: not sent by core; the bot may attach
   `renderTranscript` output to the `ticket.updated` delivery later.
 
+## Surfaces
+
+Full reference: [docs/commands/tickets.md](../commands/tickets.md).
+
+- **Discord** (`apps/bot/src/features/tickets`): `/ticket` (open · mine · view ·
+  close · reopen; staff: queue · panel · claim · unclaim · transfer · priority ·
+  waiting · resume · note · summary), context-aware inside a ticket thread; the
+  **Member tickets** user context menu; the public OPEN A TICKET panel
+  (category select → modal); thread-card CLAIM / CLOSE / REOPEN buttons; the
+  four `discord.tickets.*` job handlers; message create/edit/delete listeners
+  feeding `recordMessage*`.
+- **Dashboard** (`apps/dashboard/app/(console)/tickets`): `/tickets` queue with
+  stat strip, quick views, filters, SLA countdowns and bulk actions (or the
+  member's own tickets); `/tickets/[id]` with conversation, timeline, controls,
+  internal notes, AI summary panel; `POST /tickets/[id]/transcript` for audited
+  HTML/Markdown exports.
+- **AI summary wiring**: both surfaces pass
+  `ai.ticketSummarizer(ctx, deps, surface)` (core `ai` module) to
+  `summarizeTicket` only when an AI provider is configured in that process
+  (`BotServices.ai`, the dashboard's `server/tickets/ai.ts`); otherwise they
+  show DISABLED.
+
 ## Known limitations
 
 - A transcript is capped at 5000 messages (flagged when truncated); very large

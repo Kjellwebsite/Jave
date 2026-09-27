@@ -5,6 +5,7 @@ import { DiscordActionError } from '../../discord/gateway';
 import { customId } from '../../interactions/custom-id';
 import type { BotHarness } from '../../testing/harness';
 import { ACTION, FIELD, TICKETS_NS } from './constants';
+import { MEMBER_TICKETS_MENU } from './context-menu';
 import {
   HOOK_TIMEOUT,
   openViaDiscord,
@@ -114,6 +115,30 @@ describe('tickets — BREAK', SUITE, () => {
       channelId: ticket.threadId,
     });
     expect(inThread.interaction.lastText()).toContain('Use this inside a ticket thread');
+
+    // A forged "open a ticket" select value reads as not found, like a missing ticket.
+    const forgedView = await bot.run({
+      kind: 'select',
+      name: customId(TICKETS_NS, ACTION.view),
+      user: stranger.user,
+      values: [ticket.id],
+    });
+    expect(forgedView.interaction.lastText()).toContain('NOT FOUND');
+  });
+
+  it('BREAK: members cannot use the Member tickets menu to read someone’s history', async () => {
+    const owner = await person(bot, ['verified']);
+    const nosy = await person(bot, ['verified']);
+    await openViaDiscord(bot, owner.user, { subject: 'Private matter' });
+    const { interaction } = await bot.run({
+      kind: 'user_context',
+      name: MEMBER_TICKETS_MENU,
+      user: nosy.user,
+      targetUser: owner.user,
+    });
+    expect(interaction.lastText()).toContain('ACCESS RESTRICTED');
+    expect(interaction.lastText()).not.toContain('Private matter');
+    expect(interaction.lastPayload()!.ephemeral).toBe(true);
   });
 
   it('BREAK: forged, stale and malformed custom ids and values', async () => {

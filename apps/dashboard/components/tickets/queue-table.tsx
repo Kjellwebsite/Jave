@@ -32,6 +32,11 @@ import { FormField } from '../forms/form-field';
 import { SlaTimer } from './sla-timer';
 import { TicketPriorityBadge, TicketStatusBadge } from './ticket-badges';
 
+/** Mirrors core's close-reason limits so the browser stops obvious mistakes first. */
+const REASON_MIN = 3;
+const REASON_MAX = 500;
+const REASON_ROWS = 3;
+
 export interface QueueRow {
   id: string;
   reference: string;
@@ -137,7 +142,13 @@ function BulkBar({
           description="Shown to every requester. Recorded in the audit log."
           required
         >
-          <Textarea name="reason" required minLength={3} maxLength={500} rows={3} />
+          <Textarea
+            name="reason"
+            required
+            minLength={REASON_MIN}
+            maxLength={REASON_MAX}
+            rows={REASON_ROWS}
+          />
         </FormField>
       </ConfirmActionDialog>
       <Button size="sm" variant="ghost" iconLeft={X} onClick={onClear}>
@@ -176,17 +187,19 @@ export function QueueTable({ rows, staff, renderedAt, bulk, empty }: QueueTableP
           <tr>
             {selectable ? (
               <TableHeaderCell className="w-10 pr-0">
-                <Checkbox
-                  id={`${baseId}-all`}
-                  checked={allSelected}
-                  onCheckedChange={(checked) =>
-                    setPicked(checked ? new Set(rows.map((row) => row.id)) : new Set())
-                  }
-                  label={<span className="sr-only">Select every ticket on this page</span>}
-                />
+                {rows.length > 0 ? (
+                  <Checkbox
+                    id={`${baseId}-all`}
+                    checked={allSelected}
+                    onCheckedChange={(checked) =>
+                      setPicked(checked ? new Set(rows.map((row) => row.id)) : new Set())
+                    }
+                    label={<span className="sr-only">Select every ticket on this page</span>}
+                  />
+                ) : null}
               </TableHeaderCell>
             ) : null}
-            <TableHeaderCell>Ticket</TableHeaderCell>
+            <TableHeaderCell className="w-full">Ticket</TableHeaderCell>
             <TableHeaderCell className="hidden md:table-cell">Status</TableHeaderCell>
             <TableHeaderCell className="hidden sm:table-cell">Priority</TableHeaderCell>
             <TableHeaderCell className="hidden lg:table-cell">Handler</TableHeaderCell>
@@ -215,10 +228,7 @@ export function QueueTable({ rows, staff, renderedAt, bulk, empty }: QueueTableP
                   </TableCell>
                 ) : null}
                 <TableCell className="min-w-0 max-w-0 w-full">
-                  <Link
-                    href={`/tickets/${row.id}`}
-                    className="block min-w-0 after:absolute after:inset-0 focus-visible:outline-none"
-                  >
+                  <Link href={`/tickets/${row.id}`} className="row-link block min-w-0">
                     <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-2.5">
                       <Mono className="shrink-0 text-small text-fg-muted sm:text-body sm:text-fg">
                         {row.reference}

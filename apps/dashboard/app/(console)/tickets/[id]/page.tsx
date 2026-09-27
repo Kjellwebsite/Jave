@@ -197,7 +197,15 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       {/* Phones: actions, conversation, details. Desktop: conversation left, the rest right. */}
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr]">
         {hasControls ? (
-          <Panel title="Actions" className="min-w-0 lg:col-start-2 lg:row-start-1">
+          <Panel
+            title="Actions"
+            description={
+              staff
+                ? undefined
+                : 'Close it once you are helped. It can be reopened until it is archived.'
+            }
+            className="min-w-0 lg:col-start-2 lg:row-start-1"
+          >
             <TicketControlList
               ticketId={ticket.id}
               reference={ticket.reference}

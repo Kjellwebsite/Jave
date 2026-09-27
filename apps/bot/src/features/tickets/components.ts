@@ -10,6 +10,7 @@ import {
   transferTo,
 } from './actions';
 import { ACTION, TICKETS_NS } from './constants';
+import { showTicket } from './lists';
 import { showOpenForm, submitOpen } from './open';
 import { ticketIdArg } from './resolve';
 import { isForced, showSummary } from './summary';
@@ -53,6 +54,8 @@ export const ticketComponents: ComponentHandler = {
         return showSummary(h, ticketIdArg(args), isForced(args));
       case ACTION.queueClaim:
         return claim(h, ticketIdArg(h.interaction.values));
+      case ACTION.view:
+        return showTicket(h, ticketIdArg(h.interaction.values));
       default:
         return expired(h);
     }

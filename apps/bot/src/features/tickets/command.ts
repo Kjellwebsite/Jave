@@ -133,7 +133,7 @@ export const ticketCommand: CommandDefinition = {
     category: 'operations',
     summary: 'Open a private support ticket. Staff claim, triage and close tickets here.',
     usage:
-      '/ticket open | mine | view · staff: queue | claim | transfer | priority | waiting | note | summary | close',
+      '/ticket open | mine | view | close | reopen · staff: queue | panel | claim | unclaim | transfer | priority | waiting | resume | note | summary',
   },
 
   async autocomplete(h) {

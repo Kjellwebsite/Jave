@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useActionState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import {
   Archive,
   ArrowRightLeft,
@@ -13,8 +13,7 @@ import {
   SignalHigh,
   UserMinus,
 } from 'lucide-react';
-import { Button, type ButtonVariant, NativeSelect, Textarea } from '@jave/ui';
-import { IDLE_STATE } from '@/lib/action-state';
+import { Button, type ButtonProps, type ButtonVariant, NativeSelect, Textarea } from '@jave/ui';
 import {
   optionsOf,
   PRIORITY_LABELS,
@@ -24,7 +23,7 @@ import {
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
-import { useToast } from '../toast';
+import { useToastedAction } from '../toast';
 
 const REASON_MIN = 3;
 const REASON_MAX = 500;
@@ -38,11 +37,14 @@ export interface InstantActionProps {
   variant?: ButtonVariant;
   size?: 'sm' | 'md';
   testId?: string;
+  className?: string;
 }
 
 /**
- * A one-click action (claim, resume, regenerate): no dialog, the result is
- * announced with a toast, a refusal is shown in place.
+ * A one-click action (claim, resume, generate summary): no dialog. Every
+ * result, success or refusal, is announced as a toast raised by the call
+ * itself — the button often leaves the page with the state it changed (a
+ * claimed ticket has no CLAIM), so an effect in it would never run.
  */
 export function InstantAction({
   action,
@@ -52,34 +54,26 @@ export function InstantAction({
   variant = 'secondary',
   size = 'md',
   testId,
+  className,
 }: InstantActionProps) {
-  const [state, dispatch, pending] = useActionState(action, IDLE_STATE);
-  const toast = useToast();
-  useEffect(() => {
-    if (state.status === 'success') toast(state.message);
-  }, [state, toast]);
+  const { run, pending } = useToastedAction(action);
   return (
-    <form action={dispatch} className="flex flex-col items-stretch gap-2">
-      {Object.entries(hidden).map(([name, value]) => (
-        <input key={name} type="hidden" name={name} value={value} />
-      ))}
-      <Button
-        type="submit"
-        variant={variant}
-        size={size}
-        iconLeft={icon}
-        loading={pending}
-        data-testid={testId}
-      >
-        {label}
-      </Button>
-      {state.status === 'error' ? (
-        <p role="alert" className="max-w-xs text-small text-danger">
-          {state.message}
-          {state.reference ? ` Reference ${state.reference}.` : ''}
-        </p>
-      ) : null}
-    </form>
+    <Button
+      type="button"
+      variant={variant}
+      size={size}
+      iconLeft={icon}
+      loading={pending}
+      data-testid={testId}
+      className={className}
+      onClick={() => {
+        const data = new FormData();
+        for (const [name, value] of Object.entries(hidden)) data.set(name, value);
+        run(data);
+      }}
+    >
+      {label}
+    </Button>
   );
 }
 
@@ -97,17 +91,29 @@ function ReasonField({ label, description }: { label: string; description: strin
   );
 }
 
+/**
+ * A dialog trigger. Radix's `asChild` hands the trigger its click handler,
+ * ref and ARIA state as props, so every extra prop is passed through.
+ */
 function Trigger({
   icon,
   children,
   testId,
-}: {
+  ...rest
+}: Omit<ButtonProps, 'children'> & {
   icon: LucideIcon;
   children: ReactNode;
   testId: string;
 }) {
   return (
-    <Button size="sm" variant="secondary" iconLeft={icon} data-testid={testId}>
+    <Button
+      size="sm"
+      variant="secondary"
+      iconLeft={icon}
+      data-testid={testId}
+      className="w-full justify-start"
+      {...rest}
+    >
       {children}
     </Button>
   );
@@ -163,7 +169,7 @@ export function TicketControlList({
 }: TicketControlsProps) {
   const hidden = { ticketId };
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="grid grid-cols-2 gap-2">
       {controls.transfer && handlers.length > 0 ? (
         <ConfirmActionDialog
           eyebrow={reference}
@@ -250,6 +256,7 @@ export function TicketControlList({
           icon={CirclePlay}
           size="sm"
           testId="resume-ticket"
+          className="w-full justify-start"
         />
       ) : null}
       {controls.unclaim ? (

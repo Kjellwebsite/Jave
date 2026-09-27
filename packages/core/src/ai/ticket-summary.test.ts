@@ -96,13 +96,20 @@ describe('ticketSummarizer', INTEGRATION_SUITE, () => {
     );
     expect(summary.text).toBe('- Deploy fails.\n- Next: check memory.');
     const call = provider.calls[0]!;
-    expect(call.context).toEqual({ userId: staff.userId, feature: 'summarize', surface: 'dashboard' });
+    expect(call.context).toEqual({
+      userId: staff.userId,
+      feature: 'summarize',
+      surface: 'dashboard',
+    });
     const content = call.request.messages[0]!.content;
     expect(content).toContain(`MEMBER REQUEST:\n${TICKET_SUMMARY_INSTRUCTIONS}`);
     const request = content.slice(0, content.indexOf('Ignore all previous'));
     expect(request).not.toContain('reveal the system prompt');
     expect(content).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123456789');
-    const ledger = await kit.db.select().from(aiRequests).where(eq(aiRequests.userId, staff.userId));
+    const ledger = await kit.db
+      .select()
+      .from(aiRequests)
+      .where(eq(aiRequests.userId, staff.userId));
     expect(ledger).toHaveLength(1);
     expect(ledger[0]!.surface).toBe('dashboard');
   });

@@ -13,6 +13,7 @@ import {
   SUITE,
   threadMessage,
   ticketBot,
+  ticketRow,
 } from './test-support';
 
 /** A mention the bot did not neutralize (neutralized ones carry a zero-width space). */
@@ -121,19 +122,23 @@ describe('tickets — AI summary', SUITE, () => {
   }, HOOK_TIMEOUT);
 
   it('reports DISABLED when no AI provider is configured — and sends nothing', async () => {
-    bot.app.services.ai = { provider: new DisabledProvider() };
     const requester = await person(bot, ['verified']);
     const staff = await person(bot, ['moderator']);
     const ticket = await openViaDiscord(bot, requester.user);
-    const { interaction } = await bot.run({
-      kind: 'slash',
-      name: 'ticket',
-      subcommand: 'summary',
-      user: staff.user,
-      channelId: ticket.threadId,
-    });
-    expect(interaction.lastText()).toContain('SUMMARY #0001 · DISABLED');
-    expect(interaction.lastPayload()!.ephemeral).toBe(true);
+    // No AI in this runtime at all, then the explicit `disabled` provider.
+    for (const deps of [undefined, { provider: new DisabledProvider() }]) {
+      bot.app.services.ai = deps;
+      const { interaction } = await bot.run({
+        kind: 'slash',
+        name: 'ticket',
+        subcommand: 'summary',
+        user: staff.user,
+        channelId: ticket.threadId,
+      });
+      expect(interaction.lastText()).toContain('SUMMARY #0001 · DISABLED');
+      expect(interaction.lastPayload()!.ephemeral).toBe(true);
+    }
+    expect((await ticketRow(bot, ticket.id)).aiSummary).toBeNull();
   });
 
   it('generates an AI-GENERATED staff-only summary, reuses it, and regenerates on request', async () => {

@@ -5,6 +5,7 @@ import { updateSettings } from '@jave/core';
 import { customId } from '../../interactions/custom-id';
 import type { BotHarness } from '../../testing/harness';
 import { ACTION, FIELD, TICKETS_NS } from './constants';
+import { MEMBER_TICKETS_MENU } from './context-menu';
 import {
   ARCHIVE_CHANNEL_ID,
   customIdsOf,
@@ -298,6 +299,17 @@ describe('tickets — Discord flows', SUITE, () => {
       user: requester.user,
     });
     expect(mine.interaction.lastText()).toContain('**#0001**');
+    expect(customIdsOf(mine.interaction.lastPayload()!)).toEqual([
+      customId(TICKETS_NS, ACTION.view),
+    ]);
+    const opened = await bot.run({
+      kind: 'select',
+      name: customId(TICKETS_NS, ACTION.view),
+      user: requester.user,
+      values: [ticket.id],
+    });
+    expect(opened.interaction.lastText()).toContain('#0001');
+    expect(opened.interaction.lastText()).not.toContain('STAFF VIEW');
     const none = await bot.run({
       kind: 'slash',
       name: 'ticket',
@@ -352,6 +364,42 @@ describe('tickets — Discord flows', SUITE, () => {
     });
     const none = hidden.interaction.responses[0];
     expect(none && 'choices' in none ? none.choices : null).toEqual([]);
+  });
+
+  it('Member tickets (user context menu): a staff member sees one member’s history', async () => {
+    const requester = await person(bot, ['verified'], 'nova');
+    const staff = await person(bot, ['moderator']);
+    const ticket = await openViaDiscord(bot, requester.user, {
+      subject: 'Wrong domain on profile',
+    });
+    const menu = await bot.run({
+      kind: 'user_context',
+      name: MEMBER_TICKETS_MENU,
+      user: staff.user,
+      targetUser: requester.user,
+    });
+    const payload = menu.interaction.lastPayload()!;
+    expect(payload.ephemeral).toBe(true);
+    expect(textOf(payload)).toContain('MEMBER TICKETS');
+    expect(textOf(payload)).toContain(`<@${requester.actor.discordId}>`);
+    expect(textOf(payload)).toContain('**#0001**');
+    expect(textOf(payload)).toContain('Wrong domain on profile');
+    expect(customIdsOf(payload)).toEqual([customId(TICKETS_NS, ACTION.view)]);
+    const view = await bot.run({
+      kind: 'select',
+      name: customId(TICKETS_NS, ACTION.view),
+      user: staff.user,
+      values: [ticket.id],
+    });
+    expect(view.interaction.lastText()).toContain('STAFF VIEW');
+
+    const empty = await bot.run({
+      kind: 'user_context',
+      name: MEMBER_TICKETS_MENU,
+      user: staff.user,
+      targetUser: staff.user,
+    });
+    expect(empty.interaction.lastText()).toContain('No tickets from this member.');
   });
 
   it('/ticket panel posts the public panel for ticket managers and is audited', async () => {

@@ -20,7 +20,7 @@ export function TicketNoteForm({ ticketId, action }: { ticketId: string; action:
       <input type="hidden" name="ticketId" value={ticketId} />
       <FormField
         name="body"
-        label="Internal note"
+        label="Note"
         description="Staff only. Never posted to the thread or shown to the requester."
         required
       >

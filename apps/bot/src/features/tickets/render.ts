@@ -9,6 +9,7 @@ import { COLORS, GLYPH } from '../../ui/theme';
 import {
   ACTION,
   ANNOUNCEMENT_TEXT_MAX,
+  ASSIGNEE_NAME_MAX,
   CARD_EXCERPT_MAX,
   CARD_SUBJECT_MAX,
   REASON_DISPLAY_MAX,
@@ -123,7 +124,7 @@ export function announcement(line: tickets.CardAnnouncement): MessagePayload {
   switch (line.kind) {
     case 'assigned':
       return {
-        content: `**CLAIMED** — ${userText(line.assigneeName, 64)} is handling this ticket.`,
+        content: `**CLAIMED** — ${userText(line.assigneeName, ASSIGNEE_NAME_MAX)} is handling this ticket.`,
       };
     case 'waiting':
       return { content: `**WAITING ON YOU** — ${userText(line.note, ANNOUNCEMENT_TEXT_MAX)}` };

@@ -2,8 +2,7 @@ import { and, asc, desc, eq, gte, inArray, or, type SQL, sql } from 'drizzle-orm
 import { z } from 'zod';
 import { aiRequests, aiRequestStatus, members } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
-import type { Page } from '../kernel/pagination';
-import { pageSchema } from '../kernel/pagination';
+import { type CappedPage, cappedCount, pageSchema } from '../kernel/pagination';
 import { parseInput } from '../kernel/validation';
 import { authorize, requireUser } from '../permissions/authorize';
 import { AI_FEATURES, COUNTED_ERROR_CODES, COUNTED_REQUEST_STATUSES } from './constants';
@@ -53,12 +52,13 @@ const COUNTED = or(
 /**
  * The AI request ledger, newest first. `mine`: any signed-in user, own rows
  * only. `all`: `canViewAuditLogs`, with the requester and a short prompt
- * fingerprint. Never prompts or answers.
+ * fingerprint. Never prompts or answers. The ledger grows with every request
+ * and is never pruned, so the total is capped (`totalCapped` = "at least").
  */
 export async function listAiRequests(
   ctx: ServiceContext,
   input: z.input<typeof listAiRequestsSchema> = {},
-): Promise<Page<AiRequestView>> {
+): Promise<CappedPage<AiRequestView>> {
   const actor = requireUser(ctx);
   const q = parseInput(listAiRequestsSchema, input);
   const everyone = q.scope === 'all';
@@ -68,7 +68,7 @@ export async function listAiRequests(
   if (q.feature) filters.push(eq(aiRequests.feature, q.feature));
   if (q.status) filters.push(eq(aiRequests.status, q.status));
   const where = filters.length > 0 ? and(...filters) : undefined;
-  const [rows, [count]] = await Promise.all([
+  const [rows, count] = await Promise.all([
     ctx.db
       .select({ request: aiRequests, displayName: members.displayName })
       .from(aiRequests)
@@ -77,10 +77,7 @@ export async function listAiRequests(
       .orderBy(desc(aiRequests.createdAt), desc(aiRequests.id))
       .limit(q.limit)
       .offset(q.offset),
-    ctx.db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(aiRequests)
-      .where(where),
+    cappedCount(ctx.db, aiRequests, where, { offset: q.offset }),
   ]);
   return {
     items: rows.map(({ request, displayName }) => ({
@@ -101,7 +98,8 @@ export async function listAiRequests(
           ? request.promptHash.slice(0, FINGERPRINT_DISPLAY_LENGTH)
           : null,
     })),
-    total: count?.total ?? 0,
+    total: count.total,
+    totalCapped: count.capped,
     limit: q.limit,
     offset: q.offset,
   };

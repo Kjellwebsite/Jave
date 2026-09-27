@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
+import { E2E_DATABASE_URL } from './database-url';
 import { signInAs } from './fixtures';
-import { SEEDED_PAPERS } from './seed-ai-research';
+import { queueProposals, SEEDED_PAPERS, withdrawProposals } from './seed-ai-research';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -9,6 +10,9 @@ const NEW_PAPER = {
   arxivId: '1706.03762',
 };
 const UNKNOWN_ITEM = '/research/00000000-0000-4000-8000-000000000000';
+/** One more than a page of the confirmation queue. */
+const QUEUED_PROPOSALS = 11;
+const QUEUE_PAGE_SIZE = 10;
 
 /** The toast region where server actions report their result. */
 function toasts(page: Page) {
@@ -92,6 +96,40 @@ test.describe('JAVE AI console', () => {
     const queued = proposal(page, 'Your proposals', 'Announcement').first();
     await expect(queued).toContainText('QUEUED');
     await expect(queued).toContainText(/ANNOUNCEMENT QUEUED/);
+  });
+
+  test('the confirmation queue pages past ten; the badge counts the same queue', async ({
+    page,
+  }) => {
+    const queued = await queueProposals(E2E_DATABASE_URL, QUEUED_PROPOSALS);
+    try {
+      await signInAs(page, 'founder');
+      await page.goto('/ai?tab=proposals');
+      await expect(
+        page
+          .getByRole('navigation', { name: 'JAVE AI sections' })
+          .getByLabel(`${QUEUED_PROPOSALS} awaiting your confirmation`),
+      ).toBeVisible();
+      const queue = panelTitled(page, 'Awaiting your confirmation');
+      await expect(queue.getByRole('article')).toHaveCount(QUEUE_PAGE_SIZE);
+      const pages = page.getByRole('navigation', { name: 'Confirmation queue pages' });
+      await expect(pages).toContainText(`1–${QUEUE_PAGE_SIZE} of ${QUEUED_PROPOSALS}`);
+      await pages.getByRole('link', { name: 'Next' }).click();
+      await page.waitForURL(/[?&]queue=10\b/);
+      await expect(queue.getByRole('article')).toHaveCount(QUEUED_PROPOSALS - QUEUE_PAGE_SIZE);
+      // Newest first: the oldest fixture is the one left for the second page.
+      await expect(queue).toContainText(/Queued mission 1(?!\d)/);
+      await expect(queue.getByTestId('confirm-proposal')).toBeVisible();
+
+      // A stale or hand-edited page past the end offers the way back, not "0 of 11".
+      await page.goto('/ai?tab=proposals&queue=40');
+      await expect(queue).toContainText('NOTHING ON THIS PAGE');
+      await expect(pages).toHaveCount(0);
+      await queue.getByRole('link', { name: 'First page' }).click();
+      await expect(queue.getByRole('article')).toHaveCount(QUEUE_PAGE_SIZE);
+    } finally {
+      await withdrawProposals(E2E_DATABASE_URL, queued);
+    }
   });
 
   test('the ledger shows metadata only, everyone to auditors', async ({ page }) => {

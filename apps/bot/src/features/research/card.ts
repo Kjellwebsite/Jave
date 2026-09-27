@@ -46,15 +46,24 @@ const IDENTIFIER_MAX = 300;
 const BACKTICK_LOOKALIKE = '\u02CB';
 
 /**
- * A URL safe to render as a link button: http(s), within Discord's limit and
- * never a Discord link (a CDN attachment or message from a channel the viewer
- * may not see is not a public reference).
+ * The URL as Discord will receive it, or null when it exceeds the link-button
+ * limit. Measured after encoding: a non-ASCII path or identifier grows several
+ * times when percent-encoded, and one over-long button fails the whole reply.
+ */
+function withinLinkLimit(url: string): string | null {
+  return url.length <= LINK_URL_MAX ? url : null;
+}
+
+/**
+ * A URL safe to render as a link button: http(s), within Discord's limit once
+ * normalized, and never a Discord link (a CDN attachment or message from a
+ * channel the viewer may not see is not a public reference).
  */
 export function publicLink(url: string | null): string | null {
-  if (!url || url.length > LINK_URL_MAX || research.isDiscordUrl(url)) return null;
+  if (!url || research.isDiscordUrl(url)) return null;
   try {
     const parsed = new URL(url);
-    return HTTP_PROTOCOLS.has(parsed.protocol) ? parsed.toString() : null;
+    return HTTP_PROTOCOLS.has(parsed.protocol) ? withinLinkLimit(parsed.toString()) : null;
   } catch {
     return null;
   }
@@ -65,12 +74,14 @@ function encodePath(identifier: string): string {
   return identifier.split('/').map(encodeURIComponent).join('/');
 }
 
-export function doiLink(doi: string): string {
-  return `https://doi.org/${encodePath(doi)}`;
+/** The doi.org resolver link, or null when it would exceed Discord's limit. */
+export function doiLink(doi: string): string | null {
+  return withinLinkLimit(`https://doi.org/${encodePath(doi)}`);
 }
 
-export function arxivLink(arxivId: string): string {
-  return `https://arxiv.org/abs/${encodePath(arxivId)}`;
+/** The arXiv abstract link, or null when it would exceed Discord's limit. */
+export function arxivLink(arxivId: string): string | null {
+  return withinLinkLimit(`https://arxiv.org/abs/${encodePath(arxivId)}`);
 }
 
 function describe(item: Item): string {
@@ -138,14 +149,19 @@ function fields(item: Item, submitterDiscordId: string | null): APIEmbedField[] 
 }
 
 function linkRow(item: Item): APIActionRowComponent<APIComponentInMessageActionRow> | null {
-  const links: APIButtonComponent[] = [];
-  if (item.doi) links.push(linkButton('DOI', doiLink(item.doi)));
-  if (item.arxivId) links.push(linkButton('arXiv', arxivLink(item.arxivId)));
-  const source = publicLink(item.url);
-  if (source && !item.doi && !item.arxivId) links.push(linkButton('Source', source));
-  if (item.discordMessageUrl?.startsWith('https://')) {
-    links.push(linkButton('Message', item.discordMessageUrl));
-  }
+  const doi = item.doi ? doiLink(item.doi) : null;
+  const arxiv = item.arxivId ? arxivLink(item.arxivId) : null;
+  // The Source button stands in for a DOI or arXiv button that could not be built.
+  const source = doi || arxiv ? null : publicLink(item.url);
+  const message = item.discordMessageUrl?.startsWith('https://')
+    ? withinLinkLimit(item.discordMessageUrl)
+    : null;
+  const links: APIButtonComponent[] = [
+    doi ? linkButton('DOI', doi) : null,
+    arxiv ? linkButton('arXiv', arxiv) : null,
+    source ? linkButton('Source', source) : null,
+    message ? linkButton('Message', message) : null,
+  ].filter((link): link is APIButtonComponent => link !== null);
   return links.length > 0 ? row(...links) : null;
 }
 

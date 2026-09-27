@@ -170,7 +170,13 @@ describe('AI surfaces: ticket summaries and the request ledger', INTEGRATION_SUI
     it('auditors see everyone, with requester and a short fingerprint; never the prompt', async () => {
       const core = await kit.member({ roles: ['core'] });
       const all = await listAiRequests(kit.as(core), { scope: 'all' });
-      expect(all.total).toBe(3);
+      expect(all).toMatchObject({ total: 3, totalCapped: false });
+      const deep = await listAiRequests(kit.as(core), { scope: 'all', offset: 2, limit: 1 });
+      expect(deep).toMatchObject({ total: 3, totalCapped: false });
+      expect(deep.items).toHaveLength(1);
+      const filtered = await listAiRequests(kit.as(core), { scope: 'all', feature: 'ask' });
+      expect(filtered.total).toBe(3);
+      expect((await listAiRequests(kit.as(core), { scope: 'all', status: 'error' })).total).toBe(0);
       expect(all.items[0]!.requester).toMatchObject({ displayName: 'bravo' });
       expect(all.items[0]!.fingerprint).toHaveLength(FINGERPRINT_DISPLAY_LENGTH);
       expect(JSON.stringify(all)).not.toContain('Three?');

@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { testBackend } from '@jave/database/testing';
+import { listAiRequests, getUsageByUser } from '../ai/requests.service';
+import { getOrgUsage, getUsage } from '../ai/usage.service';
 import { listAuditLogs } from '../audit/audit.service';
 import { getProfile } from '../identity/profile.service';
 import { listMembers } from '../identity/users.service';
@@ -29,6 +31,12 @@ const COMPLETED_JOBS = 200_000;
 const DUE_JOBS = 1_000;
 const DEAD_JOBS = 500;
 const DOMAIN_EVENTS = 300_000;
+const AI_REQUESTS = 300_000;
+const FOCUS_AI_REQUESTS = 2_000;
+/** One request in this many is a mission draft: a rare feature filter. */
+const RARE_AI_FEATURE_EVERY = 1_000;
+/** One request in this many failed: a rare status filter. */
+const AI_ERROR_EVERY = 200;
 
 /** Tables that grow with activity, not with membership: never scan them whole. */
 const UNBOUNDED_TABLES = new Set([
@@ -37,6 +45,7 @@ const UNBOUNDED_TABLES = new Set([
   'audit_logs',
   'jobs',
   'domain_events',
+  'ai_requests',
 ]);
 
 /** Budget for one hot read, generous so a loaded machine does not flake it. */
@@ -154,6 +163,25 @@ describe.skipIf(testBackend() !== 'postgres')(
              'member', (g % 5000)::text, ids.a[1 + g % ${MEMBERS}], now() - (g * interval '5 seconds')
       from generate_series(1, ${DOMAIN_EVENTS}) g, ids;
     `);
+      // The AI ledger's "today" is the kit's manual clock, so seed relative to it.
+      const aiNow = `timestamptz '${kit.clock.now().toISOString()}'`;
+      await q(`
+      with ids as (select array_agg(id) a from users where username like 'perf_user_%')
+      insert into ai_requests (user_id, feature, surface, provider, model, status, error_code,
+                               input_tokens, output_tokens, prompt_hash, created_at)
+      select ids.a[1 + g % ${MEMBERS}],
+             case when g % ${RARE_AI_FEATURE_EVERY} = 0 then 'draft_task'
+                  else (array['ask','summarize','research','explain','analyze','brainstorm'])[1 + g % 6] end,
+             'discord', 'mock', 'mock-1',
+             (case when g % ${AI_ERROR_EVERY} = 0 then 'error' else 'ok' end)::ai_request_status,
+             case when g % ${AI_ERROR_EVERY} = 0 then 'timeout' end,
+             400, 300, md5(g::text) || md5(g::text), ${aiNow} - (g * interval '30 seconds')
+      from generate_series(1, ${AI_REQUESTS}) g, ids;
+      insert into ai_requests (user_id, feature, surface, provider, model, status, created_at)
+      select '${focus.userId}', 'ask', 'dashboard', 'mock', 'mock-1', 'ok',
+             ${aiNow} - (g * interval '15 minutes')
+      from generate_series(1, ${FOCUS_AI_REQUESTS}) g;
+    `);
       await q('analyze');
 
       captured = [];
@@ -179,6 +207,17 @@ describe.skipIf(testBackend() !== 'postgres')(
       await run('dead letters', () => listJobs(as(founder), { status: 'dead', limit: 25 }));
       await run('queue stats', () => getQueueStats(db, kit.clock.now()));
       await run('profile', () => getProfile(as(focus), { memberId: focus.memberId! }));
+      await run('ai ledger (all)', () => listAiRequests(as(founder), { scope: 'all', limit: 50 }));
+      await run('ai ledger by rare feature', () =>
+        listAiRequests(as(founder), { scope: 'all', feature: 'draft_task', limit: 50 }),
+      );
+      await run('ai ledger by status', () =>
+        listAiRequests(as(founder), { scope: 'all', status: 'error', limit: 50 }),
+      );
+      await run('ai ledger (mine)', () => listAiRequests(as(focus), { limit: 50 }));
+      await run('ai usage today', () => getUsage(as(focus)));
+      await run('ai usage by member', () => getUsageByUser(as(founder), { limit: 25 }));
+      await run('ai org usage', () => getOrgUsage(as(founder), { days: 1 }));
       await run('job claim', () =>
         claimJobs(db, { workerId: 'perf', limit: 10, now: kit.clock.now(), types: ['perf.noop'] }),
       );
@@ -210,7 +249,7 @@ describe.skipIf(testBackend() !== 'postgres')(
           seqScans: r.seqScans.map((scan) => `${scan.table} (${scan.rows})`).join(', ') || '-',
         })),
       );
-      expect(new Set(reports.map((r) => r.label)).size).toBe(10);
+      expect(new Set(reports.map((r) => r.label)).size).toBe(17);
       const unboundedScans = reports.flatMap((r) =>
         r.seqScans
           .filter((scan) => UNBOUNDED_TABLES.has(scan.table) && scan.rows > SCAN_BUDGET_ROWS)

@@ -15,6 +15,8 @@ export const AI_NS = 'ai';
 export const ANSWER_TTL_MS = 30 * 60_000;
 /** Upper bound on answers held in memory per process (oldest dropped first). */
 export const MAX_STORED_ANSWERS = 500;
+/** Pageable answers per member; their oldest is dropped first, never someone else's. */
+export const MAX_STORED_ANSWERS_PER_MEMBER = 20;
 /**
  * Core caps answers at ai.MAX_OUTPUT_CHARS; neutralizing mentions adds a few
  * characters, so sanitize with headroom and let pagination do the splitting.
@@ -42,7 +44,11 @@ export interface AnswerDoc {
   usage: ai.MyAiUsage;
 }
 
-const answers = new ExpiringStore<AnswerDoc>(ANSWER_TTL_MS, MAX_STORED_ANSWERS);
+const answers = new ExpiringStore<AnswerDoc>({
+  ttlMs: ANSWER_TTL_MS,
+  maxEntries: MAX_STORED_ANSWERS,
+  maxPerOwner: MAX_STORED_ANSWERS_PER_MEMBER,
+});
 
 function footer(doc: AnswerDoc, page: number): string {
   const parts = [

@@ -389,7 +389,11 @@ describe('ai feature: units', () => {
   });
 
   it('ExpiringStore expires, bounds its size and never returns another id', () => {
-    const store = new ExpiringStore<{ ownerId: string; n: number }>(1000, 3);
+    const store = new ExpiringStore<{ ownerId: string; n: number }>({
+      ttlMs: 1000,
+      maxEntries: 3,
+      maxPerOwner: 3,
+    });
     const ids = [1, 2, 3, 4].map((n) => store.put({ ownerId: 'u', n }, 0));
     expect(store.size).toBe(3);
     expect(store.get(ids[0]!, 10)).toBeNull();
@@ -397,5 +401,31 @@ describe('ai feature: units', () => {
     expect(store.get(ids[3]!, 1000)).toBeNull();
     expect(new Set(ids).size).toBe(4);
     for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]{12}$/);
+  });
+
+  it('BREAK: one owner filling the store only ever evicts their own entries', () => {
+    const store = new ExpiringStore<{ ownerId: string; n: number }>({
+      ttlMs: 1000,
+      maxEntries: 6,
+      maxPerOwner: 2,
+    });
+    const victims = ['a', 'b'].map((ownerId) => store.put({ ownerId, n: 0 }, 0));
+    const flood = Array.from({ length: 50 }, (_, n) => store.put({ ownerId: 'flood', n }, 1));
+    expect(store.size).toBe(4);
+    for (const id of victims) expect(store.get(id, 2)).not.toBeNull();
+    expect(flood.slice(0, -2).every((id) => store.get(id, 2) === null)).toBe(true);
+    expect(flood.slice(-2).map((id) => store.get(id, 2)?.n)).toEqual([48, 49]);
+
+    // Only the global cap evicts across owners, oldest first, and expiry frees owner slots.
+    const others = ['c', 'd', 'e'].map((ownerId) => store.put({ ownerId, n: 1 }, 3));
+    expect(store.size).toBe(6);
+    expect(store.get(victims[0]!, 4)).toBeNull();
+    expect(others.every((id) => store.get(id, 4) !== null)).toBe(true);
+    const later = [1, 2].map((n) => store.put({ ownerId: 'b', n }, 1500));
+    expect(store.size).toBe(2);
+    expect(later.every((id) => store.get(id, 1500) !== null)).toBe(true);
+    expect(() => new ExpiringStore({ ttlMs: 1, maxEntries: 1, maxPerOwner: 2 })).toThrow(
+      RangeError,
+    );
   });
 });

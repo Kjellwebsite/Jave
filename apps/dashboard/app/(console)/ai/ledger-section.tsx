@@ -127,6 +127,7 @@ export async function LedgerSection({
             offset={page.offset}
             limit={page.limit}
             total={page.total}
+            totalIsLowerBound={page.totalCapped}
             linkComponent={NextLink}
             hrefForOffset={(next) =>
               `/ai${toQueryString({ tab: 'ledger', ...filters, offset: next || undefined })}`

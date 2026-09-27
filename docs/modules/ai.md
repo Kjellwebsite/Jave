@@ -62,10 +62,10 @@ the surface (services never read `process.env`).
 | `analyze({ text })`, `explain({ text })`                                             | READ         |                                                                                                                                                                                                                                      |
 | `brainstorm({ topic, constraints? })`                                                | SUGGEST      |                                                                                                                                                                                                                                      |
 | `draftAnnouncement({ brief })`                                                       | SUGGEST      | Requires `canBroadcast`. The model drafts; JAVE stores a **pending** `draft_announcement` proposal.                                                                                                                                  |
-| `draftTask({ brief })`                                                               | SUGGEST      | Requires `canManageMissions`. The model drafts a mission; JAVE stores a **pending** `create_task` proposal.                                                                                                                          |
+| `draftTask({ brief, source? })`                                                      | SUGGEST      | Requires `canManageMissions`. The model drafts a mission; JAVE stores a **pending** `create_task` proposal. `source` (material the requester did not write) is wrapped as untrusted data.                                            |
 | `proposeAction`, `confirmProposal`, `rejectProposal`, `getProposal`, `listProposals` | EXECUTE path | See below.                                                                                                                                                                                                                           |
 | `getUsage(ctx, deps?)`                                                               |              | Today's `{ used, limit, remaining, resetsAt }` for the caller.                                                                                                                                                                       |
-| `listAiRequests(ctx, { scope, feature?, status? })`                                  |              | The ledger, newest first. `mine` for anyone; `all` needs `canViewAuditLogs` and adds the requester and a 12-character prompt fingerprint. Never prompts or answers.                                                                  |
+| `listAiRequests(ctx, { scope, feature?, status? })`                                  |              | The ledger, newest first. `mine` for anyone; `all` needs `canViewAuditLogs` and adds the requester and a 12-character prompt fingerprint. Never prompts or answers. Capped total (`totalCapped`).                                    |
 | `getUsageByUser(ctx, { limit })`                                                     |              | Today's (UTC) counted requests, attempts and tokens per member, heaviest first. `canViewAuditLogs`.                                                                                                                                  |
 | `ticketSummarizer(ctx, deps, surface)`                                               | READ         | The tickets module's `TicketSummarizer` extension point, through the same guarded path (feature `ticket_summary`, billed and limited like any request). The transcript is one untrusted block with role labels only.                 |
 | `getOrgUsage(ctx, { days ≤ 90 })`                                                    |              | `canViewAnalytics`. Aggregates only: totals, by status, by feature, by day. No prompts, no per-user rows.                                                                                                                            |
@@ -114,6 +114,10 @@ pending ──confirm──► executed                      (effect applied in 
    ├──expiry (settings.ai.proposalTtlMinutes, sweep every 5 min)──► expired
    └──tampered / invalid payload / execution error──► failed
 ```
+
+`listProposals({ scope })`: `mine` is the caller's proposals; `to_confirm` is the queue of
+**other members'** pending, unexpired proposals of kinds the caller may confirm (their own are
+in `mine`), so its total is the queue's exact size.
 
 `proposeAction` validates the payload with the kind's schema, caps it (16 KB canonical JSON),
 checks that a referenced `aiRequestId` belongs to the caller, limits a user to 10 live pending
@@ -202,6 +206,5 @@ bounded by the kind's capability), `canManageMissions`, `canBroadcast`, `canView
 - `create_task` writes the `missions` table directly until the missions module exposes a creation API.
 - Injection detection is heuristic; the real safety boundary is that AI output cannot execute anything without a human confirmation.
 - Requests are non-streaming with a 90 s per-attempt deadline (`ProviderFactoryDeps.timeoutMs` overrides it). Long answers on reasoning models can exceed it and surface as "JAVE AI took too long to respond"; timeouts are deliberately not auto-retried.
-- Discord answers for paging live in the bot process's memory (30 minutes, 500 answers): a restart or a second bot replica makes old PREV / NEXT buttons read EXPIRED.
+- Discord answers for paging live in the bot process's memory (30 minutes, 20 answers per member, 500 per process; a member's oldest answer is dropped first, so one member cannot evict everyone else's): a restart or a second bot replica makes old PREV / NEXT buttons read EXPIRED.
 - `discord.ai.announce` relies on Discord's message nonce for idempotency, which only deduplicates for a few minutes; a retry after a lost response _and_ a failed delivery report beyond that window could post twice.
-- _Create Task_ sends the right-clicked message as the member's brief (not as a wrapped data block, because `draftTask` takes one brief); injection signals are still detected and flagged on the PREVIEW, and nothing executes without CONFIRM.

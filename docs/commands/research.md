@@ -19,6 +19,9 @@ The **Source** button is shown only for http(s) links that are not Discord links
 attachment or message from a private channel is never presented as a public reference. DOIs and
 arXiv IDs are shown as inline code; a backtick inside one (legal in a DOI suffix) is replaced by a
 look-alike, so an identifier can never end its code span and render as a link or formatting.
+Link buttons are measured after percent-encoding: a DOI, arXiv or Source link longer than
+Discord's 512-character limit (a long non-ASCII DOI or URL) is left off the card instead of
+failing the whole reply; the identifier stays readable in the card.
 
 ## Message context menu — `Save to Sidus` (`canViewMembers`, good standing)
 

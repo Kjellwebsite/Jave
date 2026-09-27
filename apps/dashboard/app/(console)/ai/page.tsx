@@ -37,15 +37,14 @@ const ledgerFilterSchema = z.object({
     .catch(undefined),
 });
 
-/** How many queued proposals the tab badge counts before it reads "N+". */
-const BADGE_COUNT_LIMIT = 50;
+/** The badge only needs the queue's total, not its rows. */
+const BADGE_ROWS = 1;
 
-/** Other members' pending proposals the viewer may confirm (the tab badge). */
-async function awaitingCount(ctx: UserContext): Promise<{ count: number; more: boolean }> {
-  if (!can(ctx, 'canConfirmAIActions')) return { count: 0, more: false };
-  const queue = await ai.listProposals(ctx, { scope: 'to_confirm', limit: BADGE_COUNT_LIMIT });
-  const count = queue.items.filter((item) => item.requestedByUserId !== ctx.actor.userId).length;
-  return { count, more: queue.total > BADGE_COUNT_LIMIT };
+/** Other members' live proposals the viewer may confirm: the same queue the tab lists. */
+async function awaitingCount(ctx: UserContext): Promise<number> {
+  if (!can(ctx, 'canConfirmAIActions')) return 0;
+  const queue = await ai.listProposals(ctx, { scope: 'to_confirm', limit: BADGE_ROWS });
+  return queue.total;
 }
 
 export default async function AiPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -75,17 +74,21 @@ export default async function AiPage({ searchParams }: { searchParams: Promise<S
           label: TAB_LABELS[key],
           active: key === tab,
           meta:
-            key === 'proposals' && awaiting.count > 0 ? (
-              <Badge tone="info" aria-label={`${awaiting.count} awaiting your confirmation`}>
-                {awaiting.count}
-                {awaiting.more ? '+' : ''}
+            key === 'proposals' && awaiting > 0 ? (
+              <Badge tone="info" aria-label={`${awaiting} awaiting your confirmation`}>
+                {awaiting}
               </Badge>
             ) : undefined,
         }))}
       />
       {tab === 'overview' ? <OverviewSection ctx={ctx} timeZone={viewer.timeZone} /> : null}
       {tab === 'proposals' ? (
-        <ProposalsSection ctx={ctx} timeZone={viewer.timeZone} offset={offset} />
+        <ProposalsSection
+          ctx={ctx}
+          timeZone={viewer.timeZone}
+          offset={offset}
+          queueOffset={offsetParam(params.queue)}
+        />
       ) : null}
       {tab === 'ledger' ? (
         <LedgerSection

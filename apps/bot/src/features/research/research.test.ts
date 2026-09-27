@@ -138,6 +138,39 @@ describe('research feature', SUITE, () => {
       expect(identifiers?.value).toContain('[verify](https://evil.example/login)');
     });
 
+    it('BREAK: link buttons stay within Discord’s URL limit after percent-encoding', async () => {
+      // Both fit core's limits raw (a DOI ≤ 200, a URL ≤ 2048) but encode far past 512.
+      const longDoi = `10.1234/${'é'.repeat(150)}`;
+      const longLink = `https://ru.wikipedia.org/wiki/${'Ж'.repeat(190)}`;
+      const saved = [
+        await saveMessage(member.user, `Draft preprint ${longDoi}`),
+        await saveMessage(member.user, `Background reading ${longLink}`),
+      ];
+      const items = await bot.kit.db.select().from(researchItems);
+      expect(items.map((item) => item.doi ?? item.url).sort()).toEqual([longDoi, longLink].sort());
+
+      const views = await Promise.all(
+        items.map((item) =>
+          bot.run({
+            kind: 'slash',
+            name: 'sidus',
+            subcommand: 'view',
+            user: member.user,
+            options: { item: item.id },
+          }),
+        ),
+      );
+      for (const { interaction } of [...saved, ...views]) {
+        expect(interaction.lastText()).toContain('RESEARCH ITEM');
+        const urls = linkUrls(interaction).filter(Boolean);
+        // The member can still jump to the source message; no over-long button remains.
+        expect(urls).toHaveLength(1);
+        expect(urls[0]).toMatch(/^https:\/\/discord\.com\/channels\//);
+        for (const url of urls) expect(url.length).toBeLessThanOrEqual(512);
+      }
+      expect(saved[0]!.interaction.lastText()).toContain(`DOI \`${longDoi}\``);
+    });
+
     it('BREAK: a duplicate of an item archived by someone else is named, never shown', async () => {
       await saveMessage(reviewer.user);
       const itemId = await savedItemId();

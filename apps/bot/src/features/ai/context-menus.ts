@@ -33,10 +33,21 @@ interface PendingQuestion {
 /** Discord modals must be submitted within 15 minutes. */
 const PENDING_TTL_MS = 15 * 60_000;
 const MAX_PENDING_QUESTIONS = 500;
+/** Open Ask JAVE modals per member; opening another drops their oldest. */
+const MAX_PENDING_QUESTIONS_PER_MEMBER = 5;
 const DEFAULT_MESSAGE_QUESTION =
   'Respond to this message: answer its question, or explain what it says.';
+/**
+ * Create Task's trusted brief. The right-clicked message is usually someone
+ * else's words, so it travels as untrusted source material, never as the brief.
+ */
+const CREATE_TASK_BRIEF = 'Draft a mission from the referenced Discord message.';
 
-const pending = new ExpiringStore<PendingQuestion>(PENDING_TTL_MS, MAX_PENDING_QUESTIONS);
+const pending = new ExpiringStore<PendingQuestion>({
+  ttlMs: PENDING_TTL_MS,
+  maxEntries: MAX_PENDING_QUESTIONS,
+  maxPerOwner: MAX_PENDING_QUESTIONS_PER_MEMBER,
+});
 
 const HELP_CATEGORY = 'intelligence';
 
@@ -127,7 +138,8 @@ export const createTaskContext: CommandDefinition = {
     const { text } = targetText(h.interaction.targetMessage);
     await withAiLimits(h, async () => {
       const draft = await ai.draftTask(h.ctx, aiDepsOf(h.services), {
-        brief: text.slice(0, ai.MAX_DRAFT_BRIEF_LENGTH),
+        brief: CREATE_TASK_BRIEF,
+        source: text.slice(0, ai.MAX_DRAFT_BRIEF_LENGTH),
         surface: 'discord',
       });
       await h.respond(proposalPreview(draft.proposal, draft.warnings));

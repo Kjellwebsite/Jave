@@ -131,3 +131,84 @@ export async function seedAiResearchFixtures(databaseUrl: string): Promise<void>
     await database.close();
   }
 }
+
+/** The two drafting personas: one fills its pending cap with missions, then the other. */
+const QUEUE_REQUESTERS = [
+  {
+    persona: 'operations',
+    kind: 'create_task',
+    payload: (n: number) => ({
+      title: `Queued mission ${n}`,
+      brief: `Queue fixture ${n}: build it, document it, and demo the result for verification.`,
+    }),
+  },
+  {
+    persona: 'core',
+    kind: 'draft_announcement',
+    payload: (n: number) => ({
+      title: `QUEUED ANNOUNCEMENT ${n}`,
+      body: `Queue fixture ${n}. Nothing is posted unless someone confirms it.`,
+    }),
+  },
+] as const;
+
+export interface QueuedProposal {
+  id: string;
+  persona: (typeof QUEUE_REQUESTERS)[number]['persona'];
+}
+
+async function withSystem<T>(
+  databaseUrl: string,
+  run: (system: ServiceContext) => Promise<T>,
+): Promise<T> {
+  const database = createDatabase(databaseUrl, { max: 1, applicationName: 'jave-e2e-ai-queue' });
+  try {
+    return await run(createContext({ db: database.db, actor: systemActor('e2e-seed') }));
+  } finally {
+    await database.close();
+  }
+}
+
+/**
+ * TEST DATA ONLY: `count` pending proposals for the founder's confirmation
+ * queue, drafted by other staff (each persona up to the pending cap). Pass
+ * the result to withdrawProposals() afterwards.
+ */
+export async function queueProposals(
+  databaseUrl: string,
+  count: number,
+): Promise<QueuedProposal[]> {
+  return withSystem(databaseUrl, async (system) => {
+    const queued: QueuedProposal[] = [];
+    for (const requester of QUEUE_REQUESTERS) {
+      const ctx = await contextFor(system, personaDiscordId(requester.persona));
+      const pending = await ai.listProposals(ctx, { scope: 'mine', status: 'pending', limit: 1 });
+      let room = ai.MAX_PENDING_PROPOSALS_PER_USER - pending.total;
+      while (queued.length < count && room > 0) {
+        const proposal = await ai.proposeAction(ctx, {
+          kind: requester.kind,
+          payload: requester.payload(queued.length + 1),
+        });
+        queued.push({ id: proposal.id, persona: requester.persona });
+        room -= 1;
+      }
+    }
+    if (queued.length < count) {
+      throw new Error(`only ${queued.length} of ${count} proposals fit the pending caps`);
+    }
+    return queued;
+  });
+}
+
+/** TEST DATA ONLY: each requester withdraws what queueProposals() drafted for them. */
+export async function withdrawProposals(
+  databaseUrl: string,
+  queued: readonly QueuedProposal[],
+): Promise<void> {
+  await withSystem(databaseUrl, async (system) => {
+    for (const { id, persona } of queued) {
+      const requester = await contextFor(system, personaDiscordId(persona));
+      await ai.rejectProposal(requester, { proposalId: id, reason: 'Queue fixture withdrawn.' });
+    }
+  });
+}

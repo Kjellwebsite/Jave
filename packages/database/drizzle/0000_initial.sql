@@ -1522,7 +1522,9 @@ CREATE INDEX "ai_action_proposals_status_idx" ON "ai_action_proposals" USING btr
 CREATE INDEX "ai_action_proposals_requester_idx" ON "ai_action_proposals" USING btree ("requested_by_user_id","status");--> statement-breakpoint
 CREATE INDEX "ai_action_proposals_expiry_idx" ON "ai_action_proposals" USING btree ("status","expires_at");--> statement-breakpoint
 CREATE INDEX "ai_requests_user_idx" ON "ai_requests" USING btree ("user_id","created_at");--> statement-breakpoint
-CREATE INDEX "ai_requests_time_idx" ON "ai_requests" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "ai_requests_time_idx" ON "ai_requests" USING btree ("created_at","id");--> statement-breakpoint
+CREATE INDEX "ai_requests_feature_idx" ON "ai_requests" USING btree ("feature","created_at","id");--> statement-breakpoint
+CREATE INDEX "ai_requests_status_idx" ON "ai_requests" USING btree ("status","created_at","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_items_doi_uq" ON "research_items" USING btree ("doi");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_items_canonical_url_uq" ON "research_items" USING btree ("canonical_url");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_items_discord_message_uq" ON "research_items" USING btree ("discord_message_id");--> statement-breakpoint

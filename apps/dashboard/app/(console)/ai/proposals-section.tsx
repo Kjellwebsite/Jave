@@ -1,6 +1,7 @@
+import Link from 'next/link';
 import { Inbox, Sparkles } from 'lucide-react';
 import { ai, CAPABILITY_KEYS, type Capability, can, getSettings, userNames } from '@jave/core';
-import { cx, EmptyState, Pagination, Panel } from '@jave/ui';
+import { buttonStyles, cx, EmptyState, Pagination, Panel } from '@jave/ui';
 import { DraftForm } from '@/components/ai/draft-form';
 import {
   ProposalCard,
@@ -20,7 +21,8 @@ import {
 } from './actions';
 
 export const PROPOSALS_PAGE_SIZE = 10;
-const QUEUE_LIMIT = 25;
+/** Proposals per page of the confirmation queue. */
+export const QUEUE_PAGE_SIZE = 10;
 
 function holds(ctx: UserContext, capability: string): boolean {
   return (CAPABILITY_KEYS as readonly string[]).includes(capability)
@@ -74,25 +76,39 @@ export async function ProposalsSection({
   ctx,
   timeZone,
   offset,
+  queueOffset,
 }: {
   ctx: UserContext;
   timeZone: string;
+  /** Page of "Your proposals". */
   offset: number;
+  /** Page of the confirmation queue. */
+  queueOffset: number;
 }) {
-  const userId = ctx.actor.userId;
   const [queue, mine, settings, status] = await Promise.all([
     can(ctx, 'canConfirmAIActions')
-      ? ai.listProposals(ctx, { scope: 'to_confirm', limit: QUEUE_LIMIT })
+      ? ai.listProposals(ctx, {
+          scope: 'to_confirm',
+          limit: QUEUE_PAGE_SIZE,
+          offset: queueOffset,
+        })
       : null,
     ai.listProposals(ctx, { scope: 'mine', limit: PROPOSALS_PAGE_SIZE, offset }),
     getSettings(ctx, 'ai'),
     getProviderStatus(),
   ]);
-  const awaiting = (queue?.items ?? []).filter((item) => item.requestedByUserId !== userId);
+  // Core's queue already leaves out the viewer's own proposals (they are under "Your proposals").
+  const awaiting = queue?.items ?? [];
   const names = await userNames(
     ctx,
     awaiting.map((item) => item.requestedByUserId),
   );
+  const pageHref = (pages: { offset: number; queueOffset: number }) =>
+    `/ai${toQueryString({
+      tab: 'proposals',
+      offset: pages.offset || undefined,
+      queue: pages.queueOffset || undefined,
+    })}`;
   const now = ctx.clock.now();
   const decisionFor = (proposal: ai.ProposalView, own: boolean): ProposalDecision => ({
     canConfirm: own ? holds(ctx, proposal.capabilityToConfirm) : true,
@@ -113,7 +129,22 @@ export async function ProposalsSection({
           description="Drafted by other members. Confirming executes exactly the preview, as you."
           flush
         >
-          {awaiting.length === 0 ? (
+          {awaiting.length === 0 && queue.total > 0 ? (
+            <EmptyState
+              compact
+              icon={Inbox}
+              title="NOTHING ON THIS PAGE"
+              description={`The queue is shorter than this page. ${queue.total} awaiting your confirmation.`}
+              action={
+                <Link
+                  href={pageHref({ offset, queueOffset: 0 })}
+                  className={buttonStyles({ size: 'sm' })}
+                >
+                  First page
+                </Link>
+              }
+            />
+          ) : awaiting.length === 0 ? (
             <EmptyState
               compact
               icon={Inbox}
@@ -131,6 +162,18 @@ export async function ProposalsSection({
               ))}
             </div>
           )}
+          {awaiting.length > 0 && queue.total > QUEUE_PAGE_SIZE ? (
+            <div className="border-t border-line-subtle px-5 py-3">
+              <Pagination
+                label="Confirmation queue pages"
+                offset={queue.offset}
+                limit={queue.limit}
+                total={queue.total}
+                linkComponent={NextLink}
+                hrefForOffset={(next) => pageHref({ offset, queueOffset: next })}
+              />
+            </div>
+          ) : null}
         </Panel>
       ) : null}
 
@@ -170,13 +213,12 @@ export async function ProposalsSection({
           {mine.total > PROPOSALS_PAGE_SIZE ? (
             <div className="border-t border-line-subtle px-5 py-3">
               <Pagination
+                label="Your proposals pages"
                 offset={mine.offset}
                 limit={mine.limit}
                 total={mine.total}
                 linkComponent={NextLink}
-                hrefForOffset={(next) =>
-                  `/ai${toQueryString({ tab: 'proposals', offset: next || undefined })}`
-                }
+                hrefForOffset={(next) => pageHref({ offset: next, queueOffset })}
               />
             </div>
           ) : null}

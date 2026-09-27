@@ -41,7 +41,9 @@ export function ParticipantsTable({
             <TableHeaderCell>Member</TableHeaderCell>
             <TableHeaderCell>Response</TableHeaderCell>
             <TableHeaderCell className="hidden md:table-cell">Responded</TableHeaderCell>
-            <TableHeaderCell className="text-right">Checked in</TableHeaderCell>
+            <TableHeaderCell className="hidden text-right sm:table-cell">
+              Checked in
+            </TableHeaderCell>
           </tr>
         </TableHead>
         <TableBody>
@@ -67,10 +69,16 @@ export function ParticipantsTable({
                       <span className="type-data block truncate text-[12px] text-fg-subtle">
                         @{participant.handle}
                       </span>
+                      {participant.checkedInAt ? (
+                        <span className="type-data block text-[12px] text-success sm:hidden">
+                          ✓ {formatTimestamp(participant.checkedInAt, timeZone)}
+                        </span>
+                      ) : null}
                     </Link>
                   </TableCell>
                   <TableCell>
                     <StatusBadge
+                      className="whitespace-nowrap"
                       quiet={participant.status === 'going'}
                       tone={RSVP_TONE[participant.status]}
                       label={`${RSVP_LABELS[participant.status].toUpperCase()}${position ? ` #${position}` : ''}`}
@@ -79,14 +87,10 @@ export function ParticipantsTable({
                   <TableCell className="hidden md:table-cell">
                     <Mono dim>{formatTimestamp(participant.respondedAt, timeZone)}</Mono>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right sm:table-cell">
                     {participant.checkedInAt ? (
                       <Mono className="text-success">
-                        ✓
-                        <span className="hidden sm:inline">
-                          {' '}
-                          {formatTimestamp(participant.checkedInAt, timeZone)}
-                        </span>
+                        ✓ {formatTimestamp(participant.checkedInAt, timeZone)}
                       </Mono>
                     ) : (
                       <Mono dim aria-label="not checked in">

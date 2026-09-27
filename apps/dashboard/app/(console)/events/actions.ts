@@ -48,8 +48,21 @@ async function readForm(ctx: UserContext, data: FormData) {
   }
 }
 
+const FORM_FIELD_NAMES: ReadonlySet<string> = new Set(EVENT_FORM_FIELDS);
+
+/**
+ * A refusal pinned to the form's own fields: the details sit on those fields,
+ * so the line above the form stays calm instead of repeating a field path.
+ */
+function summarizeFieldErrors(state: ActionState): ActionState {
+  if (state.status !== 'error' || !state.fieldErrors) return state;
+  const fields = Object.keys(state.fieldErrors);
+  if (fields.length === 0 || !fields.every((field) => FORM_FIELD_NAMES.has(field))) return state;
+  return { ...state, message: 'NOT SAVED — check the marked fields.' };
+}
+
 export async function createEventAction(_: ActionState, data: FormData): Promise<ActionState> {
-  return runAction(
+  const state = await runAction(
     'event.schedule',
     async (ctx) => {
       const event = await calendar.scheduleEvent(ctx, scheduleInput(await readForm(ctx, data)));
@@ -58,10 +71,11 @@ export async function createEventAction(_: ActionState, data: FormData): Promise
     },
     { fieldNames: EVENT_FORM_FIELDS },
   );
+  return summarizeFieldErrors(state);
 }
 
 export async function updateEventAction(_: ActionState, data: FormData): Promise<ActionState> {
-  return runAction(
+  const state = await runAction(
     'event.update',
     async (ctx) => {
       const eventId = eventIdFrom(data);
@@ -74,6 +88,7 @@ export async function updateEventAction(_: ActionState, data: FormData): Promise
     },
     { fieldNames: EVENT_FORM_FIELDS },
   );
+  return summarizeFieldErrors(state);
 }
 
 export async function cancelEventAction(_: ActionState, data: FormData): Promise<ActionState> {

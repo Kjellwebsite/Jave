@@ -99,7 +99,11 @@ async function syncAnnouncement(
       await gateway.editMessage(channelId, messageId, message);
       return;
     } catch (error) {
-      if (!isDiscordError(error, UNKNOWN_OBJECT.message)) throw error;
+      // Deleted with its message or its whole channel: post a new one where announcements go now.
+      const gone =
+        isDiscordError(error, UNKNOWN_OBJECT.message) ||
+        isDiscordError(error, UNKNOWN_OBJECT.channel);
+      if (!gone) throw error;
     }
   }
   if (!isOpen(publication) || !publication.announceChannelId) return;
@@ -111,11 +115,12 @@ async function syncAnnouncement(
   };
 }
 
-async function ignoreUnknown(work: Promise<void>, code: number): Promise<void> {
+/** Await `work`; Discord answering that the object (or its channel) is gone counts as done. */
+async function ignoreUnknown(work: Promise<void>, ...codes: number[]): Promise<void> {
   try {
     await work;
   } catch (error) {
-    if (!isDiscordError(error, code)) throw error;
+    if (!codes.some((code) => isDiscordError(error, code))) throw error;
   }
 }
 
@@ -157,6 +162,7 @@ async function reportCreated(
         DUPLICATE_REASON,
       ),
       UNKNOWN_OBJECT.message,
+      UNKNOWN_OBJECT.channel,
     );
     if (
       stored.announcementChannelId &&
@@ -281,6 +287,7 @@ function cancelHandler(services: BotServices, lock: KeyedLock): JobHandler {
         await ignoreUnknown(
           gateway.editMessage(channelId, messageId, cancelledAnnouncement(publication)),
           UNKNOWN_OBJECT.message,
+          UNKNOWN_OBJECT.channel,
         ).catch((error: unknown) => {
           failures.push(error);
         });

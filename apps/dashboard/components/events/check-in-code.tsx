@@ -58,9 +58,15 @@ export function CheckInCodeIssuer({ eventId, action, issued }: CheckInCodeIssuer
       )}
       <form onSubmit={handleSubmit} action={dispatch} className="flex flex-wrap items-center gap-3">
         <input type="hidden" name="eventId" value={eventId} />
+        {/*
+          Keys give each step its own button element: reusing the clicked
+          type="button" as a submit button mid-click would submit the form and
+          rotate the code without the confirmation.
+        */}
         {rotates && !confirming ? (
           <>
             <Button
+              key="rotate"
               type="button"
               variant="secondary"
               iconLeft={KeyRound}
@@ -75,10 +81,16 @@ export function CheckInCodeIssuer({ eventId, action, issued }: CheckInCodeIssuer
           </>
         ) : rotates ? (
           <>
-            <Button type="submit" variant="danger" iconLeft={KeyRound} loading={pending}>
+            <Button
+              key="replace"
+              type="submit"
+              variant="danger"
+              iconLeft={KeyRound}
+              loading={pending}
+            >
               Replace code
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
+            <Button key="keep" type="button" variant="ghost" onClick={() => setConfirming(false)}>
               Keep current code
             </Button>
             <p className="w-full text-small text-fg-subtle">
@@ -87,7 +99,13 @@ export function CheckInCodeIssuer({ eventId, action, issued }: CheckInCodeIssuer
           </>
         ) : (
           <>
-            <Button type="submit" variant="primary" iconLeft={KeyRound} loading={pending}>
+            <Button
+              key="issue"
+              type="submit"
+              variant="primary"
+              iconLeft={KeyRound}
+              loading={pending}
+            >
               Issue check-in code
             </Button>
             <p className="text-small text-fg-subtle">

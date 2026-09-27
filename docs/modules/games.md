@@ -145,6 +145,22 @@ two live panels.
 **Permissions** in the session channel: View Channel, Send Messages, Embed Links,
 Read Message History (deleting its own duplicate needs nothing more).
 
+## Surfaces
+
+Full reference: [docs/commands/games.md](../commands/games.md).
+
+- **Discord** (`apps/bot/src/features/games`): `/challenge` (trivia · reaction · leaderboard
+  · stop); one public panel per session kept in sync by the `discord.games.render` handler
+  (lobby JOIN / LEAVE / START / CANCEL, trivia questions with A–D buttons and a live
+  countdown, reveals with the scoreboard, reaction WAIT / GO / TAP, final standings), which
+  applies the channel-permission contract (`markGameChannelUnavailable`) before any post and
+  when Discord revokes access mid-game; answers and taps call `submitMove` as the clicking
+  player; private leaderboards with metric buttons and a game select. `games.tick` (core)
+  drives every timed transition, each of which enqueues a render. A live panel deleted by
+  hand or in a purge is re-posted by the gateway listeners.
+- **Dashboard** (`apps/dashboard/app/(console)/games`): `/games` leaderboards per game and
+  metric, with the `/challenge` commands and the win rule.
+
 ## Extension points
 
 - New games: implement `GameDefinition`, `registerGame` at startup. Export only a

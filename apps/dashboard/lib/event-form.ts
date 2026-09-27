@@ -1,7 +1,7 @@
 import type { calendar } from '@jave/core';
 import { EVENT_KINDS } from './event-labels';
 import { formEnum, formOptional, formString } from './form-data';
-import { parseDateTimeLocal } from './zoned-time';
+import { fromDatetimeLocal } from './datetime-local';
 
 /** Field names of the event form (also the paths core reports validation issues on). */
 export const EVENT_FORM_FIELDS = [
@@ -32,7 +32,7 @@ export class EventFormError extends Error {
 function instant(data: FormData, field: EventFormField, timeZone: string): Date | undefined {
   const raw = formString(data, field).trim();
   if (raw === '') return undefined;
-  const parsed = parseDateTimeLocal(raw, timeZone);
+  const parsed = fromDatetimeLocal(raw, timeZone);
   if (!parsed) throw new EventFormError(field, 'enter a date and time');
   return parsed;
 }

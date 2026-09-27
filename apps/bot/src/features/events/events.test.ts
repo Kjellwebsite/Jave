@@ -3,10 +3,13 @@ import { and, desc, eq } from 'drizzle-orm';
 import { auditLogs, eventRsvps, events, jobs, members } from '@jave/database';
 import { calendar, HOUR, MINUTE, updateSettings } from '@jave/core';
 import { DiscordActionError } from '../../discord/gateway';
+import type { FakeInteractionInit } from '../../testing/fake-interaction';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
 import { customId } from '../../interactions/custom-id';
 
 const EVENTS_CHANNEL = '600000000000000001';
+/** Discord's "Unknown Channel" error code. */
+const UNKNOWN_CHANNEL = 10003;
 /** The kit clock starts 2026-03-01T12:00Z; events start four days later. */
 const START_INPUT = '2026-03-05 18:00';
 const START = new Date('2026-03-05T18:00:00Z');
@@ -133,6 +136,65 @@ describe('events feature', () => {
       expect(bot.gateway.callsTo('sendMessage')).toHaveLength(0);
       expect(bot.gateway.callsTo('createScheduledEvent')).toHaveLength(1);
       expect((await eventRow(id)).announcementMessageId).toBeNull();
+    });
+
+    it('tells staff where the announcement goes, or that none is posted', async () => {
+      const announced = await bot.run({
+        kind: 'modal',
+        name: customId('events', 'create', 'meetup', 0),
+        user: staff.user,
+        modalText: { title: 'Build Night', start: START_INPUT },
+        modalSelect: { duration: ['120'] },
+      });
+      expect(announced.interaction.lastText()).toContain(`<#${EVENTS_CHANNEL}>`);
+      await updateSettings(bot.kit.system, 'channels', { events: undefined });
+      const silent = await bot.run({
+        kind: 'modal',
+        name: customId('events', 'create', 'talk', 0),
+        user: staff.user,
+        modalText: { title: 'Orbital Talk', start: START_INPUT },
+        modalSelect: { duration: ['60'] },
+      });
+      expect(silent.interaction.lastText()).toContain('No events channel is set');
+    });
+
+    it('re-posts the announcement when its channel was deleted', async () => {
+      const id = await createEvent();
+      const before = await eventRow(id);
+      const NEW_CHANNEL = '600000000000000002';
+      await updateSettings(bot.kit.system, 'channels', { events: NEW_CHANNEL });
+      bot.gateway.failures.set(
+        'editMessage',
+        new DiscordActionError('Unknown Channel', UNKNOWN_CHANNEL, true),
+      );
+      await calendar.updateEvent(bot.kit.system, { eventId: id, title: 'Build Night II' });
+      await bot.drain();
+      const after = await eventRow(id);
+      expect(after.announcementChannelId).toBe(NEW_CHANNEL);
+      expect(after.announcementMessageId).not.toBe(before.announcementMessageId);
+      const [, second] = bot.gateway.callsTo('sendMessage');
+      expect(second!.args[0]).toBe(NEW_CHANNEL);
+      const dead = await bot.kit.db.select().from(jobs).where(eq(jobs.status, 'dead'));
+      expect(dead).toHaveLength(0);
+    });
+
+    it('a cancellation whose announcement channel is gone still completes', async () => {
+      const id = await createEvent();
+      const row = await eventRow(id);
+      bot.gateway.failures.set(
+        'editMessage',
+        new DiscordActionError('Unknown Channel', UNKNOWN_CHANNEL, true),
+      );
+      await calendar.cancelEvent(bot.kit.as(staff.actor), { eventId: id, reason: 'Room lost.' });
+      await bot.drain();
+      const [cancel] = await bot.kit.db
+        .select()
+        .from(jobs)
+        .where(eq(jobs.type, calendar.DISCORD_EVENTS_CANCEL_JOB));
+      expect(cancel).toMatchObject({ status: 'completed' });
+      expect(bot.gateway.scheduledEvents.get(row.discordScheduledEventId!)!.status).toBe(
+        'canceled',
+      );
     });
 
     it('mirrors live and completed status, re-posting a deleted announcement', async () => {
@@ -454,6 +516,38 @@ describe('events feature', () => {
       expect(asStaff.interaction.lastText()).toContain('GOING');
     });
 
+    it('staff subcommands without an event open a picker whose card holds the controls', async () => {
+      const id = await createEvent();
+      bot.kit.clock.set(new Date(START.getTime() - 10 * MINUTE));
+      const picker = await bot.run({
+        kind: 'slash',
+        name: 'events',
+        subcommand: 'live',
+        user: staff.user,
+      });
+      expect(picker.interaction.lastPayload()!.ephemeral).toBe(true);
+      expect(picker.interaction.lastText()).toContain('CHOOSE AN EVENT');
+      const select = picker.interaction.lastPayload()!.components![0]!.components[0] as {
+        custom_id: string;
+        options: { value: string }[];
+      };
+      expect(select.custom_id).toBe(customId('events', 'pick', 'view'));
+      expect(select.options.map((option) => option.value)).toEqual([id]);
+      const card = await bot.run({
+        kind: 'select',
+        name: select.custom_id,
+        values: [id],
+        user: staff.user,
+      });
+      expect(card.interaction.responses[0]?.type).toBe('update');
+      const labels = card.interaction
+        .lastPayload()!
+        .components!.flatMap((row) => row.components.map((c) => ('label' in c ? c.label : '')));
+      expect(labels).toEqual(expect.arrayContaining(['GO LIVE', 'CHECK-IN CODE', 'CANCEL EVENT']));
+      // Nothing happened on its own: the picker only navigates.
+      expect((await eventRow(id)).status).toBe('scheduled');
+    });
+
     it('autocompletes events by title', async () => {
       await createEvent({ title: 'Rocketry Workshop' });
       await createEvent({ title: 'Build Night' });
@@ -534,6 +628,25 @@ describe('events feature', () => {
       const final = await calendar.getBracket(bot.kit.system, { eventId: id });
       expect(final.state).toBe('completed');
       expect((await eventRow(id)).status).toBe('completed');
+
+      // Members read the finished bracket as a monospace block, without staff controls.
+      const member = await bot.member({ roles: ['verified'] });
+      const view = await bot.run({
+        kind: 'slash',
+        name: 'events',
+        subcommand: 'bracket',
+        user: member.user,
+        options: { event: id },
+      });
+      const block = view.interaction.lastPayload()!.embeds![0]!.description!;
+      expect(block.startsWith('```')).toBe(true);
+      expect(block).toContain('FINAL');
+      expect(block).toContain(`CHAMPION  ${final.champion!.name}`);
+      expect(view.interaction.lastText()).toContain('BRACKET · CHAMPION');
+      const controls = (view.interaction.lastPayload()!.components ?? []).flatMap((row) =>
+        row.components.map((component) => ('custom_id' in component ? component.custom_id : '')),
+      );
+      expect(controls.filter((customIdValue) => customIdValue.startsWith('events:'))).toEqual([]);
     });
 
     it('BREAK: a tied score needs a winner; forged scores are refused', async () => {
@@ -581,24 +694,24 @@ describe('events feature', () => {
       const id = await createEvent({ kind: 'tournament' });
       const member = await bot.member({ roles: ['verified'] });
       bot.kit.clock.set(new Date(START.getTime() - 5 * MINUTE));
-      const attempts = [
-        { kind: 'button' as const, name: customId('events', 'live', id) },
-        { kind: 'button' as const, name: customId('events', 'complete', id) },
-        { kind: 'button' as const, name: customId('events', 'code', id) },
-        { kind: 'button' as const, name: customId('events', 'generate', id, 'seeded') },
-        { kind: 'select' as const, name: customId('events', 'draw', id), values: ['2'] },
+      const attempts: Omit<FakeInteractionInit, 'user'>[] = [
+        { kind: 'button', name: customId('events', 'live', id) },
+        { kind: 'button', name: customId('events', 'complete', id) },
+        { kind: 'button', name: customId('events', 'code', id) },
+        { kind: 'button', name: customId('events', 'generate', id, 'seeded') },
+        { kind: 'select', name: customId('events', 'draw', id), values: ['2'] },
         {
-          kind: 'modal' as const,
+          kind: 'modal',
           name: customId('events', 'cancel', id),
           modalText: { reason: 'mine now' },
         },
         {
-          kind: 'select' as const,
+          kind: 'select',
           name: customId('events', 'report-pick', id),
           values: ['11111111-1111-4111-8111-111111111111'],
         },
         {
-          kind: 'modal' as const,
+          kind: 'modal',
           name: customId('events', 'report', '11111111-1111-4111-8111-111111111111'),
           modalText: { scoreA: '9', scoreB: '0' },
           modalSelect: { winner: ['score'] },
@@ -658,6 +771,33 @@ describe('events feature', () => {
         options: { event: 'Build Night' },
       });
       expect(typed.interaction.lastText()).toContain('Choose an event from the list');
+    });
+
+    it('stale controls on a cancelled event are refused by core', async () => {
+      const id = await createEvent();
+      const member = await bot.member({ roles: ['verified'] });
+      await calendar.cancelEvent(bot.kit.as(staff.actor), { eventId: id, reason: 'Called off.' });
+      const rsvp = await bot.run({
+        kind: 'button',
+        name: customId('events', 'rsvp', id, 'going', 'card'),
+        user: member.user,
+      });
+      expect(rsvp.interaction.lastText()).toContain('NOT AVAILABLE RIGHT NOW');
+      const code = await bot.run({
+        kind: 'button',
+        name: customId('events', 'code', id),
+        user: staff.user,
+      });
+      expect(code.interaction.lastText()).toContain('already ended');
+      const early = await bot.run({
+        kind: 'button',
+        name: customId('events', 'live', id),
+        user: staff.user,
+      });
+      expect(early.interaction.lastText()).toContain('NOT AVAILABLE RIGHT NOW');
+      expect(await bot.kit.db.select().from(eventRsvps).where(eq(eventRsvps.eventId, id))).toEqual(
+        [],
+      );
     });
 
     it('RSVPs close with the event and restricted members cannot respond', async () => {

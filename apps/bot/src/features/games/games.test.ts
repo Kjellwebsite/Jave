@@ -261,6 +261,38 @@ describe('games feature', () => {
       await bot.settle();
       expect(bot.gateway.callsTo('sendMessage')).toHaveLength(2);
     });
+    it('re-posts a live panel removed by a purge; purges without it change nothing', async () => {
+      await openTrivia();
+      const first = (await sessionRow()).discordMessageId!;
+      await bot.app.events.messageDeleteBulk({
+        ids: ['901', '902'],
+        channelId: CHANNEL,
+        guildId: bot.gateway.guildId,
+      });
+      await bot.settle();
+      expect((await sessionRow()).discordMessageId).toBe(first);
+
+      bot.gateway.messages.delete(first);
+      await bot.app.events.messageDeleteBulk({
+        ids: ['901', first],
+        channelId: CHANNEL,
+        guildId: bot.gateway.guildId,
+      });
+      await bot.settle();
+      const second = (await sessionRow()).discordMessageId!;
+      expect(second).not.toBe(first);
+      expect(text(await panel())).toContain('LOBBY');
+
+      // Another guild's purge is never ours to act on.
+      bot.gateway.messages.delete(second);
+      await bot.app.events.messageDeleteBulk({
+        ids: [second],
+        channelId: CHANNEL,
+        guildId: '100000000000000111',
+      });
+      await bot.settle();
+      expect((await sessionRow()).discordMessageId).toBe(second);
+    });
   });
 
   describe('reaction over Discord', () => {
@@ -322,7 +354,7 @@ describe('games feature', () => {
       expect(audit!.context).toMatchObject({ channelId: CHANNEL, reason: 'host_cannot_post' });
     });
 
-    it('BREAK: the bot lacking Embed Links in the channel ends the session before posting', async () => {
+    it('BREAK: the render job refuses a channel where JAVE cannot embed, whoever opened the session', async () => {
       bot.gateway.channelAccessOverrides.set(channelAccessKey(CHANNEL, { kind: 'bot' }), {
         textBased: true,
         view: true,
@@ -330,13 +362,43 @@ describe('games feature', () => {
         embedLinks: false,
         readHistory: true,
       });
+      // Straight through core, as any other surface could: the job is the enforcement point.
+      const created = await games.createSession(bot.kit.as(host.actor), {
+        gameKey: games.trivia.TRIVIA_KEY,
+        surface: 'discord',
+        discordChannelId: CHANNEL,
+      });
+      await bot.drain();
+      const row = await sessionRow();
+      expect(row).toMatchObject({ id: created.id, status: 'abandoned', discordMessageId: null });
+      expect(row.endReason).toBe('JAVE cannot post in that channel.');
+      expect(bot.gateway.callsTo('sendMessage')).toHaveLength(0);
+      const [audit] = await bot.kit.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, 'game.channel_rejected'));
+      expect(audit!.context).toMatchObject({ reason: 'bot_cannot_post' });
+
       const open = await bot.run({
         kind: 'slash',
         name: 'challenge',
         subcommand: 'trivia',
         user: host.user,
       });
-      expect(open.interaction.lastText()).toContain('JAVE cannot post in that channel.');
+      expect(open.interaction.lastText()).toContain('JAVE cannot post here');
+    });
+
+    it('BREAK: a channel JAVE cannot see is refused before any session exists', async () => {
+      bot.gateway.channelAccessOverrides.set(channelAccessKey(CHANNEL, { kind: 'bot' }), null);
+      const open = await bot.run({
+        kind: 'slash',
+        name: 'challenge',
+        subcommand: 'trivia',
+        user: host.user,
+      });
+      expect(open.interaction.lastText()).toContain('CHANNEL UNAVAILABLE');
+      expect(open.interaction.lastText()).toContain('JAVE cannot post here');
+      expect(await bot.kit.db.select().from(gameSessions)).toEqual([]);
       expect(bot.gateway.callsTo('sendMessage')).toHaveLength(0);
     });
 
@@ -457,6 +519,42 @@ describe('games feature', () => {
         customId('games', 'join', '11111111-1111-4111-8111-111111111111'),
       );
       expect(unknown.interaction.lastText()).toContain('NOT FOUND');
+    });
+
+    it('stale lobby buttons after the start are refused; forged board selects expire', async () => {
+      const id = await openTrivia();
+      await press(rival.user, customId('games', 'join', id));
+      await press(host.user, customId('games', 'start', id));
+      const late = await bot.member({ roles: ['verified'] });
+      const join = await press(late.user, customId('games', 'join', id));
+      expect(join.interaction.lastText()).toContain('NOT AVAILABLE RIGHT NOW');
+      const leave = await press(rival.user, customId('games', 'leave', id));
+      expect(leave.interaction.lastText()).toContain('NOT AVAILABLE RIGHT NOW');
+      expect((await sessionRow()).playerCount).toBe(2);
+
+      const forgedGame = await bot.run({
+        kind: 'select',
+        name: customId('games', 'board-game', 'wins'),
+        values: ['chess'],
+        user: late.user,
+      });
+      expect(forgedGame.interaction.lastText()).toContain('EXPIRED');
+      const forgedMetric = await bot.run({
+        kind: 'select',
+        name: customId('games', 'board-game', 'elo'),
+        values: ['trivia'],
+        user: late.user,
+      });
+      expect(forgedMetric.interaction.lastText()).toContain('EXPIRED');
+      const switched = await bot.run({
+        kind: 'select',
+        name: customId('games', 'board-game', 'best_score'),
+        values: ['reaction'],
+        user: late.user,
+      });
+      expect(switched.interaction.responses[0]?.type).toBe('update');
+      expect(switched.interaction.lastText()).toContain('LEADERBOARD · BEST SCORE');
+      expect(switched.interaction.lastText()).toContain('REACTION');
     });
 
     it('restricted members cannot join; DMs and duplicate lobbies are refused', async () => {

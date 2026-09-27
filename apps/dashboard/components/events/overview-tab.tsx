@@ -41,20 +41,68 @@ export interface OverviewTabProps {
   checkInAction: FormAction;
 }
 
-function responseLine(mine: calendar.MyRsvpView | null): string {
-  if (!mine) return 'No response yet.';
+function responseLine(mine: calendar.MyRsvpView | null, open: boolean): string {
+  if (!mine) return open ? 'No response yet.' : 'You did not respond.';
   if (mine.status === 'waitlist') {
-    return `On the waitlist${mine.waitlistPosition ? ` at #${mine.waitlistPosition}` : ''}. You move up automatically when a spot opens.`;
+    const position = mine.waitlistPosition ? ` at #${mine.waitlistPosition}` : '';
+    return open
+      ? `On the waitlist${position}. You move up automatically when a spot opens.`
+      : `You were on the waitlist${position}.`;
   }
   return `Responded ${mine.status === 'declined' ? 'no' : mine.status}.`;
+}
+
+/** Where check-in stands for this member, when the event is still open. */
+function CheckInStatus({
+  event,
+  timeZone,
+  now,
+  checkInAction,
+}: {
+  event: calendar.EventView;
+  timeZone: string;
+  now: Date;
+  checkInAction: FormAction;
+}) {
+  const checkIn = calendar.checkInWindow(event);
+  if (now < checkIn.opensAt) {
+    return (
+      <p className="text-small text-fg-subtle">
+        Check-in opens <Mono>{formatTimestamp(checkIn.opensAt, timeZone)}</Mono> with the code
+        shared at the event.
+      </p>
+    );
+  }
+  if (now > checkIn.closesAt) {
+    return (
+      <p className="text-small text-fg-subtle">
+        Check-in closed <Mono>{formatTimestamp(checkIn.closesAt, timeZone)}</Mono>.
+      </p>
+    );
+  }
+  if (!event.checkInCodeIssued) {
+    return (
+      <p className="text-small text-fg-subtle">
+        Check-in is open until <Mono>{formatTimestamp(checkIn.closesAt, timeZone)}</Mono>. Enter the
+        code once the host shares it.
+      </p>
+    );
+  }
+  return (
+    <div className="border-t border-line-subtle pt-4">
+      <CheckInForm
+        eventId={event.id}
+        action={checkInAction}
+        codeMax={calendar.CHECK_IN_CODE_INPUT_MAX}
+      />
+    </div>
+  );
 }
 
 /** Description, your response and check-in, and the response counts. */
 export function OverviewTab({ event, timeZone, now, rsvpAction, checkInAction }: OverviewTabProps) {
   const mine = event.myRsvp;
   const open = event.status === 'scheduled' || event.status === 'live';
-  const window = calendar.checkInWindow(event);
-  const checkInOpen = open && now >= window.opensAt && now <= window.closesAt;
   return (
     <div className="space-y-6">
       {event.status === 'cancelled' ? (
@@ -85,7 +133,7 @@ export function OverviewTab({ event, timeZone, now, rsvpAction, checkInAction }:
           }
         >
           <div className="space-y-4">
-            <p className="text-small text-fg-subtle">{responseLine(mine)}</p>
+            <p className="text-small text-fg-subtle">{responseLine(mine, open)}</p>
             <RsvpControls
               eventId={event.id}
               action={rsvpAction}
@@ -101,19 +149,13 @@ export function OverviewTab({ event, timeZone, now, rsvpAction, checkInAction }:
                 Checked in{' '}
                 <Mono className="text-success">{formatTimestamp(mine.checkedInAt, timeZone)}</Mono>
               </p>
-            ) : checkInOpen && event.checkInCodeIssued ? (
-              <div className="border-t border-line-subtle pt-4">
-                <CheckInForm
-                  eventId={event.id}
-                  action={checkInAction}
-                  codeMax={calendar.CHECK_IN_CODE_INPUT_MAX}
-                />
-              </div>
             ) : open ? (
-              <p className="text-small text-fg-subtle">
-                Check-in opens <Mono>{formatTimestamp(window.opensAt, timeZone)}</Mono> with the
-                code shared at the event.
-              </p>
+              <CheckInStatus
+                event={event}
+                timeZone={timeZone}
+                now={now}
+                checkInAction={checkInAction}
+              />
             ) : null}
           </div>
         </Panel>

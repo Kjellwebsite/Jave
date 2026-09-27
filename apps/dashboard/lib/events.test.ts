@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { hasIssuedCode } from './check-in-code-state';
 import { EventFormError, readEventForm, scheduleInput, updateInput } from './event-form';
 import { capacityLabel, locationDisplay } from './event-labels';
-import { knownTimeZone, parseDateTimeLocal, toDateTimeLocal } from './zoned-time';
 
 const COUNTS = { going: 12, maybe: 3, declined: 1, waitlist: 0, checkedIn: 0 };
 
@@ -12,56 +11,18 @@ function form(fields: Record<string, string>): FormData {
   return data;
 }
 
-describe('zoned time', () => {
-  it('reads a datetime-local value in the viewer time zone', () => {
-    expect(parseDateTimeLocal('2026-10-02T18:00', 'Europe/Amsterdam')?.toISOString()).toBe(
-      '2026-10-02T16:00:00.000Z',
-    );
-    expect(parseDateTimeLocal('2026-10-02T18:00', 'UTC')?.toISOString()).toBe(
-      '2026-10-02T18:00:00.000Z',
-    );
-    expect(parseDateTimeLocal('2026-10-02T18:00:30', 'UTC')?.toISOString()).toBe(
-      '2026-10-02T18:00:00.000Z',
-    );
-  });
-
-  it('resolves DST edges deterministically', () => {
-    // 02:30 does not exist on 2026-03-29 in Amsterdam (clocks jump 02:00 → 03:00).
-    expect(parseDateTimeLocal('2026-03-29T02:30', 'Europe/Amsterdam')?.toISOString()).toBe(
-      '2026-03-29T01:30:00.000Z',
-    );
-    // 02:30 happens twice on 2026-10-25: the later occurrence is chosen.
-    expect(parseDateTimeLocal('2026-10-25T02:30', 'Europe/Amsterdam')?.toISOString()).toBe(
-      '2026-10-25T01:30:00.000Z',
-    );
-  });
-
-  it('BREAK: rejects malformed and impossible input; unknown zones fall back to UTC', () => {
-    for (const value of [
-      '',
-      'tomorrow',
-      '2026-02-30T10:00',
-      '2026-13-01T10:00',
-      '2026-10-02 25:00',
-    ]) {
-      expect(parseDateTimeLocal(value, 'UTC'), value).toBeNull();
-    }
-    expect(knownTimeZone('Mars/Olympus_Mons')).toBe('UTC');
-    expect(parseDateTimeLocal('2026-10-02T18:00', 'Mars/Olympus_Mons')?.toISOString()).toBe(
-      '2026-10-02T18:00:00.000Z',
-    );
-  });
-
-  it('round-trips an instant through the form value', () => {
-    const instant = new Date('2026-10-02T16:00:00.000Z');
-    const value = toDateTimeLocal(instant, 'Europe/Amsterdam');
-    expect(value).toBe('2026-10-02T18:00');
-    expect(parseDateTimeLocal(value, 'Europe/Amsterdam')?.getTime()).toBe(instant.getTime());
-  });
-});
-
 describe('event form', () => {
   const base = { title: 'Build Night', kind: 'workshop', startsAt: '2026-10-02T18:00' };
+
+  it('reads times in the viewer zone', () => {
+    const values = readEventForm(
+      form({ ...base, endsAt: '2026-10-02T21:30', rsvpClosesAt: '2026-10-01T12:00' }),
+      'Europe/Amsterdam',
+    );
+    expect(values.startsAt.toISOString()).toBe('2026-10-02T16:00:00.000Z');
+    expect(values.endsAt?.toISOString()).toBe('2026-10-02T19:30:00.000Z');
+    expect(values.rsvpClosesAt?.toISOString()).toBe('2026-10-01T10:00:00.000Z');
+  });
 
   it('reads the form in the viewer zone and leaves blanks to core', () => {
     const values = readEventForm(form({ ...base, capacity: '', location: '' }), 'UTC');

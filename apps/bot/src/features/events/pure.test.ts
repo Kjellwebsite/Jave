@@ -182,6 +182,10 @@ describe('event rendering', () => {
       '[meet.example.org](https://meet.example.org/a_%28b%29)',
     );
     expect(whereValue({ kind: 'url', value: 'javascript:alert(1)' })).toBe('—');
+    // Markdown in a hostname cannot style or break the link label.
+    expect(whereValue({ kind: 'url', value: 'https://a*b_c.example.org/' })).toBe(
+      '[a\\*b\\_c.example.org](https://a*b_c.example.org/)',
+    );
     expect(whereValue({ kind: 'text', value: '@everyone *Lab*' })).not.toContain('@everyone');
   });
 

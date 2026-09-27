@@ -11,7 +11,7 @@ import { BracketTab, TeamsTab } from '@/components/events/tournament-tabs';
 import { MemberOnlyPage } from '@/components/events/member-only-page';
 import { NextLink } from '@/components/next-link';
 import { firstParam, offsetParam, type SearchParams, toQueryString } from '@/lib/search-params';
-import { toDateTimeLocal } from '@/lib/zoned-time';
+import { toDatetimeLocal } from '@/lib/datetime-local';
 import { requireConsoleContext } from '@/server/context';
 import { EVENT_FORM_LIMITS } from '@/server/data/event-form';
 import { loadViewer } from '@/server/data/viewer';
@@ -69,11 +69,11 @@ function editValues(event: calendar.EventView, timeZone: string) {
     title: event.title,
     kind: event.kind,
     description: event.description ?? '',
-    startsAt: toDateTimeLocal(event.startsAt, timeZone),
-    endsAt: toDateTimeLocal(event.endsAt, timeZone),
+    startsAt: toDatetimeLocal(event.startsAt, timeZone),
+    endsAt: toDatetimeLocal(event.endsAt, timeZone),
     location: event.location?.value ?? '',
     capacity: event.capacity === null ? '' : String(event.capacity),
-    rsvpClosesAt: event.rsvpClosesAt ? toDateTimeLocal(event.rsvpClosesAt, timeZone) : '',
+    rsvpClosesAt: event.rsvpClosesAt ? toDatetimeLocal(event.rsvpClosesAt, timeZone) : '',
   };
 }
 
@@ -100,6 +100,10 @@ export default async function EventPage({
   const requested = firstParam(query.tab);
   const tab: Tab = tabs.find((candidate) => candidate === requested) ?? 'overview';
   const tz = viewer.timeZone;
+  const transitions = lifecycle(event, now);
+  // Nothing left to change (completed, cancelled): no empty control strip in the header.
+  const controls =
+    staff && (transitions.canGoLive || transitions.canComplete || transitions.canCancel);
   // A tournament's kind is fixed once its bracket exists (core refuses the change).
   const kindLocked =
     tab === 'edit' &&
@@ -112,11 +116,11 @@ export default async function EventPage({
         event={event}
         timeZone={tz}
         actions={
-          staff ? (
+          controls ? (
             <LifecycleControls
               eventId={event.id}
               eventTitle={event.title}
-              {...lifecycle(event, now)}
+              {...transitions}
               cancelReasonMax={calendar.CANCEL_REASON_MAX}
               goLiveAction={goLiveAction}
               completeAction={completeEventAction}

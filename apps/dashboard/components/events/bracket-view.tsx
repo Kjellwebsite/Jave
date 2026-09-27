@@ -26,11 +26,20 @@ function TeamRow({
   return (
     <div
       className={cx(
-        'flex h-9 items-center gap-2.5 px-3',
+        'relative flex h-9 items-center gap-2.5 px-3',
         won && 'bg-surface-raised',
         decided && !won && 'text-fg-subtle',
       )}
     >
+      {won ? (
+        <>
+          <span
+            aria-hidden
+            className="chrome-plate absolute inset-y-1.5 left-0 w-0.5 rounded-full"
+          />
+          <span className="sr-only">Winner:</span>
+        </>
+      ) : null}
       <Mono dim className="w-5 shrink-0 text-right text-[11px]">
         {team?.seed ?? ''}
       </Mono>
@@ -49,10 +58,6 @@ function TeamRow({
         {team?.name ?? placeholder}
       </span>
       <Mono className={cx('shrink-0', won ? 'text-fg' : 'text-fg-subtle')}>{scoreText}</Mono>
-      <span
-        aria-hidden
-        className={cx('h-4 w-0.5 shrink-0 rounded-full', won ? 'chrome-plate' : 'bg-transparent')}
-      />
     </div>
   );
 }

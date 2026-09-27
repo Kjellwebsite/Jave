@@ -10,7 +10,7 @@ import {
   type ServiceContext,
 } from '@jave/core';
 import { isDiscordError, jobFailure, UNKNOWN_OBJECT } from '../../discord/discord-errors';
-import type { DiscordGateway, MessagePayload } from '../../discord/gateway';
+import type { ChannelAccess, DiscordGateway, MessagePayload } from '../../discord/gateway';
 import { KeyedLock } from '../../discord/keyed-lock';
 import type { BotServices } from '../../runtime';
 import { RENDER_REASON } from './constants';
@@ -47,10 +47,15 @@ async function hostDiscordId(ctx: ServiceContext, render: Render): Promise<strin
   return row?.discordId ?? null;
 }
 
+/** The bot can post a panel here: a text channel it can see, send in and embed in. */
+export const botCanPost = (access: ChannelAccess | null): boolean =>
+  access !== null && access.textBased && access.view && access.send && access.embedLinks;
+
 /**
  * Before anything is posted: the HOST must be able to see and post in the
- * channel (non-Discord surfaces let a member name any channel id), and so
- * must the bot.
+ * channel (a session's channel id can come from any surface that calls core),
+ * and so must the bot. The host is checked first, so a refusal never reveals
+ * which channels the bot can see.
  */
 async function channelVerdict(
   ctx: ServiceContext,
@@ -63,8 +68,7 @@ async function channelVerdict(
     ? await gateway.channelAccess(channelId, { kind: 'member', userId: discordId })
     : null;
   if (!host || !host.view || !host.send) return 'host_cannot_post';
-  const bot = await gateway.channelAccess(channelId, { kind: 'bot' });
-  if (!bot || !bot.textBased || !bot.view || !bot.send || !bot.embedLinks) {
+  if (!botCanPost(await gateway.channelAccess(channelId, { kind: 'bot' }))) {
     return 'bot_cannot_post';
   }
   return null;

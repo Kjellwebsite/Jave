@@ -94,7 +94,7 @@ async function seedMeetup(cast: Actors, now: Date) {
     sana: 'going',
     elena: 'going',
     jun: 'going',
-    priya: 'maybe',
+    ren: 'maybe',
     ilya: 'declined',
     dev_verified: 'going',
     theo: 'going',
@@ -111,7 +111,7 @@ const TEAMS = [
   'Lagrange',
   'Nadir',
 ];
-const PLAYERS = ['mara', 'sana', 'theo', 'elena', 'priya', 'jun', 'ilya', 'dev_verified'];
+const PLAYERS = ['mara', 'sana', 'theo', 'elena', 'ren', 'jun', 'ilya', 'dev_verified'];
 const QUARTERFINAL_SCORES: readonly [number, number][] = [
   [3, 1],
   [2, 0],
@@ -199,7 +199,7 @@ async function seedPast(cast: Actors, now: Date) {
     kind: 'social',
     startsAt: new Date(now.getTime() - 30 * DAY),
   });
-  await respond(cast, social.id, { priya: 'going', elena: 'going' }, cancelledClock);
+  await respond(cast, social.id, { sol: 'going', elena: 'going' }, cancelledClock);
   await calendar.cancelEvent(opsThen, {
     eventId: social.id,
     reason: 'Venue unavailable. Folded into the autumn meetup.',
@@ -228,7 +228,8 @@ const GAME_RESULTS: readonly [string, readonly [string, number][]][] = [
   [
     'trivia',
     [
-      ['priya', 480],
+      ['mara', 560],
+      ['sol', 480],
       ['dev_verified', 210],
     ],
   ],
@@ -286,7 +287,7 @@ export async function seedEventsAndGames(databaseUrl: string): Promise<void> {
   const system = createContext({ db: database.db, actor: systemActor('e2e-seed-events') });
   const now = system.clock.now();
   try {
-    const handles = [...new Set([...PLAYERS, 'noor', 'dev_operations', 'dev_member'])];
+    const handles = [...new Set([...PLAYERS, 'noor', 'sol', 'dev_operations', 'dev_member'])];
     const cast = await actors(system, handles);
     await seedMeetup(cast, now);
     await seedTournament(cast, now);

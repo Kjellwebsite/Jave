@@ -7,6 +7,7 @@ import {
   HISTORY_LIMIT,
   INLINE_TITLE_MAX,
   LIST_LIMIT,
+  PAST_PICKER_LIMIT,
   PICK_PURPOSE,
   PICKER_LIMIT,
   type RsvpChoice,
@@ -87,6 +88,42 @@ export async function respondRsvp(
   if (origin === 'list')
     return showEventList(h, { update: true, notice: listNotice(result, view.title) });
   await h.respond(rsvpConfirmation(result, view.title));
+}
+
+/** Upcoming events, then the most recent past ones: what pickers and autocomplete offer. */
+export async function pickableEvents(h: HandlerContext): Promise<calendar.EventView[]> {
+  const [upcoming, past] = await Promise.all([
+    calendar.listEvents(h.ctx, { scope: 'upcoming', limit: PICKER_LIMIT }),
+    calendar.listEvents(h.ctx, { scope: 'past', limit: PAST_PICKER_LIMIT }),
+  ]);
+  return [...upcoming.items, ...past.items];
+}
+
+/**
+ * A per-event subcommand without an event: pick one, and its card opens with
+ * every control the member may use (staff get go live, complete, check-in
+ * code, cancel, teams and bracket there).
+ */
+export async function pickEvent(h: HandlerContext): Promise<void> {
+  const events = (await pickableEvents(h)).slice(0, PICKER_LIMIT);
+  if (events.length === 0) {
+    await h.respond({
+      embeds: [panel({ title: 'No events', description: 'Nothing is scheduled or recent.' })],
+      ephemeral: true,
+    });
+    return;
+  }
+  await h.respond({
+    embeds: [
+      panel({
+        kicker: 'JAVELIN EVENTS',
+        title: 'Choose an event',
+        description: 'Upcoming first, then recent ones. The event card carries its controls.',
+      }),
+    ],
+    components: [eventPicker(events, PICK_PURPOSE.view, 'Choose an event')],
+    ephemeral: true,
+  });
 }
 
 export async function openCheckIn(h: HandlerContext, eventId: string): Promise<void> {

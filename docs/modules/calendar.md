@@ -131,9 +131,9 @@ revision get a `:late:` sync job the same way.
 3. Edit the Scheduled Event when `discordScheduledEventId` is set: name, description,
    start/end, voice/stage channel (`location.kind === 'channel'`) or external location
    (`url`/`text`, "JAVELIN" if none). Status ACTIVE when live, COMPLETED when completed
-   (**gateway extension needed**: `editScheduledEvent` has no status yet). Create one when
-   it is null (or Unknown Scheduled Event) and the event is scheduled or live — never for
-   a completed event.
+   (`ScheduledEventEdit.status`; the gateway applies only the transitions Discord allows).
+   Create one when it is null (or Unknown Scheduled Event) and the event is scheduled or
+   live — never for a completed event.
 4. Edit the announcement when `announcementMessageId` is set; otherwise, when
    `announceChannelId` (settings.channels.events) is set and the event is scheduled or live,
    post one (also after Unknown Message). Panel: title, time, location, capacity and spots
@@ -159,6 +159,28 @@ Connect.
 
 **Permissions**: Manage Events; announcement channel View Channel, Send Messages, Embed Links.
 
+## Surfaces
+
+Full reference: [docs/commands/events.md](../commands/events.md).
+
+- **Discord** (`apps/bot/src/features/events`): `/events` (list · view · checkin; staff:
+  create · live · complete · cancel · checkin-code · teams · bracket · report), where every
+  per-event subcommand takes an optional autocompleted `event` and falls back to a picker
+  whose event card carries the controls; the **Event History** user context menu; RSVP
+  buttons on the public announcement (`events:rsvp:<id>:going|maybe|declined`), on the
+  personal card and on the list; modals for create (title, description, start in the staff
+  member's time zone, duration select, location), check-in, cancel and match reports; the
+  teams panel with a random-draw select and the bracket rendered as a monospace block. Job
+  handlers for `discord.events.publish` (Scheduled Event with ACTIVE/COMPLETED status through
+  the gateway's `editScheduledEvent` status support, announcement panel, re-post after a
+  deleted message or channel) and `discord.events.cancel`, serialized per event in the
+  worker, running the jobs `markEventPublished` enqueues right away.
+- **Dashboard** (`apps/dashboard/app/(console)/events`): `/events` (upcoming · past),
+  `/events/new`, `/events/[id]` with Overview (counts, your RSVP, check-in), Attendance (staff:
+  check-in code shown once, responses with waitlist positions and check-in times), Teams
+  (draw, remove), Bracket (visual bracket, match reporting) and Edit; go live, complete and
+  cancel for staff.
+
 ## Extension points
 
 - Reminder offsets: `EVENT_REMINDERS` in `constants.ts` (add an entry; keys are part of dedupe keys).
@@ -171,7 +193,6 @@ Connect.
 
 - Live events cannot be edited (e.g. extending the end); complete or cancel instead.
 - Match results cannot be corrected once recorded.
-- The Scheduled Event status (ACTIVE/COMPLETED) needs a small gateway extension in the bot.
 - The check-in code is shared on site or on stream; anyone holding it inside the window can
   check in (bounded by the per-member rate limit and the 40-bit code space).
 - The RSVP rate limit (Postgres-backed, shared across processes) also counts idempotent
@@ -184,10 +205,9 @@ Connect.
   row id, not arrival. A position returned by `rsvp` during a burst is a snapshot and can
   grow when a same-millisecond response commits later; the committed queue is always one
   strict order.
-- **Blocked on shared code:** `consumeRateLimit` (`packages/core/src/rate-limit`) passes raw
-  `Date`s into a `sql` template, which the production postgres-js driver cannot serialize,
-  so `rsvp` and `checkIn` throw on real Postgres until it is fixed (PGlite hides it). The
-  real-Postgres RSVP test below fails for that reason alone.
+- Discord allows no cancellation of an ACTIVE scheduled event: the bot deletes it instead,
+  so a cancelled live event disappears from Discord's event list rather than showing as
+  cancelled (the announcement still says CANCELLED with the reason).
 
 ## Concurrency tests
 

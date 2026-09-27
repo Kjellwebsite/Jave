@@ -205,7 +205,8 @@ export function teamsPanel(
     .map((team) =>
       field(
         `${userText(team.name, NAME_DISPLAY_MAX)}${team.seed === null ? '' : ` ${GLYPH.dot} seed ${team.seed}`}`,
-        team.members.map((member) => userText(member.displayName, NAME_DISPLAY_MAX)).join(', ') || GLYPH.unknown,
+        team.members.map((member) => userText(member.displayName, NAME_DISPLAY_MAX)).join(', ') ||
+          GLYPH.unknown,
         true,
       ),
     );

@@ -1,4 +1,11 @@
-import { calendar, getMyPreferences, MINUTE, NotFoundError, ValidationError } from '@jave/core';
+import {
+  calendar,
+  getMyPreferences,
+  getSettings,
+  MINUTE,
+  NotFoundError,
+  ValidationError,
+} from '@jave/core';
 import type { HandlerContext } from '../../interactions/types';
 import { panel } from '../../ui/components';
 import { discordTime, userText } from '../../ui/format';
@@ -91,8 +98,12 @@ export async function submitCreateEvent(
     location: location || undefined,
     capacity: capacity ?? undefined,
   });
+  const { events: announceChannelId } = await getSettings(h.ctx, 'channels');
+  const mirror = announceChannelId
+    ? `The Discord event and the announcement in <#${announceChannelId}> follow.`
+    : 'The Discord event follows. No events channel is set, so nothing is announced.';
   await showEventCard(h, event.id, {
-    notice: `EVENT SCHEDULED — ${discordTime(event.startsAt, 'F')}. The announcement and the Discord event follow automatically when an events channel is configured.`,
+    notice: `EVENT SCHEDULED — ${discordTime(event.startsAt, 'F')}. ${mirror}`,
   });
 }
 
@@ -278,7 +289,9 @@ export async function submitReport(h: HandlerContext, matchId: string): Promise<
     match && match.scoreA !== null && match.scoreB !== null
       ? ` ${match.scoreA} : ${match.scoreB}`
       : ' by forfeit';
-  const champion = bracket.champion ? ` CHAMPION — ${userText(bracket.champion.name, NAME_DISPLAY_MAX)}.` : '';
+  const champion = bracket.champion
+    ? ` CHAMPION — ${userText(bracket.champion.name, NAME_DISPLAY_MAX)}.`
+    : '';
   await showBracket(h, bracket.eventId, {
     notice: `RESULT RECORDED — ${userText(winner?.name ?? 'Winner', NAME_DISPLAY_MAX)} wins${score}.${champion}`,
   });

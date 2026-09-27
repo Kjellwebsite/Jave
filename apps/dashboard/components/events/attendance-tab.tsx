@@ -40,9 +40,9 @@ export async function AttendanceTab({
   const positions = new Map(
     (waitlist?.items ?? []).map((participant, index) => [participant.memberId, index + 1]),
   );
-  const window = calendar.checkInWindow(event);
+  const checkIn = calendar.checkInWindow(event);
   const codeOpen =
-    (event.status === 'scheduled' || event.status === 'live') && now <= window.closesAt;
+    (event.status === 'scheduled' || event.status === 'live') && now <= checkIn.closesAt;
 
   return (
     <div className="space-y-6">
@@ -50,8 +50,10 @@ export async function AttendanceTab({
         title="Check-in"
         description={
           <>
-            Window <Mono>{formatTimestamp(window.opensAt, timeZone)}</Mono> →{' '}
-            <Mono>{formatTimestamp(window.closesAt, timeZone)}</Mono>
+            Window{' '}
+            <Mono className="whitespace-nowrap">{formatTimestamp(checkIn.opensAt, timeZone)}</Mono>{' '}
+            →{' '}
+            <Mono className="whitespace-nowrap">{formatTimestamp(checkIn.closesAt, timeZone)}</Mono>
           </>
         }
       >

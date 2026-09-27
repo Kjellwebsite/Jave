@@ -6,9 +6,12 @@ import { EVENT_FIXTURES } from './seed-events-games';
 /**
  * Visual gauntlet for events and games, at desktop (1440) and phone (390)
  * width: no page may scroll horizontally. With JAVE_SCREENSHOTS=1 the
- * captures are written to docs/screenshots/.
+ * captures are written to docs/screenshots/ (or JAVE_SCREENSHOT_DIR, a
+ * directory ending in a slash, for critique rounds).
  */
-const SCREENSHOT_DIR = fileURLToPath(new URL('../../../docs/screenshots/', import.meta.url));
+const SCREENSHOT_DIR =
+  process.env.JAVE_SCREENSHOT_DIR ??
+  fileURLToPath(new URL('../../../docs/screenshots/', import.meta.url));
 const SAVE = process.env.JAVE_SCREENSHOTS === '1';
 const MAX_CAPTURE_HEIGHT = 2200;
 
@@ -33,41 +36,42 @@ async function eventPath(page: Page, title: string, query = '', scope = ''): Pro
 }
 
 const SHOTS: readonly Shot[] = [
-  { name: 'events', path: '/events', persona: 'founder' },
+  { name: 'events-upcoming', path: '/events', persona: 'founder' },
   { name: 'events-past', path: '/events?scope=past', persona: 'founder' },
-  { name: 'event-new', path: '/events/new', persona: 'founder' },
+  { name: 'events-new', path: '/events/new', persona: 'founder' },
   {
-    name: 'event-overview',
+    name: 'events-detail',
     path: (page) => eventPath(page, EVENT_FIXTURES.meetup),
     persona: 'founder',
   },
   {
-    name: 'event-attendance',
+    name: 'events-attendance',
     path: (page) => eventPath(page, EVENT_FIXTURES.meetup, '?tab=attendance'),
     persona: 'founder',
   },
   {
-    name: 'event-teams',
+    name: 'events-teams',
     path: (page) => eventPath(page, EVENT_FIXTURES.tournament, '?tab=teams'),
     persona: 'founder',
   },
   {
-    name: 'event-bracket',
+    name: 'events-bracket',
     path: (page) => eventPath(page, EVENT_FIXTURES.tournament, '?tab=bracket'),
     persona: 'founder',
   },
   {
-    name: 'event-cancelled',
+    name: 'events-cancelled',
     path: (page) => eventPath(page, EVENT_FIXTURES.cancelled, '', '?scope=past'),
     persona: 'founder',
   },
-  { name: 'games', path: '/games', persona: 'founder' },
+  { name: 'games-leaderboard', path: '/games', persona: 'founder' },
   {
-    name: 'event-member',
+    name: 'events-detail-member',
     path: (page) => eventPath(page, EVENT_FIXTURES.live),
     persona: 'member',
   },
   { name: 'events-member', path: '/events', persona: 'member' },
+  { name: 'games-member', path: '/games?game=reaction', persona: 'member' },
 ];
 
 for (const viewport of VIEWPORTS) {

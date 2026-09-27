@@ -94,13 +94,13 @@ export function whenValue(event: Pick<EventSummary, 'startsAt' | 'endsAt'>): str
   return `${discordTime(event.startsAt, 'F')} ${GLYPH.dot} ${discordTime(event.startsAt, 'R')}\nEnds ${discordTime(event.endsAt, sameDay ? 't' : 'f')}`;
 }
 
-/** A link Discord renders safely: http(s) only, parentheses encoded, hostname as the label. */
+/** A link Discord renders safely: http(s) only, parentheses encoded, the escaped hostname as the label. */
 function safeLink(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
     const href = url.toString().replace(/\(/g, '%28').replace(/\)/g, '%29');
-    return `[${url.hostname}](${href})`;
+    return `[${userText(url.hostname, LOCATION_TEXT_MAX)}](${href})`;
   } catch {
     return null;
   }

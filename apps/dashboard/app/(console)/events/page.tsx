@@ -100,8 +100,7 @@ export default async function EventsPage({
   const scope: Scope = SCOPES.find((candidate) => candidate === requested) ?? 'upcoming';
   const offset = offsetParam(params.offset);
   const result = await guarded(() => calendar.listEvents(ctx, { scope, limit: PAGE_SIZE, offset }));
-  if (!result.ok)
-    return <MemberOnlyPage eyebrow="OPERATIONS" title="Events" />;
+  if (!result.ok) return <MemberOnlyPage eyebrow="OPERATIONS" title="Events" />;
   const page = result.value;
   const viewer = await loadViewer(ctx);
   const staff = can(ctx, 'canManageEvents');

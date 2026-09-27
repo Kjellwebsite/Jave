@@ -76,7 +76,9 @@ export function createEventModal(
         ),
       new LabelBuilder()
         .setLabel('Start')
-        .setDescription(clip(`YYYY-MM-DD HH:mm in ${timeZone}, or ISO 8601 with an offset.`, COMPONENT_TEXT_MAX))
+        .setDescription(
+          clip(`YYYY-MM-DD HH:mm in ${timeZone}, or ISO 8601 with an offset.`, COMPONENT_TEXT_MAX),
+        )
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.start)
@@ -139,7 +141,9 @@ export function cancelEventModal(eventId: string, eventTitle: string): ModalPayl
     .addLabelComponents(
       new LabelBuilder()
         .setLabel('Reason')
-        .setDescription(clip(`Sent to everyone who responded to ${eventTitle}.`, COMPONENT_TEXT_MAX))
+        .setDescription(
+          clip(`Sent to everyone who responded to ${eventTitle}.`, COMPONENT_TEXT_MAX),
+        )
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.reason)

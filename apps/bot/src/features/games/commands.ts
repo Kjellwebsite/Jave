@@ -6,12 +6,15 @@ import { userText } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
 import { LEADERBOARD_METRICS, METRIC_LABEL } from './constants';
 import { promptStop } from './components';
+import { botCanPost } from './render-job';
 import { gameKeyOf, metricOf, showLeaderboard } from './leaderboard';
 
 const { trivia, reaction } = games;
 const DIFFICULTIES = ['mixed', ...trivia.TRIVIA_DIFFICULTIES] as const;
 
 const categoryLabel = (category: string) => category.replace(/_/g, ' ');
+const BOT_CANNOT_POST_HERE =
+  'JAVE cannot post here: it needs View Channel, Send Messages and Embed Links in a text channel. Open the lobby in another channel or ask staff to grant them.';
 
 /** The channel a game runs in: a guild channel, never a DM. */
 function gameChannel(h: HandlerContext): string {
@@ -34,6 +37,16 @@ async function openLobby(
 ): Promise<void> {
   const channelId = gameChannel(h);
   await h.interaction.defer({ ephemeral: true });
+  // The host ran the command here, so JAVE's own access can be named plainly before a
+  // session exists. The render job still applies the full channel contract before posting.
+  const access = await h.services.gateway.channelAccess(channelId, { kind: 'bot' });
+  if (!botCanPost(access)) {
+    await h.respond({
+      embeds: [failure('CHANNEL UNAVAILABLE', BOT_CANNOT_POST_HERE)],
+      ephemeral: true,
+    });
+    return;
+  }
   const created = await games.createSession(h.ctx, {
     gameKey,
     surface: 'discord',

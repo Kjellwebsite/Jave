@@ -1,7 +1,7 @@
 import type { BotFeature } from '../types';
 import { challengeCommand } from './commands';
 import { gameComponents } from './components';
-import { repostDeletedPanel } from './listeners';
+import { repostDeletedPanel, repostPurgedPanel } from './listeners';
 import { gameJobHandlers } from './render-job';
 
 /**
@@ -17,4 +17,5 @@ export const feature: BotFeature = {
   components: [gameComponents],
   jobHandlers: gameJobHandlers,
   onMessageDelete: repostDeletedPanel,
+  onMessageDeleteBulk: repostPurgedPanel,
 };

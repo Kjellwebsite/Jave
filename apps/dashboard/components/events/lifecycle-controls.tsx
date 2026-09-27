@@ -20,10 +20,11 @@ export interface LifecycleControlsProps {
 }
 
 /**
- * Staff controls for an event's state: go live, complete, cancel. Every
- * dialog stays mounted and only its trigger hides when the transition is no
- * longer available: a transition removes its own button, and an unmounted
- * dialog could not announce the result.
+ * Staff controls for an event's state: go live, complete, cancel. While the
+ * strip is shown every dialog stays mounted and only its trigger hides once
+ * the transition is no longer available (a transition removes its own
+ * button). The result toast is raised by the call itself, so it is announced
+ * even when the page drops the whole strip (a completed or cancelled event).
  */
 export function LifecycleControls({
   eventId,
@@ -36,7 +37,6 @@ export function LifecycleControls({
   completeAction,
   cancelAction,
 }: LifecycleControlsProps) {
-  const hiddenUnless = (available: boolean) => (available ? undefined : 'hidden');
   return (
     <div className="flex flex-wrap gap-2">
       <ConfirmActionDialog
@@ -47,7 +47,7 @@ export function LifecycleControls({
         action={goLiveAction}
         hidden={{ eventId }}
         trigger={
-          <Button variant="primary" iconLeft={Radio} className={hiddenUnless(canGoLive)}>
+          <Button variant="primary" iconLeft={Radio} hidden={!canGoLive}>
             Go live
           </Button>
         }
@@ -63,7 +63,7 @@ export function LifecycleControls({
           <Button
             variant={canGoLive ? 'secondary' : 'primary'}
             iconLeft={CircleCheck}
-            className={hiddenUnless(canComplete)}
+            hidden={!canComplete}
           >
             Complete
           </Button>
@@ -78,7 +78,7 @@ export function LifecycleControls({
         action={cancelAction}
         hidden={{ eventId }}
         trigger={
-          <Button variant="ghost" iconLeft={Ban} className={hiddenUnless(canCancel)}>
+          <Button variant="secondary" iconLeft={Ban} hidden={!canCancel}>
             Cancel event
           </Button>
         }

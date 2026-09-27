@@ -14,11 +14,13 @@ import type {
 import { GLYPH } from '../../ui/theme';
 import { EVENT_KINDS, MAX_DRAW_TEAM_SIZE, PICKER_LIMIT } from './constants';
 import {
+  openCheckIn,
+  pickableEvents,
   pickCheckInEvent,
+  pickEvent,
   showEventCard,
   showEventList,
   showHistory,
-  openCheckIn,
 } from './member-flows';
 import { plainLabel, shortUtc } from './render-event';
 import {
@@ -37,25 +39,20 @@ import {
 } from './staff-flows';
 import { requireId } from './support';
 
-/** Recent past events stay pickable (a bracket can finish after its evening ends). */
-const PAST_PICKER_LIMIT = 10;
 const EVENT_OPTION = 'event';
 
-const eventOption = (required: boolean) => (option: SlashCommandStringOption) =>
-  option.setName(EVENT_OPTION).setDescription('Event').setRequired(required).setAutocomplete(true);
+const eventOption = (option: SlashCommandStringOption) =>
+  option
+    .setName(EVENT_OPTION)
+    .setDescription('Event. Leave empty to choose from a list.')
+    .setAutocomplete(true);
 
-const withEvent =
-  (name: string, description: string, required = true) =>
-  (sub: SlashCommandSubcommandBuilder) =>
-    sub.setName(name).setDescription(description).addStringOption(eventOption(required));
+const withEvent = (name: string, description: string) => (sub: SlashCommandSubcommandBuilder) =>
+  sub.setName(name).setDescription(description).addStringOption(eventOption);
 
 async function eventChoices(h: HandlerContext, query: string): Promise<AutocompleteChoice[]> {
-  const [upcoming, past] = await Promise.all([
-    calendar.listEvents(h.ctx, { scope: 'upcoming', limit: PICKER_LIMIT }),
-    calendar.listEvents(h.ctx, { scope: 'past', limit: PAST_PICKER_LIMIT }),
-  ]);
   const needle = query.trim().toLowerCase();
-  return [...upcoming.items, ...past.items]
+  return (await pickableEvents(h))
     .filter((event) => !needle || event.title.toLowerCase().includes(needle))
     .slice(0, PICKER_LIMIT)
     .map((event) => {
@@ -68,8 +65,10 @@ async function eventChoices(h: HandlerContext, query: string): Promise<Autocompl
     });
 }
 
-function chosenEvent(h: HandlerContext): string {
-  return requireId(h.interaction.options.string(EVENT_OPTION));
+/** The event option, validated; null when it was left out. */
+function chosenEvent(h: HandlerContext): string | null {
+  const value = h.interaction.options.string(EVENT_OPTION);
+  return value === null ? null : requireId(value);
 }
 
 export const eventsCommand: CommandDefinition = {
@@ -78,8 +77,8 @@ export const eventsCommand: CommandDefinition = {
     .setName('events')
     .setDescription('JAVELIN events: RSVP, check-in, teams and brackets.')
     .addSubcommand((sub) => sub.setName('list').setDescription('Upcoming events.'))
-    .addSubcommand(withEvent('view', 'Open an event: details, your RSVP, controls.', false))
-    .addSubcommand(withEvent('checkin', 'Check in with the code the host shares.', false))
+    .addSubcommand(withEvent('view', 'Open an event: details, your RSVP, controls.'))
+    .addSubcommand(withEvent('checkin', 'Check in with the code the host shares.'))
     .addSubcommand((sub) =>
       sub
         .setName('create')
@@ -132,43 +131,46 @@ export const eventsCommand: CommandDefinition = {
 
   async execute(h) {
     const options = h.interaction.options;
-    switch (options.subcommand()) {
-      case 'list':
-        return showEventList(h);
-      case 'view': {
-        // Without an event: the upcoming list, whose picker opens any of them.
-        const value = options.string(EVENT_OPTION);
-        return value ? showEventCard(h, requireId(value)) : showEventList(h);
-      }
-      case 'checkin': {
-        const value = options.string(EVENT_OPTION);
-        return value ? openCheckIn(h, requireId(value)) : pickCheckInEvent(h);
-      }
-      case 'create':
-        return openCreateEvent(
-          h,
-          parseKind(options.string('kind')),
-          parseCapacity(options.integer('capacity')),
-        );
+    const subcommand = options.subcommand();
+    if (subcommand === 'list') return showEventList(h);
+    if (subcommand === 'create') {
+      return openCreateEvent(
+        h,
+        parseKind(options.string('kind')),
+        parseCapacity(options.integer('capacity')),
+      );
+    }
+    const eventId = chosenEvent(h);
+    if (eventId === null) {
+      // No event typed: members land on the upcoming list, check-in on the open windows,
+      // everything else on a picker whose card carries the controls.
+      if (subcommand === 'view') return showEventList(h);
+      if (subcommand === 'checkin') return pickCheckInEvent(h);
+      return pickEvent(h);
+    }
+    switch (subcommand) {
+      case 'view':
+        return showEventCard(h, eventId);
+      case 'checkin':
+        return openCheckIn(h, eventId);
       case 'cancel':
-        return openCancelEvent(h, chosenEvent(h));
+        return openCancelEvent(h, eventId);
       case 'live':
-        return goLive(h, chosenEvent(h), false);
+        return goLive(h, eventId, false);
       case 'complete':
-        return completeEvent(h, chosenEvent(h), false);
+        return completeEvent(h, eventId, false);
       case 'checkin-code':
-        return issueCheckInCode(h, chosenEvent(h));
+        return issueCheckInCode(h, eventId);
       case 'teams': {
-        const eventId = chosenEvent(h);
         const size = options.integer('size');
         return size === null
           ? showTeams(h, eventId)
           : drawTeams(h, eventId, parseTeamSize(size), false);
       }
       case 'bracket':
-        return showBracket(h, chosenEvent(h));
+        return showBracket(h, eventId);
       case 'report':
-        return pickMatch(h, chosenEvent(h));
+        return pickMatch(h, eventId);
       default:
         throw new ValidationError('Unknown subcommand.');
     }

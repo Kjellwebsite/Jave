@@ -94,12 +94,7 @@ export function GenerateBracketDialog({
       action={action}
       hidden={{ eventId }}
       trigger={
-        <Button
-          variant="primary"
-          iconLeft={Swords}
-          disabled={teams < 2}
-          className={triggerHidden ? 'hidden' : undefined}
-        >
+        <Button variant="primary" iconLeft={Swords} disabled={teams < 2} hidden={triggerHidden}>
           Generate bracket
         </Button>
       }

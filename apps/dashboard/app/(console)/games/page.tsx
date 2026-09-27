@@ -105,8 +105,7 @@ export default async function GamesPage({ searchParams }: { searchParams: Promis
   const board = await guarded(() =>
     games.getLeaderboard(ctx, { gameKey: game.key, metric, limit: BOARD_LIMIT }),
   );
-  if (!board.ok)
-    return <MemberOnlyPage eyebrow="OPERATIONS" title="Games" />;
+  if (!board.ok) return <MemberOnlyPage eyebrow="OPERATIONS" title="Games" />;
   const viewer = await loadViewer(ctx);
   const linkMembers = can(ctx, 'canViewMembers');
   const entries = board.value.entries;

@@ -36,12 +36,7 @@ export function ReportMatchDialog({
       action={action}
       hidden={{ matchId }}
       trigger={
-        <Button
-          size="sm"
-          variant="secondary"
-          data-testid="report-match"
-          className={triggerHidden ? 'hidden' : undefined}
-        >
+        <Button size="sm" variant="secondary" data-testid="report-match" hidden={triggerHidden}>
           Report
         </Button>
       }

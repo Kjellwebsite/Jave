@@ -68,6 +68,8 @@ export const CANCEL_REASON_DISPLAY_MAX = 500;
 /** Discord's limit for select option labels and label descriptions in modals. */
 export const COMPONENT_TEXT_MAX = 100;
 export const PICKER_LIMIT = 25;
+/** Recent past events stay pickable (a bracket can finish after its evening ends). */
+export const PAST_PICKER_LIMIT = 10;
 export const HISTORY_LIMIT = 10;
 export const DESCRIPTION_PREVIEW_MAX = 1500;
 export const ANNOUNCEMENT_DESCRIPTION_MAX = 1800;

@@ -118,7 +118,7 @@ export async function LookupTab({ ctx, rawQuery, timeZone }: LookupTabProps) {
                         @{member.handle} · {member.discordId}
                       </Mono>
                     </span>
-                    {member.standing !== 'good' ? (
+                    {member.standing && member.standing !== 'good' ? (
                       <StatusBadge
                         tone={STANDING_TONE[member.standing]}
                         label={STANDING_LABELS[member.standing]}

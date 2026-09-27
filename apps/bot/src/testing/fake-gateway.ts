@@ -6,6 +6,7 @@ import {
   type InviteSnapshot,
   type MessagePayload,
   type PermissionOverwriteSpec,
+  type ReadableMessage,
   type ScheduledEventSpec,
   type SentMessage,
   type ThreadAutoArchiveMinutes,
@@ -52,6 +53,10 @@ export class FakeDiscordGateway implements DiscordGateway {
   readonly closedDms = new Set<string>();
   /** method name → error to throw once. */
   readonly failures = new Map<string, DiscordActionError>();
+  /** Guild messages readable through fetchMessageAs, by message id. */
+  readonly readableMessages = new Map<string, ReadableMessage>();
+  /** channel id → the only user ids allowed to read it (absent: everyone in the guild). */
+  readonly channelReaders = new Map<string, Set<string>>();
   ready = true;
 
   constructor(guildId = '100000000000000999') {
@@ -82,6 +87,25 @@ export class FakeDiscordGateway implements DiscordGateway {
       this.failures.delete(method);
       throw failure;
     }
+  }
+
+  /** Put a message in the fake guild so fetchMessageAs can find it. */
+  seedMessage(
+    message: Pick<ReadableMessage, 'channelId' | 'content'> & Partial<ReadableMessage>,
+  ): ReadableMessage {
+    const id = message.id ?? nextId();
+    const full: ReadableMessage = {
+      id,
+      authorId: '100000000000000777',
+      authorName: 'author',
+      authorIsBot: false,
+      embedsText: [],
+      createdAt: new Date('2026-03-01T11:00:00.000Z'),
+      url: `https://discord.com/channels/${this.guildId}/${message.channelId}/${id}`,
+      ...message,
+    };
+    this.readableMessages.set(id, full);
+    return full;
   }
 
   callsTo(method: string): GatewayCall[] {
@@ -294,5 +318,13 @@ export class FakeDiscordGateway implements DiscordGateway {
     this.messages.set(messageId, { channelId, payload });
     this.nonces.set(key, messageId);
     return { channelId, messageId };
+  }
+  async fetchMessageAs(asUserId: string, channelId: string, messageId: string) {
+    this.record('fetchMessageAs', asUserId, channelId, messageId);
+    if (!this.members.has(asUserId)) return null;
+    const readers = this.channelReaders.get(channelId);
+    if (readers && !readers.has(asUserId)) return null;
+    const message = this.readableMessages.get(messageId);
+    return message && message.channelId === channelId ? { ...message } : null;
   }
 }

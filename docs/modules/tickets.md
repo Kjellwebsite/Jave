@@ -306,8 +306,9 @@ Full reference: [docs/commands/tickets.md](../commands/tickets.md).
 - **AI summary wiring**: both surfaces pass
   `ai.ticketSummarizer(ctx, deps, surface)` (core `ai` module) to
   `summarizeTicket` only when an AI provider is configured in that process
-  (`BotServices.ai`, the dashboard's `server/tickets/ai.ts`); otherwise they
-  show DISABLED.
+  (`BotServices.ai`, the dashboard's `server/tickets/ai.ts` over the shared
+  `server/ai.ts` integration); otherwise they show DISABLED. The request is
+  recorded in the AI ledger as feature `ticket_summary`.
 
 ## Known limitations
 

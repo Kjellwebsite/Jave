@@ -1262,7 +1262,9 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 | `created_at`    | timestamp with time zone                                       |      | `now()`             |            |
 
 - `ai_requests_user_idx` (user_id, created_at)
-- `ai_requests_time_idx` (created_at)
+- `ai_requests_time_idx` (created_at, id)
+- `ai_requests_feature_idx` (feature, created_at, id)
+- `ai_requests_status_idx` (status, created_at, id)
 
 ### Research (Sidus)
 

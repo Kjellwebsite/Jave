@@ -59,8 +59,13 @@ export const botEnvSchema = baseEnvSchema
     JAVE_PUBLIC_URL: z.string().url().optional(),
   });
 
+/** MOCK / DEVELOPMENT ONLY: deterministic offline provider, refused with NODE_ENV=production. */
+export const MOCK_AI_PROVIDER = 'mock';
+
 export const aiEnvSchema = z.object({
-  AI_PROVIDER: z.enum(['anthropic', 'openai', 'openai-compatible', 'disabled']).default('disabled'),
+  AI_PROVIDER: z
+    .enum(['anthropic', 'openai', 'openai-compatible', 'disabled', MOCK_AI_PROVIDER])
+    .default('disabled'),
   AI_MODEL: z.string().optional(),
   AI_API_KEY: z.string().optional(),
   AI_BASE_URL: z.string().url().optional(),
@@ -81,6 +86,20 @@ export const integrationsEnvSchema = z.object({
   SIDUS_API_KEY: z.string().optional(),
 });
 
+/** AI_PROVIDER=mock (MOCK / DEVELOPMENT ONLY) must never reach production. */
+function refuseMockAiInProduction(
+  env: { NODE_ENV: BaseEnv['NODE_ENV']; AI_PROVIDER: AiEnv['AI_PROVIDER'] },
+  ctx: z.RefinementCtx,
+): void {
+  if (env.NODE_ENV === 'production' && env.AI_PROVIDER === MOCK_AI_PROVIDER) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['AI_PROVIDER'],
+      message: 'AI_PROVIDER=mock is MOCK / DEVELOPMENT ONLY and is refused in production',
+    });
+  }
+}
+
 export const dashboardEnvSchema = baseEnvSchema
   .extend(databaseEnvSchema.shape)
   .extend(discordEnvSchema.shape)
@@ -94,6 +113,7 @@ export const dashboardEnvSchema = baseEnvSchema
     JAVE_DEV_AUTH: booleanFlag,
   })
   .superRefine((env, ctx) => {
+    refuseMockAiInProduction(env, ctx);
     if (env.NODE_ENV === 'production' && env.JAVE_DEV_AUTH) {
       ctx.addIssue({
         code: 'custom',
@@ -112,7 +132,8 @@ export const dashboardEnvSchema = baseEnvSchema
 
 export const fullBotEnvSchema = botEnvSchema
   .extend(aiEnvSchema.shape)
-  .extend(integrationsEnvSchema.shape);
+  .extend(integrationsEnvSchema.shape)
+  .superRefine(refuseMockAiInProduction);
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;
 export type BotEnv = z.infer<typeof fullBotEnvSchema>;

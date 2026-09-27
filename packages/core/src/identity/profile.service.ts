@@ -389,3 +389,34 @@ export async function memberNames(ctx: ServiceContext, memberIds: string[]) {
     .where(inArray(members.id, [...new Set(memberIds)]));
   return new Map(rows.map((r) => [r.id, r]));
 }
+
+export interface UserName {
+  displayName: string;
+  handle: string;
+  discordId: string;
+}
+
+/**
+ * Display names for a set of user IDs (for rendering who submitted, requested
+ * or decided something). Callers render it only next to data the actor was
+ * already authorized to see. Actors without `canViewMembers` get an empty map;
+ * users without a member row are omitted.
+ */
+export async function userNames(
+  ctx: ServiceContext,
+  userIds: readonly string[],
+): Promise<Map<string, UserName>> {
+  const ids = [...new Set(userIds)];
+  if (ids.length === 0 || !can(ctx, 'canViewMembers')) return new Map();
+  const rows = await ctx.db
+    .select({
+      userId: users.id,
+      displayName: members.displayName,
+      handle: members.handle,
+      discordId: users.discordId,
+    })
+    .from(users)
+    .innerJoin(members, eq(members.userId, users.id))
+    .where(inArray(users.id, ids));
+  return new Map(rows.map(({ userId, ...rest }) => [userId, rest]));
+}

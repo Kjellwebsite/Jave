@@ -1,7 +1,9 @@
 import {
   Bell,
   ChartNoAxesColumn,
+  Cpu,
   FileText,
+  FlaskConical,
   Inbox,
   LayoutGrid,
   LifeBuoy,
@@ -68,7 +70,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/moderation', label: 'Moderation', icon: ShieldAlert, capability: 'canModerate' },
     ],
   },
-  { label: 'INTELLIGENCE', items: [] },
+  {
+    label: 'INTELLIGENCE',
+    items: [
+      { href: '/ai', label: 'JAVE AI', icon: Cpu, capability: 'canUseAI' },
+      { href: '/research', label: 'Research', icon: FlaskConical, capability: 'canViewMembers' },
+    ],
+  },
   {
     label: 'SYSTEM',
     items: [

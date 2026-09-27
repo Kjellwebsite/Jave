@@ -3,8 +3,8 @@ import { ApplicationCommandType } from 'discord.js';
 import { allFeatures } from '.';
 
 const SLASH_NAME = /^[-_\p{L}\p{N}]{1,32}$/u;
-/** Discord accepts at most five user and five message context menus per application. */
-const MAX_CONTEXT_MENUS_PER_TYPE = 5;
+/** Discord accepts at most 15 user and 15 message context menus per application (and per guild). */
+const MAX_CONTEXT_MENUS_PER_TYPE = 15;
 
 describe('command catalog', () => {
   const commands = allFeatures().flatMap((f) => f.commands ?? []);

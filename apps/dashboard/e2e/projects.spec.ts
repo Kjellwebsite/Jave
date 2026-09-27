@@ -11,6 +11,9 @@ test.describe.configure({ mode: 'serial' });
 /** Hostile-looking title: must render as text, never as markup. */
 const TITLE = 'Orbital Relay <img src=x onerror=alert(1)>';
 const PRIVATE_TITLE = 'Quiet Skunkworks';
+/** The title once the owner cleans it up in Settings. */
+const CLEAN_TITLE = 'Orbital Relay';
+const REPO = 'javelin-labs/orbital-relay';
 let projectPath = '';
 let privatePath = '';
 
@@ -110,6 +113,40 @@ test('the owner moves it along the pipeline and plans milestones', async ({ page
     .getByRole('link', { name: 'Design review' });
   await expect(anchor).toHaveAttribute('href', 'https://example.org/design?draft=1');
   await expect(anchor).toHaveAttribute('rel', /noopener/);
+});
+
+test('the owner edits details; linking a repository needs a verified account or staff', async ({
+  page,
+}) => {
+  await signInAs(page, 'verified');
+  await page.goto(`${projectPath}?tab=settings`);
+  const details = page.getByRole('form', { name: 'Project details' });
+  await details.getByLabel('Title').fill(CLEAN_TITLE);
+  await details
+    .getByLabel('Description')
+    .fill('Store-and-forward relay that lets student cubesats share one ground station pass.');
+  await details.getByLabel('Goals').fill('Relay 1 MB per pass. Survive a missed uplink window.');
+  await details.getByRole('button', { name: 'Save details' }).click();
+  await expect(page.getByText(`PROJECT UPDATED — ${CLEAN_TITLE}.`)).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(CLEAN_TITLE);
+
+  // No staff-verified GitHub account: the owner cannot claim a repository.
+  const repo = page.getByRole('form', { name: 'GitHub repository' });
+  await repo.getByLabel('Repository').fill(REPO);
+  await repo.getByRole('button', { name: 'Link repository' }).click();
+  await expect(
+    page.getByText('Link repositories through a staff-verified GitHub account'),
+  ).toBeVisible();
+
+  await switchTo(page, 'operations');
+  await page.goto(`${projectPath}?tab=settings`);
+  const staffRepo = page.getByRole('form', { name: 'GitHub repository' });
+  await staffRepo.getByLabel('Repository').fill(`https://github.com/${REPO}`);
+  await staffRepo.getByRole('button', { name: 'Link repository' }).click();
+  await expect(page.getByText(`REPOSITORY LINKED — ${REPO}.`)).toBeVisible();
+  const repoLink = page.getByRole('link', { name: REPO }).first();
+  await expect(repoLink).toHaveAttribute('href', `https://github.com/${REPO}`);
+  await expect(repoLink).toHaveAttribute('rel', /noopener/);
 });
 
 test('the owner adds a teammate by handle', async ({ page }) => {

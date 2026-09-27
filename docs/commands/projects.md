@@ -28,16 +28,17 @@ Autocomplete (`project` options) lists the invoking user's visible projects
 (`view`) or the projects they can manage (`status`, `milestone`, `member`;
 staff see every project), newest activity first, 25 at most.
 
-## Context menu
+## Context menus
 
-| Menu                                     | Who                             | Flow                                                                                                                                                                                        |
-| ---------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Message → Apps → **Record Contribution** | the message's author (yourself) | Opens **RECORD CONTRIBUTION** prefilled with the message's first line (3–200 characters) and its jump link, no project. Someone else's or a webhook's message answers **NOT YOUR MESSAGE**. |
+| Menu                                     | Who                                                  | Flow                                                                                                                                                                                                                                                     |
+| ---------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| User → Apps → **Add to Project**         | owners/maintainers of an active project; staff (all) | Select of the projects you can edit that the member is not on yet (25 newest) → role buttons (MAINTAINER only for owners/staff) → core adds them. Bots and users without a JVLN profile answer NOT FOUND; nothing to offer answers NO PROJECT TO ADD TO. |
+| Message → Apps → **Record Contribution** | the message's author (yourself)                      | Opens **RECORD CONTRIBUTION** prefilled with the message's first line (3–200 characters) and its jump link, no project. Someone else's or a webhook's message answers **NOT YOUR MESSAGE**.                                                              |
 
-Adding a member starts from the project card instead of a user menu
-(Discord allows five user context menus per application, all in use):
-**ADD MEMBER** → Discord's member picker → role buttons (MAINTAINER only for
-owners/staff) → core adds them. Every step re-authorizes the clicking user.
+The project card offers the same flow the other way round: **ADD MEMBER** →
+Discord's member picker → role buttons. Every step re-authorizes the clicking
+user through core, so a forged select value or button for a project you do not
+manage answers ACCESS RESTRICTED (or NOT FOUND for projects you cannot see).
 
 ## Buttons, selects and modals
 
@@ -55,6 +56,7 @@ owners/staff) → core adds them. Every step re-authorizes the clicking user.
 | `projects:contribute:<projectId>`                                                                                              | card → RECORD CONTRIBUTION               | Opens the contribution modal (modal id `projects:contribute:<projectId\|none>`).         |
 | `projects:leave:<projectId>` → `projects:leaveok:<projectId>`                                                                  | card → LEAVE → confirmation              | `leaveProject` (owners must transfer first).                                             |
 | `projects:addmember:<projectId>` → `projects:addpick:<projectId>` (user select) → `projects:add:<projectId>:<memberId>:<role>` | card → ADD MEMBER → member picker → role | `addProjectMember`; the picked user must have a JVLN profile and not be on the team yet. |
+| `projects:addto:<memberId>` (select) → `projects:add:<projectId>:<memberId>:<role>`                                            | Add to Project menu → project → role     | `addProjectMember` with the chosen role.                                                 |
 | `projects:cq:<index>`                                                                                                          | review queue SKIP / NEXT / START OVER    | Re-reads the queue (never cached) and shows item `index`.                                |
 | `projects:cverify:<contributionId>:<index>`                                                                                    | VERIFY                                   | `verifyContribution` → becomes accepted evidence; the author is notified.                |
 | `projects:creject:<contributionId>:<index>`                                                                                    | REJECT → reason modal                    | `rejectContribution` with the reason (3–1000 characters); the author reads it.           |

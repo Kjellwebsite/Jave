@@ -109,6 +109,18 @@ export function projectPath(slug: string): string {
   return `/projects/${encodeURIComponent(slug)}`;
 }
 
+/** `owner/name` as GitHub allows it (core stores linked repositories in this form, lowercase). */
+const GITHUB_REPO_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38})\/[a-z0-9._-]{1,100}$/i;
+const GITHUB_ORIGIN = 'https://github.com';
+
+/** The github.com page of a linked `owner/name`, or null for anything that is not one. */
+export function githubRepoUrl(repo: string | null | undefined): string | null {
+  if (!repo || !GITHUB_REPO_PATTERN.test(repo)) return null;
+  const [owner, name] = repo.split('/');
+  if (!owner || !name || name === '.' || name === '..') return null;
+  return `${GITHUB_ORIGIN}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+}
+
 /** Done milestones out of the ones still in scope (dropped ones do not count). */
 export function milestoneProgress(milestones: readonly { status: MilestoneStatusKey }[]): {
   done: number;

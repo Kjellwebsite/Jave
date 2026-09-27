@@ -1,4 +1,11 @@
-import { can, findMemberByDiscordId, isUuid, NotFoundError, projects } from '@jave/core';
+import {
+  can,
+  findMemberByDiscordId,
+  isUuid,
+  NotFoundError,
+  projects,
+  requireMember,
+} from '@jave/core';
 import type { AutocompleteChoice, HandlerContext, InteractionUser } from '../../interactions/types';
 import { clip } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
@@ -93,4 +100,21 @@ export async function openMilestoneChoices(
       name: clip(`${m.title} ${GLYPH.dot} ${m.status.toUpperCase()}`, CHOICE_NAME_MAX),
       value: m.id,
     }));
+}
+
+/**
+ * Active projects the viewer may edit (owner/maintainer; staff: every visible
+ * project), newest activity first, at most one picker's worth. Rights come
+ * from core's own project view, never re-derived here.
+ */
+export async function manageableProjects(h: HandlerContext): Promise<projects.ProjectDetail[]> {
+  const actor = requireMember(h.ctx);
+  const page = await projects.listProjects(h.ctx, {
+    memberId: manageScope(h) === 'mine' ? actor.memberId : undefined,
+    limit: PICKER_LIMIT,
+  });
+  const details = await Promise.all(
+    page.items.map((summary) => projects.getProject(h.ctx, { projectId: summary.id })),
+  );
+  return details.filter((detail) => detail.viewer.canEdit && detail.status !== 'archived');
 }

@@ -66,6 +66,24 @@ function isAssignableRole(value: string | undefined): value is AssignableRole {
   return ASSIGNABLE_ROLES.some((role) => role === value);
 }
 
+function rolePanel(kicker: string, detail: projects.ProjectDetail) {
+  return panel({
+    kicker,
+    title: userText(detail.title, LINE_TEXT_MAX),
+    description: 'Choose their role. They are notified and can leave at any time.',
+  });
+}
+
+/** CONTRIBUTOR always; MAINTAINER only for owners and staff (core enforces the same). */
+function roleButtons(detail: projects.ProjectDetail, memberId: string) {
+  const roles = ASSIGNABLE_ROLES.filter((role) => role === 'contributor' || detail.viewer.canAdmin);
+  return row(
+    ...roles.map((role) =>
+      button(ROLE_LABELS[role], customId(PROJECTS_NS, 'add', detail.id, memberId, role)),
+    ),
+  );
+}
+
 export const projectComponentActions: ActionMap = {
   async view(h, args) {
     const detail = await loadById(h, uuidArg(args, 0, 'Project'));
@@ -220,29 +238,19 @@ export const projectComponentActions: ActionMap = {
         ),
       ]);
     }
-    const roles = ASSIGNABLE_ROLES.filter(
-      (role) => role === 'contributor' || detail.viewer.canAdmin,
-    );
-    await replaceWith(
-      h,
-      [
-        panel({
-          kicker: 'ADD MEMBER',
-          title: userText(detail.title, LINE_TEXT_MAX),
-          description: 'Choose their role. They are notified and can leave at any time.',
-        }),
-      ],
-      [
-        row(
-          ...roles.map((role) =>
-            button(ROLE_LABELS[role], customId(PROJECTS_NS, 'add', detail.id, member.id, role)),
-          ),
-        ),
-      ],
-    );
+    await replaceWith(h, [rolePanel('ADD MEMBER', detail)], [roleButtons(detail, member.id)]);
   },
 
-  /** ADD MEMBER, step 3: add with the chosen role (core re-authorizes). */
+  /** "Add to Project" menu, step 2: the chosen project → role buttons. */
+  async addto(h, args) {
+    const memberId = uuidArg(args, 0, 'Member');
+    const detail = await loadById(h, uuidArg([selectedValue(h)], 0, 'Project'));
+    const restricted = editRestriction(detail);
+    if (restricted) return replaceWith(h, restricted.embeds ?? []);
+    await replaceWith(h, [rolePanel('ADD TO PROJECT', detail)], [roleButtons(detail, memberId)]);
+  },
+
+  /** ADD MEMBER / Add to Project, final step: add with the chosen role (core re-authorizes). */
   async add(h, args) {
     const projectId = uuidArg(args, 0, 'Project');
     const memberId = uuidArg(args, 1, 'Member');

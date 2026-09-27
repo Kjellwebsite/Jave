@@ -13,7 +13,12 @@ import {
   StatusPipeline,
   VisibilityBadge,
 } from '@/components/projects/status-pipeline';
-import { milestoneProgress, PROJECT_ROLE_LABELS, projectPath } from '@/lib/project-view';
+import {
+  githubRepoUrl,
+  milestoneProgress,
+  PROJECT_ROLE_LABELS,
+  projectPath,
+} from '@/lib/project-view';
 import { firstParam, type SearchParams } from '@/lib/search-params';
 import { formatDate } from '@/lib/time';
 import { requireConsoleContext } from '@/server/context';
@@ -83,6 +88,7 @@ export default async function ProjectPage({
   const progress = milestoneProgress(detail.milestones);
   const domain = catalog.domains.find((candidate) => candidate.key === detail.domainKey);
   const canRecord = detail.viewer.role !== null && !archived;
+  const repoHref = githubRepoUrl(detail.githubRepo);
 
   return (
     <div className="space-y-8">
@@ -165,11 +171,17 @@ export default async function ProjectPage({
           <Mono>{detail.shippedAt ? formatDate(detail.shippedAt, tz) : '—'}</Mono>
         </Fact>
         <Fact label="REPOSITORY">
-          {detail.githubRepo ? (
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-              <Icon icon={GitBranch} size="sm" className="text-fg-subtle" />
-              <Mono className="truncate">{detail.githubRepo}</Mono>
-            </span>
+          {repoHref ? (
+            <a
+              href={repoHref}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              title={detail.githubRepo ?? undefined}
+              className="flex min-w-0 items-center gap-1.5 hover:text-fg"
+            >
+              <Icon icon={GitBranch} size="sm" className="shrink-0 text-fg-subtle" />
+              <Mono className="min-w-0 truncate">{detail.githubRepo}</Mono>
+            </a>
           ) : (
             <Mono dim>—</Mono>
           )}

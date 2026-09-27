@@ -8,7 +8,7 @@ import {
   projects as projectsTable,
 } from '@jave/database';
 import { projects } from '@jave/core';
-import { createBotHarness, type BotHarness } from '../../testing/harness';
+import { createBotHarness, discordUser, type BotHarness } from '../../testing/harness';
 import { customId } from '../../interactions/custom-id';
 import type { InteractionUser } from '../../interactions/types';
 import type { UserActor } from '@jave/core';
@@ -684,6 +684,114 @@ describe('projects feature', () => {
         .select()
         .from(projectMembers)
         .where(eq(projectMembers.memberId, target.actor.memberId!));
+      expect(members).toHaveLength(0);
+    });
+
+    it('Add to Project (user menu): project select → role → added; managed projects only', async () => {
+      const rocket = await createProject(owner);
+      const glider = await createProject(owner, { title: 'Glider' });
+      const foreign = await createProject(await bot.member({ roles: ['verified'] }), {
+        title: 'Foreign Lab',
+        visibility: 'public',
+      });
+      const jun = await bot.member({ roles: ['verified'], username: 'jun' });
+      await projects.addProjectMember(bot.kit.as(owner.actor), {
+        projectId: glider.id,
+        memberId: jun.actor.memberId!,
+      });
+      const menu = await bot.run({
+        kind: 'user_context',
+        name: 'Add to Project',
+        user: owner.user,
+        targetUser: jun.user,
+      });
+      const payload = menu.interaction.lastPayload()!;
+      expect(payload.ephemeral).toBe(true);
+      expect(menu.interaction.lastText()).toContain('ADD TO PROJECT');
+      const select = customId('projects', 'addto', jun.actor.memberId!);
+      // Glider already has jun; Foreign Lab is not the owner's to manage.
+      expect(selectValues(payload, select)).toEqual([rocket.id]);
+      expect(selectValues(payload, select)).not.toContain(foreign.id);
+
+      const roles = await bot.run({
+        kind: 'select',
+        name: select,
+        user: owner.user,
+        values: [rocket.id],
+      });
+      expect(buttonLabels(roles.interaction.lastPayload())).toEqual(['CONTRIBUTOR', 'MAINTAINER']);
+      const added = await bot.run({
+        kind: 'button',
+        name: customId('projects', 'add', rocket.id, jun.actor.memberId!, 'maintainer'),
+        user: owner.user,
+      });
+      expect(added.interaction.lastText()).toContain('MEMBER ADDED');
+      const [row] = await bot.kit.db
+        .select()
+        .from(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, rocket.id),
+            eq(projectMembers.memberId, jun.actor.memberId!),
+          ),
+        );
+      expect(row?.role).toBe('maintainer');
+
+      const nothingLeft = await bot.run({
+        kind: 'user_context',
+        name: 'Add to Project',
+        user: owner.user,
+        targetUser: jun.user,
+      });
+      expect(nothingLeft.interaction.lastText()).toContain('NO PROJECT TO ADD TO');
+    });
+
+    it('BREAK: Add to Project refuses bots, strangers without a profile and forged project picks', async () => {
+      const project = await createProject(owner);
+      const jun = await bot.member({ roles: ['verified'] });
+      const outsider = await bot.member({ roles: ['verified'] });
+      const robot = { ...discordUser('999999999999999991', 'robot'), bot: true };
+      const byBot = await bot.run({
+        kind: 'user_context',
+        name: 'Add to Project',
+        user: owner.user,
+        targetUser: robot,
+      });
+      expect(byBot.interaction.lastText()).toContain('NOT FOUND');
+      const stranger = await bot.run({
+        kind: 'user_context',
+        name: 'Add to Project',
+        user: owner.user,
+        targetUser: discordUser('999999999999999992', 'stranger'),
+      });
+      expect(stranger.interaction.lastText()).toContain('NOT FOUND');
+
+      const outsiderMenu = await bot.run({
+        kind: 'user_context',
+        name: 'Add to Project',
+        user: outsider.user,
+        targetUser: jun.user,
+      });
+      expect(outsiderMenu.interaction.lastText()).toContain('NO PROJECT TO ADD TO');
+      // A forged select value naming someone else's project is re-authorized.
+      const forged = await bot.run({
+        kind: 'select',
+        name: customId('projects', 'addto', jun.actor.memberId!),
+        user: outsider.user,
+        values: [project.id],
+      });
+      expect(forged.interaction.lastText()).toContain('ACCESS RESTRICTED');
+      const garbage = await bot.run({
+        kind: 'select',
+        name: customId('projects', 'addto', 'not-a-uuid'),
+        user: owner.user,
+        values: [project.id],
+      });
+      expect(garbage.interaction.lastText()).toContain('NOT FOUND');
+      const members = await bot.kit.db
+        .select()
+        .from(projectMembers)
+        .where(eq(projectMembers.memberId, jun.actor.memberId!));
       expect(members).toHaveLength(0);
     });
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { describeActivity, milestoneProgress, pipelineState, projectPath } from './project-view';
+import {
+  describeActivity,
+  githubRepoUrl,
+  milestoneProgress,
+  pipelineState,
+  projectPath,
+} from './project-view';
 
 const base = { actor: null, people: {}, payload: {} };
 
@@ -134,5 +140,33 @@ describe('milestoneProgress', () => {
       ]),
     ).toEqual({ done: 1, total: 3 });
     expect(milestoneProgress([])).toEqual({ done: 0, total: 0 });
+  });
+});
+
+describe('githubRepoUrl', () => {
+  it('links owner/name to github.com', () => {
+    expect(githubRepoUrl('javelin-labs/orbital-relay')).toBe(
+      'https://github.com/javelin-labs/orbital-relay',
+    );
+    expect(githubRepoUrl('a/b.c_d-e')).toBe('https://github.com/a/b.c_d-e');
+  });
+
+  it('BREAK: refuses anything that is not a plain owner/name', () => {
+    for (const value of [
+      null,
+      '',
+      'javascript:alert(1)',
+      'owner',
+      'owner/name/extra',
+      '-owner/name',
+      'owner/..',
+      'owner/.',
+      '//evil.example/x',
+      'owner/name?x=1',
+      'own er/name',
+      `${'a'.repeat(40)}/name`,
+    ]) {
+      expect(githubRepoUrl(value), String(value)).toBeNull();
+    }
   });
 });

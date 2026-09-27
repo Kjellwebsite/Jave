@@ -13,7 +13,7 @@ import {
 } from '@/components/projects/project-admin';
 import { ProjectForm } from '@/components/projects/project-form';
 import { TeamManager } from '@/components/projects/team-manager';
-import { milestoneProgress, projectPath } from '@/lib/project-view';
+import { githubRepoUrl, milestoneProgress, projectPath } from '@/lib/project-view';
 import { safeExternalUrl } from '@/lib/safe-url';
 import { offsetParam, type SearchParams } from '@/lib/search-params';
 import { formatDate, formatTimestamp } from '@/lib/time';
@@ -102,6 +102,7 @@ function OverviewPanel({ detail, viewer }: TabPanelProps) {
   const progress = milestoneProgress(detail.milestones);
   const website = safeExternalUrl(detail.websiteUrl);
   const repoUrl = safeExternalUrl(detail.repoUrl);
+  const repoHref = githubRepoUrl(detail.githubRepo);
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-6">
@@ -152,16 +153,22 @@ function OverviewPanel({ detail, viewer }: TabPanelProps) {
         </Panel>
         <Panel title="Links" flush>
           <ul className="divide-y divide-line-subtle">
-            {detail.githubRepo ? (
-              <li className="flex items-center gap-2 px-5 py-3">
-                <Icon icon={GitBranch} size="sm" className="text-fg-subtle" />
-                <Mono className="truncate">{detail.githubRepo}</Mono>
+            {repoHref ? (
+              <li className="px-5 py-3">
+                <a
+                  href={repoHref}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="flex min-w-0 items-center gap-2 text-small text-fg hover:underline"
+                >
+                  <Icon icon={GitBranch} size="sm" className="shrink-0 text-fg-subtle" />
+                  <Mono className="min-w-0 truncate">{detail.githubRepo}</Mono>
+                  <Icon icon={ExternalLink} size="sm" className="shrink-0 text-fg-subtle" />
+                </a>
               </li>
             ) : null}
             {[
-              ...(repoUrl && !detail.githubRepo
-                ? [{ id: 'repo', label: 'Repository', href: repoUrl }]
-                : []),
+              ...(repoUrl && !repoHref ? [{ id: 'repo', label: 'Repository', href: repoUrl }] : []),
               ...(website ? [{ id: 'website', label: 'Website', href: website }] : []),
               ...linkRows(detail).filter((link) => link.href !== null),
             ].map((link) => (
@@ -177,7 +184,7 @@ function OverviewPanel({ detail, viewer }: TabPanelProps) {
                 </a>
               </li>
             ))}
-            {!detail.githubRepo && !repoUrl && !website && detail.links.length === 0 ? (
+            {!repoHref && !repoUrl && !website && detail.links.length === 0 ? (
               <li className="px-5 py-4 text-small text-fg-subtle">No links yet.</li>
             ) : null}
           </ul>

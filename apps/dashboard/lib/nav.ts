@@ -7,6 +7,7 @@ import {
   type LucideIcon,
   ScrollText,
   Settings2,
+  ShieldAlert,
   ShieldCheck,
   UserRound,
   Users,
@@ -55,7 +56,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     ],
   },
   { label: 'OPERATIONS', items: [] },
-  { label: 'SUPPORT & SAFETY', items: [] },
+  {
+    label: 'SUPPORT & SAFETY',
+    items: [
+      { href: '/moderation', label: 'Moderation', icon: ShieldAlert, capability: 'canModerate' },
+    ],
+  },
   { label: 'INTELLIGENCE', items: [] },
   {
     label: 'SYSTEM',

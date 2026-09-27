@@ -19,6 +19,8 @@ export interface TeamMemberRow {
   memberId: string;
   displayName: string;
   lead: boolean;
+  /** Primary capability domain — what a balanced assignment spreads. */
+  domain?: string | null;
 }
 
 export interface TeamCardData {
@@ -78,7 +80,14 @@ function Roster({ members }: { members: readonly TeamMemberRow[] }) {
           >
             {member.displayName}
           </Link>
-          {member.lead ? <Badge tone="accent">Lead</Badge> : null}
+          <span className="flex shrink-0 items-center gap-2">
+            {member.domain ? (
+              <Mono dim className="text-[11px] uppercase">
+                {member.domain}
+              </Mono>
+            ) : null}
+            {member.lead ? <Badge tone="accent">Lead</Badge> : null}
+          </span>
         </li>
       ))}
     </ul>
@@ -250,7 +259,7 @@ export function TeamsPanel({
         </Card>
       ) : null}
 
-      {teams.length === 0 ? (
+      {teams.length === 0 && canAssign ? null : teams.length === 0 ? (
         <Card padding="none">
           <EmptyState
             icon={UsersRound}

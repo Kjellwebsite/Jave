@@ -67,12 +67,20 @@ export async function TeamsTab({
   ctx,
   view,
   params,
+  domainLabels,
 }: {
   ctx: UserContext;
   view: StaffView;
   params: SearchParams;
+  domainLabels: ReadonlyMap<string, string>;
 }) {
   const names = new Map(view.participants.map((p) => [p.memberId, p.displayName]));
+  const domains = new Map(
+    view.participants.map((p) => [
+      p.memberId,
+      p.primaryDomain ? (domainLabels.get(p.primaryDomain) ?? p.primaryDomain) : null,
+    ]),
+  );
   const canAssign = ASSIGNABLE.includes(view.status) && can(ctx, 'canManageTrials');
   const strategy = strategyParam(
     firstParam(params.strategy) ?? view.assignmentStrategy ?? undefined,
@@ -102,6 +110,7 @@ export async function TeamsTab({
           members: team.memberIds.map((memberId) => ({
             memberId,
             displayName: names.get(memberId) ?? 'member',
+            domain: domains.get(memberId) ?? null,
             lead: memberId === team.leadMemberId,
           })),
         })),

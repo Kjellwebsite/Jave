@@ -23,7 +23,7 @@ import {
 } from '@jave/ui';
 import { NextLink } from '@/components/next-link';
 import { RestrictedPage } from '@/components/restricted-page';
-import { TrialClock } from '@/components/trials/trial-clock';
+import { clockReading, TrialClock } from '@/components/trials/trial-clock';
 import { TrialStatusBadge } from '@/components/trials/trial-status-badge';
 import { firstParam, offsetParam, type SearchParams, toQueryString } from '@/lib/search-params';
 import { categoryLabel, TRIAL_STATUS_LABELS } from '@/lib/trial-labels';
@@ -192,7 +192,9 @@ export default async function TrialsPage({
                         </span>
                         <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 sm:hidden">
                           <TrialStatusBadge status={trial.status} />
-                          <TrialClock trial={trial} now={now} timeZone={viewer.timeZone} />
+                          {clockReading(trial) ? (
+                            <TrialClock trial={trial} now={now} timeZone={viewer.timeZone} />
+                          ) : null}
                         </span>
                       </Link>
                     </TableCell>

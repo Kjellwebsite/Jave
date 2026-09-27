@@ -272,14 +272,30 @@ got the debrief as a notification).
 
 ## Extension points
 
-- **Stop-word listener.** A bot gateway listener may call `raiseRedFlag`
-  (system actor) for a role when the operative types `RED FLAG`. Not wired in
-  v0.1; the operative and staff raise it through the services.
+- **Stop-word listener.** Wired in `apps/bot/src/features/adversarial/stop-word.ts`:
+  `raiseRedFlag` (system actor) when the operative types `RED FLAG` anywhere in the
+  server, or anyone types it in the team channel of a running exercise.
 - **Sandbox domains** are a code constant (`SANDBOX_DOMAINS`), deliberately not a
   setting: widening them is a code review, not a toggle.
 - **Trials module.** This module reads the trials schema directly and reacts
   to `trial.*` events; it needs the trials module to keep
   `trials.adversarial_enabled` hidden from participants.
+
+## Surfaces
+
+Full reference: [docs/commands/adversarial.md](../commands/adversarial.md).
+
+- **Discord** (`apps/bot/src/features/adversarial`, namespace `adversarial`):
+  `/trial briefing` (the operative's own briefing, otherwise the identical NO
+  BRIEFING answer), the single-press RED FLAG button and the trigger-fired select
+  under it, the stop-word listener, and the three `discord.adversarial.*` job
+  handlers. No participant-facing surface reveals whether a trial hosts a role
+  (asserted by the bot tests).
+- **Dashboard** (`/trials/[id]?tab=adversarial`, `canManageAdversarial` only,
+  marked SANDBOX · FICTIONAL DATA ONLY): trial switch, plan, two-person
+  authorization of the reviewed plan revision, trigger add / approve / withdraw /
+  fire, brief, activate, conclude, stop, observations timeline, evaluation, reveal,
+  and the scenario library.
 
 ## Known limitations
 

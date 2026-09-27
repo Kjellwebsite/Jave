@@ -153,7 +153,9 @@ export default async function TrialPage({
             domainLabels={domainLabels}
           />
         ) : null}
-        {tab === 'teams' ? <TeamsTab ctx={ctx} view={view} params={query} /> : null}
+        {tab === 'teams' ? (
+          <TeamsTab ctx={ctx} view={view} params={query} domainLabels={domainLabels} />
+        ) : null}
         {tab === 'submissions' ? <SubmissionsTab view={view} timeZone={viewer.timeZone} /> : null}
         {tab === 'evaluation' ? <EvaluationTab ctx={ctx} view={view} viewer={viewer} /> : null}
         {tab === 'results' ? (

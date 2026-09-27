@@ -65,6 +65,14 @@ export interface SentMessage {
   messageId: string;
 }
 
+/** Idle periods after which Discord archives a thread (the values its API accepts). */
+export type ThreadAutoArchiveMinutes = 60 | 1440 | 4320 | 10080;
+
+export interface ThreadState {
+  archived: boolean;
+  locked: boolean;
+}
+
 /** A Discord API failure normalized for job handlers. */
 export class DiscordActionError extends Error {
   constructor(
@@ -120,7 +128,7 @@ export interface DiscordGateway {
   deleteChannel(channelId: string, reason: string): Promise<void>;
   createPrivateThread(
     parentChannelId: string,
-    spec: { name: string; reason: string },
+    spec: { name: string; reason: string; autoArchiveMinutes?: ThreadAutoArchiveMinutes },
   ): Promise<string>;
   addThreadMember(threadId: string, userId: string): Promise<void>;
   setThreadState(
@@ -128,6 +136,8 @@ export interface DiscordGateway {
     state: { locked?: boolean; archived?: boolean },
     reason: string,
   ): Promise<void>;
+  /** Current archived/locked flags, read fresh from Discord (not the cache). */
+  fetchThreadState(threadId: string): Promise<ThreadState>;
 
   // Scheduled events
   createScheduledEvent(spec: ScheduledEventSpec & { reason: string }): Promise<string>;
@@ -151,4 +161,15 @@ export interface DiscordGateway {
   ): Promise<void>;
   /** Discord user ids currently holding a role (empty when the role is unknown). */
   roleMemberIds(roleId: string): Promise<string[]>;
+
+  // Idempotent posting
+  /**
+   * Post with an enforced nonce (≤ 25 characters, e.g. a prefix plus the job
+   * id): within Discord's nonce window a retry with the same nonce returns
+   * the message already posted instead of posting a duplicate.
+   */
+  sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string): Promise<SentMessage>;
 }
+
+/** Discord caps message nonces at 25 characters. */
+export const MESSAGE_NONCE_MAX = 25;

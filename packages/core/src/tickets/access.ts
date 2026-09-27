@@ -202,13 +202,21 @@ export function assertRequesterStanding(actor: UserActor): void {
 /**
  * Enforce settings.tickets.maxOpenPerUser. Locks the opener's user row first
  * so concurrent opens/reopens by the same person serialize (no double-spend).
+ * `lockOpener: false` is for read-only preflights outside a transaction.
  */
 export async function assertBelowOpenLimit(
   ctx: ServiceContext,
   openerUserId: string,
   maxOpen: number,
+  options: { lockOpener: boolean } = { lockOpener: true },
 ): Promise<void> {
-  await ctx.db.select({ id: users.id }).from(users).where(eq(users.id, openerUserId)).for('update');
+  if (options.lockOpener) {
+    await ctx.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, openerUserId))
+      .for('update');
+  }
   const [row] = await ctx.db
     .select({ value: count() })
     .from(tickets)

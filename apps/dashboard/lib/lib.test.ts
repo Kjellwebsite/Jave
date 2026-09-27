@@ -161,7 +161,7 @@ describe('content security policy', () => {
 describe('navigation', () => {
   it('shows each entry only with its capability and drops empty groups', () => {
     const member = visibleNav(NAV_GROUPS, ['canViewMembers']);
-    expect(member.map((group) => group.label)).toEqual(['OVERVIEW', 'PEOPLE']);
+    expect(member.map((group) => group.label)).toEqual(['OVERVIEW', 'PEOPLE', 'SUPPORT & SAFETY']);
     const founder = visibleNav(NAV_GROUPS, [
       'canViewMembers',
       'canViewAuditLogs',
@@ -171,17 +171,20 @@ describe('navigation', () => {
       '/overview',
       '/members',
       '/ranking',
+      '/tickets',
       '/audit',
       '/settings',
     ]);
     expect(
       visibleNav(NAV_GROUPS, []).flatMap((group) => group.items.map((item) => item.href)),
-    ).toEqual(['/overview']);
+    ).toEqual(['/overview', '/tickets']);
   });
 
   it('resolves page context from nested paths', () => {
     expect(navContext('/members/123')).toEqual({ group: 'PEOPLE', label: 'Members' });
     expect(navContext('/notifications')).toEqual({ group: 'ACCOUNT', label: 'Notifications' });
+    expect(navContext('/me/application')).toEqual({ group: 'ACCOUNT', label: 'My application' });
+    expect(navContext('/me')).toEqual({ group: 'ACCOUNT', label: 'My profile' });
     expect(navContext('/nowhere')).toBeNull();
     expect(isActivePath('/membership', '/members')).toBe(false);
   });

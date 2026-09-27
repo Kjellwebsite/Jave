@@ -11,7 +11,13 @@ import {
 } from '@jave/database';
 import { resolveUserActor } from '../identity/users.service';
 import { DAY, HOUR, MINUTE } from '../kernel/clock';
-import { DisabledError, InvalidStateError, NotFoundError, ValidationError } from '../kernel/errors';
+import {
+  ConflictError,
+  DisabledError,
+  InvalidStateError,
+  NotFoundError,
+  ValidationError,
+} from '../kernel/errors';
 import type { UserActor } from '../permissions/actor';
 import { createTestKit, type TestKit } from '../testing';
 import {
@@ -337,6 +343,72 @@ describe('applications: applicant self-service', () => {
       );
       kit.clock.advance(MINUTE);
       expect((await submitApplication(kit.as(again))).status).toBe('submitted');
+    });
+
+    it('withdraws only the application and status the caller confirmed', async () => {
+      const { applicant, applicationId } = await submittedApplicant(kit);
+      const view = await withdrawApplication(kit.as(applicant), {
+        expectedApplicationId: applicationId,
+        expectedStatus: 'submitted',
+      });
+      expect(view.status).toBe('withdrawn');
+    });
+
+    it('BREAK: a confirmation stated for SUBMITTED cannot withdraw from REVIEW', async () => {
+      const ops = await kit.member({ roles: ['operations'] });
+      const { applicant, applicationId } = await submittedApplicant(kit);
+      // The confirmation was rendered while SUBMITTED (short cooldown) …
+      const shown = await getMyApplication(kit.as(applicant));
+      expect(shown.application?.status).toBe('submitted');
+      // … then a reviewer claimed it, which raises the cost to the rejection cooldown.
+      await startReview(kit.as(ops), { applicationId });
+      const refused = await withdrawApplication(kit.as(applicant), {
+        expectedApplicationId: applicationId,
+        expectedStatus: 'submitted',
+      }).catch((error: unknown) => error);
+      expect(refused).toBeInstanceOf(ConflictError);
+      expect((refused as ConflictError).userMessage).toMatch(
+        /^APP-\d{4} changed since you confirmed: it is now in review\. Nothing was withdrawn\.$/,
+      );
+      expect((refused as ConflictError).details).toEqual({ applicationId, status: 'review' });
+      const [row] = await kit.db
+        .select()
+        .from(applications)
+        .where(eq(applications.id, applicationId));
+      expect(row!.status).toBe('review');
+      expect((await getMyApplication(kit.as(applicant))).cooldownEndsAt).toBeNull();
+    });
+
+    it('BREAK: a stale "discard draft" cannot withdraw a submitted application', async () => {
+      const { applicant, applicationId } = await draftingApplicant(kit);
+      await submitApplication(kit.as(applicant));
+      await expect(
+        withdrawApplication(kit.as(applicant), {
+          expectedApplicationId: applicationId,
+          expectedStatus: 'draft',
+        }),
+      ).rejects.toThrow(/it is now submitted\. Nothing was withdrawn/);
+      const [row] = await kit.db
+        .select()
+        .from(applications)
+        .where(eq(applications.id, applicationId));
+      expect(row!.status).toBe('submitted');
+    });
+
+    it('BREAK: a confirmation for an earlier application cannot withdraw a newer one', async () => {
+      const { applicant, applicationId } = await draftingApplicant(kit);
+      await withdrawApplication(kit.as(applicant));
+      const { application } = await getOrCreateDraft(kit.as(applicant));
+      await expect(
+        withdrawApplication(kit.as(applicant), {
+          expectedApplicationId: applicationId,
+          expectedStatus: 'draft',
+        }),
+      ).rejects.toThrow(ConflictError);
+      expect((await getMyApplication(kit.as(applicant))).application?.id).toBe(application.id);
+      await expect(
+        withdrawApplication(kit.as(applicant), { expectedStatus: 'accepted' } as never),
+      ).rejects.toThrow(ValidationError);
     });
 
     it('discarding a draft starts no cooldown', async () => {

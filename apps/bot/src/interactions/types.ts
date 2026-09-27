@@ -69,6 +69,8 @@ export interface TargetMessage {
   createdAt: Date;
   attachments: { name: string; url: string; size: number; contentType: string | null }[];
   embedsText: string[];
+  /** Set when a webhook posted the message: its author is not a user or member. */
+  webhookId?: string | null;
 }
 
 export type InteractionKind =

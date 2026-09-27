@@ -1,12 +1,15 @@
 import {
   DiscordActionError,
   type DiscordGateway,
+  MESSAGE_NONCE_MAX,
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
   type PermissionOverwriteSpec,
   type ScheduledEventSpec,
   type SentMessage,
+  type ThreadAutoArchiveMinutes,
+  type ThreadState,
 } from '../discord/gateway';
 
 export interface GatewayCall {
@@ -16,6 +19,9 @@ export interface GatewayCall {
 
 let counter = 900_000_000_000_000_000n;
 const nextId = () => (++counter).toString();
+
+/** Discord's "Thread is archived" (RESTJSONErrorCodes.ThreadArchived). */
+const THREAD_ARCHIVED = 50083;
 
 /**
  * In-memory DiscordGateway for tests. Records every call, keeps simple guild
@@ -82,6 +88,18 @@ export class FakeDiscordGateway implements DiscordGateway {
     return this.calls.filter((c) => c.method === method);
   }
 
+  /**
+   * Discord's archived-thread rules: messages in an archived thread cannot be
+   * edited and members cannot be added; a new message unarchives the thread
+   * unless it is locked.
+   */
+  private refuseIfArchived(channelId: string, action: string) {
+    const channel = this.channels.get(channelId);
+    if (channel?.thread && channel.archived) {
+      throw new DiscordActionError(`${action} failed: Thread is archived`, THREAD_ARCHIVED, false);
+    }
+  }
+
   status() {
     return { ready: this.ready, pingMs: this.ready ? 42 : null };
   }
@@ -140,12 +158,18 @@ export class FakeDiscordGateway implements DiscordGateway {
   }
   async sendMessage(channelId: string, payload: MessagePayload) {
     this.record('sendMessage', channelId, payload);
+    const channel = this.channels.get(channelId);
+    if (channel?.thread && channel.archived) {
+      if (channel.locked) this.refuseIfArchived(channelId, 'send message');
+      channel.archived = false;
+    }
     const messageId = nextId();
     this.messages.set(messageId, { channelId, payload });
     return { channelId, messageId };
   }
   async editMessage(channelId: string, messageId: string, payload: MessagePayload) {
     this.record('editMessage', channelId, messageId, payload);
+    this.refuseIfArchived(channelId, 'edit message');
     const existing = this.messages.get(messageId);
     if (!existing) throw new DiscordActionError('unknown message', 10008, true);
     existing.payload = payload;
@@ -194,7 +218,10 @@ export class FakeDiscordGateway implements DiscordGateway {
     this.record('deleteChannel', channelId, reason);
     this.channels.delete(channelId);
   }
-  async createPrivateThread(parentChannelId: string, spec: { name: string; reason: string }) {
+  async createPrivateThread(
+    parentChannelId: string,
+    spec: { name: string; reason: string; autoArchiveMinutes?: ThreadAutoArchiveMinutes },
+  ) {
     this.record('createPrivateThread', parentChannelId, spec);
     const id = nextId();
     this.channels.set(id, {
@@ -208,6 +235,7 @@ export class FakeDiscordGateway implements DiscordGateway {
   }
   async addThreadMember(threadId: string, userId: string) {
     this.record('addThreadMember', threadId, userId);
+    this.refuseIfArchived(threadId, 'add thread member');
     this.channels.get(threadId)?.members.add(userId);
   }
   async setThreadState(
@@ -218,6 +246,12 @@ export class FakeDiscordGateway implements DiscordGateway {
     this.record('setThreadState', threadId, state, reason);
     const thread = this.channels.get(threadId);
     if (thread) Object.assign(thread, state);
+  }
+  async fetchThreadState(threadId: string): Promise<ThreadState> {
+    this.record('fetchThreadState', threadId);
+    const thread = this.channels.get(threadId);
+    if (!thread?.thread) throw new DiscordActionError('unknown channel', 10003, true);
+    return { archived: thread.archived ?? false, locked: thread.locked ?? false };
   }
   async createScheduledEvent(spec: ScheduledEventSpec & { reason: string }) {
     this.record('createScheduledEvent', spec);
@@ -246,5 +280,19 @@ export class FakeDiscordGateway implements DiscordGateway {
     return [...this.members.values()]
       .filter((member) => member.roleIds.includes(roleId))
       .map((member) => member.userId);
+  }
+  /** channelId:nonce → message id, like Discord's enforce_nonce window. */
+  readonly nonces = new Map<string, string>();
+  async sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string) {
+    this.record('sendMessageOnce', channelId, payload, nonce);
+    if (nonce.length === 0 || nonce.length > MESSAGE_NONCE_MAX)
+      throw new DiscordActionError('invalid nonce', 50035, true);
+    const key = `${channelId}:${nonce}`;
+    const existing = this.nonces.get(key);
+    if (existing) return { channelId, messageId: existing };
+    const messageId = nextId();
+    this.messages.set(messageId, { channelId, payload });
+    this.nonces.set(key, messageId);
+    return { channelId, messageId };
   }
 }

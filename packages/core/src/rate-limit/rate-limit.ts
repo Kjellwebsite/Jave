@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { rateLimitBuckets } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
 import { RateLimitedError } from '../kernel/errors';
@@ -32,6 +32,33 @@ export async function consumeRateLimit(
     throw new RateLimitedError(Math.max(1, Math.ceil((resetAt - now.getTime()) / 1000)));
   }
   return { remaining: limit - used };
+}
+
+/**
+ * Read-only counterpart of {@link consumeRateLimit}: throws the same
+ * RateLimitedError when the next consume would be refused, without counting a
+ * hit. For preflight checks (open a form only when submitting it can pass);
+ * the consume on submit stays the rule.
+ */
+export async function peekRateLimit(
+  ctx: ServiceContext,
+  key: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<{ remaining: number }> {
+  const now = ctx.clock.now();
+  const windowStartCutoff = new Date(now.getTime() - windowSeconds * 1000);
+  const [row] = await ctx.db
+    .select({ count: rateLimitBuckets.count, windowStart: rateLimitBuckets.windowStart })
+    .from(rateLimitBuckets)
+    .where(eq(rateLimitBuckets.key, key));
+  if (!row || row.windowStart < windowStartCutoff) return { remaining: limit };
+  const remaining = limit - row.count;
+  if (remaining <= 0) {
+    const resetAt = row.windowStart.getTime() + windowSeconds * 1000;
+    throw new RateLimitedError(Math.max(1, Math.ceil((resetAt - now.getTime()) / 1000)));
+  }
+  return { remaining };
 }
 
 /**

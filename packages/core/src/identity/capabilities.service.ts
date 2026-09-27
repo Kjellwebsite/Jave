@@ -10,6 +10,7 @@ import { authorize, can, isSelf, requireMember } from '../permissions/authorize'
 import { notify } from '../notifications/notifications.service';
 import { isValidFacet, isValidRank, loadCatalog } from './ranks';
 import { getMemberById } from './users.service';
+import { visibleProfilesCondition } from './visibility';
 
 const url = z
   .string()
@@ -434,6 +435,8 @@ export async function rankingBoard(ctx: ServiceContext, facetKey: string, limit 
         sql`${memberCapabilities.verifiedRank} is not null`,
         eq(members.showOnLeaderboards, true),
         isNull(members.deletedAt),
+        // A board never lists someone whose profile the viewer could not open.
+        visibleProfilesCondition(ctx),
       ),
     );
   const ordinal = new Map(catalog.tiers.map((t) => [t.code, t.ordinal]));

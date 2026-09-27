@@ -36,7 +36,7 @@ interface ConfirmFormProps extends Pick<
   'confirmLabel' | 'tone' | 'action' | 'hidden' | 'children'
 > {
   onPendingChange: (pending: boolean) => void;
-  onSuccess: (message: string) => void;
+  onSuccess: () => void;
 }
 
 function ConfirmForm({
@@ -48,20 +48,20 @@ function ConfirmForm({
   onPendingChange,
   onSuccess,
 }: ConfirmFormProps) {
-  const callbacks = useRef({ onPendingChange, onSuccess });
-  // Success is announced by the call itself, not by an effect on the result:
-  // a consequential action often changes the state that rendered this dialog
-  // (a lifecycle step, an authorization), the revalidated page unmounts it in
-  // the same update, and an effect in an unmounted component never runs.
-  const run = useCallback(
+  const toast = useToast();
+  // The success toast is raised by the call itself: an action that revalidates
+  // the page often removes this dialog's trigger (Claim, Submit, Accept…), and
+  // an effect in an unmounted form never runs, so the result would go unannounced.
+  const announced = useCallback(
     async (previous: ActionState, data: FormData): Promise<ActionState> => {
       const next = await action(previous, data);
-      if (next.status === 'success') callbacks.current.onSuccess(next.message);
+      if (next.status === 'success') toast({ text: next.message, tone: 'success' });
       return next;
     },
-    [action],
+    [action, toast],
   );
-  const [state, dispatch, pending] = useActionState(run, IDLE_STATE);
+  const [state, dispatch, pending] = useActionState(announced, IDLE_STATE);
+  const callbacks = useRef({ onPendingChange, onSuccess });
 
   useEffect(() => {
     callbacks.current = { onPendingChange, onSuccess };
@@ -70,6 +70,10 @@ function ConfirmForm({
   useEffect(() => {
     callbacks.current.onPendingChange(pending);
   }, [pending]);
+
+  useEffect(() => {
+    if (state.status === 'success') callbacks.current.onSuccess();
+  }, [state]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -123,7 +127,6 @@ export function ConfirmActionDialog({
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState(0);
   const [pending, setPending] = useState(false);
-  const toast = useToast();
 
   return (
     <Dialog
@@ -140,13 +143,7 @@ export function ConfirmActionDialog({
           key={session}
           {...form}
           onPendingChange={setPending}
-          onSuccess={(message) => {
-            // Raised while the action is still pending: the form unmounts with the
-            // dialog, so its pending effect would never report the end.
-            setPending(false);
-            setOpen(false);
-            toast({ text: message, tone: 'success' });
-          }}
+          onSuccess={() => setOpen(false)}
         />
       </DialogContent>
     </Dialog>

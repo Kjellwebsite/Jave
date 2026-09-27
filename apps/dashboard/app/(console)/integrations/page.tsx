@@ -6,20 +6,17 @@ import { CreateOutboundDialog } from '@/components/integrations/outbound-control
 import { NextLink } from '@/components/next-link';
 import { RestrictedPage } from '@/components/restricted-page';
 import { groupEventTypes } from '@/lib/integration-view';
-import { firstParam, type SearchParams } from '@/lib/search-params';
+import type { SearchParams } from '@/lib/search-params';
 import { requireConsoleContext } from '@/server/context';
 import { loadViewer } from '@/server/data/viewer';
 import { guarded } from '@/server/guard';
 import { getRuntime } from '@/server/runtime';
 import { createIntegrationAction, createOutboundAction } from './actions';
-import {
-  DeliveriesPanel,
-  InboundPanel,
-  INTEGRATION_TABS,
-  type IntegrationTab,
-  OutboundLogPanel,
-  OutboundPanel,
-} from './panels';
+import { DeliveriesPanel } from './deliveries-panel';
+import { InboundPanel } from './inbound-panel';
+import { OutboundLogPanel } from './outbound-log-panel';
+import { OutboundPanel } from './outbound-panel';
+import { INTEGRATION_TABS, integrationTab, type IntegrationTab } from './panel-parts';
 
 export const metadata: Metadata = { title: 'Integrations' };
 
@@ -44,9 +41,7 @@ export default async function IntegrationsPage({
   }
   const registry = loaded.value;
   const query = await searchParams;
-  const requested = firstParam(query.tab) as IntegrationTab | undefined;
-  const tab: IntegrationTab =
-    requested && INTEGRATION_TABS.includes(requested) ? requested : 'inbound';
+  const tab = integrationTab(query);
   const viewer = await loadViewer(ctx);
   const { env, coreConfig } = getRuntime();
   const eventGroups = groupEventTypes(

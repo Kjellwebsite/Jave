@@ -51,15 +51,13 @@ function contributionLine(c: projects.ContributionView): string {
 async function reviewQueue(
   h: HandlerContext,
 ): Promise<{ items: projects.ContributionView[]; truncated: boolean }> {
-  const self = requireMember(h.ctx).memberId;
+  requireMember(h.ctx);
   const page = await projects.listContributions(h.ctx, {
     status: 'submitted',
+    excludeOwn: true,
     limit: REVIEW_QUEUE_WINDOW,
   });
-  return {
-    items: page.items.filter((c) => c.memberId !== self),
-    truncated: page.total > REVIEW_QUEUE_WINDOW,
-  };
+  return { items: page.items, truncated: page.total > REVIEW_QUEUE_WINDOW };
 }
 
 function reviewCard(

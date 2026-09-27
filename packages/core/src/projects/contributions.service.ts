@@ -53,6 +53,8 @@ export const listContributionsSchema = pageSchema.extend({
   projectId: z.uuid().optional(),
   status: z.enum(['submitted', 'verified', 'rejected']).optional(),
   kind: kindSchema.optional(),
+  /** Leave out the viewer's own contributions (review queues: nobody reviews their own). */
+  excludeOwn: z.boolean().optional(),
 });
 
 /** Events about a contribution leave JAVE only when its project is public (or it has none). */
@@ -489,6 +491,8 @@ export async function listContributions(
   if (q.projectId) filters.push(eq(contributions.projectId, q.projectId));
   if (q.status) filters.push(eq(contributions.status, q.status));
   if (q.kind) filters.push(eq(contributions.kind, q.kind));
+  if (q.excludeOwn && ctx.actor.kind === 'user' && ctx.actor.memberId)
+    filters.push(ne(contributions.memberId, ctx.actor.memberId));
   const where = and(...filters);
 
   const [rows, [total]] = await Promise.all([

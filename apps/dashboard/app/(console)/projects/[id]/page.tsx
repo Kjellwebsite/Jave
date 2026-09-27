@@ -74,8 +74,8 @@ export default async function ProjectPage({
     (!archived && detail.viewer.canAdmin) ||
     (archived && detail.viewer.isStaff);
   const tabs = PROJECT_TABS.filter((tab) => tab !== 'settings' || showSettings);
-  const requested = firstParam(query.tab) as ProjectTab | undefined;
-  const tab: ProjectTab = requested && tabs.includes(requested) ? requested : 'overview';
+  const requested = firstParam(query.tab);
+  const tab: ProjectTab = tabs.find((candidate) => candidate === requested) ?? 'overview';
   const basePath = projectPath(detail.slug);
   const statusTargets = projects.PROJECT_TRANSITIONS[detail.status].filter(
     (target) => target !== 'archived',

@@ -6,6 +6,7 @@ import {
   type ReactNode,
   startTransition,
   useActionState,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -39,7 +40,7 @@ interface SecretFormProps extends Omit<
   'trigger' | 'eyebrow' | 'title' | 'description'
 > {
   onPendingChange: (pending: boolean) => void;
-  onDone: (message: string) => void;
+  onDone: () => void;
 }
 
 function SecretForm({
@@ -52,8 +53,20 @@ function SecretForm({
   onPendingChange,
   onDone,
 }: SecretFormProps) {
+  const toast = useToast();
+  // A result without a secret (e.g. a GitHub integration) is announced by the
+  // call itself, like ConfirmActionDialog: an effect would not run if the
+  // page refresh unmounted this form first.
+  const announced = useCallback(
+    async (previous: SecretActionState, data: FormData): Promise<SecretActionState> => {
+      const next = await action(previous, data);
+      if (next.status === 'success' && !next.secret) toast({ text: next.message, tone: 'success' });
+      return next;
+    },
+    [action, toast],
+  );
   const [state, dispatch, pending] = useActionState<SecretActionState, FormData>(
-    action,
+    announced,
     IDLE_STATE,
   );
   const callbacks = useRef({ onPendingChange, onDone });
@@ -66,7 +79,7 @@ function SecretForm({
   }, [pending]);
   useEffect(() => {
     // Without a secret (e.g. GitHub integrations) there is nothing to reveal: close.
-    if (state.status === 'success' && !state.secret) callbacks.current.onDone(state.message);
+    if (state.status === 'success' && !state.secret) callbacks.current.onDone();
   }, [state]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -135,7 +148,6 @@ export function SecretDialog({ trigger, eyebrow, title, description, ...form }: 
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState(0);
   const [pending, setPending] = useState(false);
-  const toast = useToast();
 
   return (
     <Dialog
@@ -152,10 +164,7 @@ export function SecretDialog({ trigger, eyebrow, title, description, ...form }: 
           key={session}
           {...form}
           onPendingChange={setPending}
-          onDone={(message) => {
-            setOpen(false);
-            toast({ text: message, tone: 'success' });
-          }}
+          onDone={() => setOpen(false)}
         />
       </DialogContent>
     </Dialog>

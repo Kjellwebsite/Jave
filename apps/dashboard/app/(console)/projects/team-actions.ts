@@ -23,9 +23,14 @@ function roleOf(data: FormData): (typeof ASSIGNABLE_ROLES)[number] {
   return role;
 }
 
-/** Display name of a member the viewer can see (hidden profiles read as not found). */
-async function memberName(ctx: UserContext, memberId: string): Promise<string> {
-  return (await getProfile(ctx, { memberId })).displayName;
+/**
+ * A teammate's display name for the result message. Read from the project
+ * team (collaborators always see each other there), never from the profile,
+ * which a teammate may have made staff-only.
+ */
+async function teammateName(ctx: UserContext, projectId: string, memberId: string) {
+  const detail = await projects.getProject(ctx, { projectId });
+  return detail.members.find((member) => member.memberId === memberId)?.displayName ?? 'Member';
 }
 
 export async function addMemberAction(_: ActionState, data: FormData): Promise<ActionState> {
@@ -47,15 +52,12 @@ export async function changeMemberRoleAction(_: ActionState, data: FormData): Pr
   return runAction(
     'project.change_member_role',
     async (ctx) => {
+      const projectId = uuidField(data, 'projectId', 'project');
       const memberId = uuidField(data, 'memberId', 'member');
       const role = roleOf(data);
-      await projects.changeProjectMemberRole(ctx, {
-        projectId: uuidField(data, 'projectId', 'project'),
-        memberId,
-        role,
-      });
+      await projects.changeProjectMemberRole(ctx, { projectId, memberId, role });
       refreshProjects();
-      return `ROLE CHANGED — ${await memberName(ctx, memberId)} — ${PROJECT_ROLE_LABELS[role].toUpperCase()}.`;
+      return `ROLE CHANGED — ${await teammateName(ctx, projectId, memberId)} — ${PROJECT_ROLE_LABELS[role].toUpperCase()}.`;
     },
     { fieldNames: ['role'] },
   );
@@ -65,10 +67,11 @@ export async function removeMemberAction(_: ActionState, data: FormData): Promis
   return runAction(
     'project.remove_member',
     async (ctx) => {
+      const projectId = uuidField(data, 'projectId', 'project');
       const memberId = uuidField(data, 'memberId', 'member');
-      const name = await memberName(ctx, memberId);
+      const name = await teammateName(ctx, projectId, memberId);
       await projects.removeProjectMember(ctx, {
-        projectId: uuidField(data, 'projectId', 'project'),
+        projectId,
         memberId,
         reason: formOptional(data, 'reason'),
       });
@@ -84,13 +87,11 @@ export async function transferOwnershipAction(
   data: FormData,
 ): Promise<ActionState> {
   return runAction('project.transfer_ownership', async (ctx) => {
+    const projectId = uuidField(data, 'projectId', 'project');
     const memberId = uuidField(data, 'memberId', 'member');
-    await projects.transferProjectOwnership(ctx, {
-      projectId: uuidField(data, 'projectId', 'project'),
-      memberId,
-    });
+    await projects.transferProjectOwnership(ctx, { projectId, memberId });
     refreshProjects();
-    return `OWNERSHIP TRANSFERRED — ${await memberName(ctx, memberId)} now owns the project. You are a maintainer.`;
+    return `OWNERSHIP TRANSFERRED — ${await teammateName(ctx, projectId, memberId)} now owns the project. The previous owner is a maintainer.`;
   });
 }
 

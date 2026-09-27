@@ -73,6 +73,7 @@ export default async function ContributionsPage({
           status,
           kind: parsed.kind,
           memberId: view === 'mine' ? (memberId ?? undefined) : undefined,
+          excludeOwn: view === 'queue',
           limit: PAGE_SIZE,
           offset,
         }),

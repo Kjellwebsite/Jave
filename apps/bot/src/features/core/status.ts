@@ -1,9 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { can, type HealthState } from '@jave/core';
 import type { CommandDefinition } from '../../interactions/types';
-import { panel } from '../../ui/components';
+import { panel, row } from '../../ui/components';
 import { alignRows } from '../../ui/format';
 import { COLORS } from '../../ui/theme';
+import { deadJobCount, deadJobsButton } from './job-admin';
 import { runSetup } from './setup';
 
 const MARK: Record<HealthState, string> = { ok: '✓', degraded: '▲', down: '✕', disabled: '—' };
@@ -50,6 +51,7 @@ export const statusCommand: CommandDefinition = {
         : report.status === 'degraded'
           ? COLORS.warning
           : COLORS.danger;
+    const deadJobs = detailed ? await deadJobCount(h) : 0;
     await h.respond({
       embeds: [
         panel({
@@ -62,6 +64,7 @@ export const statusCommand: CommandDefinition = {
             : '✓ ok · ▲ degraded · ✕ down · — disabled',
         }),
       ],
+      components: deadJobs > 0 ? [row(deadJobsButton(deadJobs))] : undefined,
       ephemeral: true,
     });
   },

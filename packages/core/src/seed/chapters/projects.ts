@@ -79,7 +79,8 @@ const PLANS = {
     owner: 'noor',
     title: 'Quorum',
     summary: 'Async decision records for volunteer teams.',
-    description: 'Proposals, objections and decisions with deadlines, so teams stop deciding in chat.',
+    description:
+      'Proposals, objections and decisions with deadlines, so teams stop deciding in chat.',
     domainKey: 'life',
     visibility: 'members',
     milestones: ['Decision record format', 'Pilot with two teams'],
@@ -97,7 +98,8 @@ const PLANS = {
     owner: 'aiko',
     title: 'Crew Load',
     summary: 'Training-load model for rowing crews.',
-    description: 'Estimates fatigue from erg sessions and heart rate. Paused: data access fell through.',
+    description:
+      'Estimates fatigue from erg sessions and heart rate. Paused: data access fell through.',
     domainKey: 'body',
     visibility: 'members',
     milestones: ['Erg data import'],

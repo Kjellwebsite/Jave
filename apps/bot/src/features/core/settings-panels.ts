@@ -8,8 +8,10 @@ import { GLYPH } from '../../ui/theme';
 import {
   CHANNELS,
   type ChannelSpec,
+  describeKinds,
   FLAGS,
   type FlagSpec,
+  permissionLabel,
   QUARANTINE_TARGET,
   ROLE_TARGETS,
   type RoleTarget,
@@ -21,6 +23,8 @@ import { channelSelect, fitLines, roleSelect, SETTINGS_NS, SETUP_NS } from './se
 const OPTION_DESCRIPTION_MAX = 100;
 
 const onOff = (value: boolean) => (value ? 'ON' : 'OFF');
+/** 'a text channel' → 'A text channel'. */
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const channelRef = (id: string | undefined) => (id ? `<#${id}>` : GLYPH.unknown);
 const roleRef = (id: string | undefined) => (id ? `<@&${id}>` : GLYPH.unknown);
 
@@ -178,8 +182,8 @@ export function renderChannelEditor(
         description: spec.purpose,
         fields: [
           field('Current', channelRef(current), true),
-          field('Kind', spec.kind === 'category' ? 'Category' : 'Text channel', true),
-          field('JAVE needs', spec.needs.join(', ').replace(/([a-z])([A-Z])/g, '$1 $2')),
+          field('Accepts', capitalize(describeKinds(spec.accepts)), true),
+          field('JAVE needs', spec.needs.map(permissionLabel).join(', ')),
         ],
       }),
     ],
@@ -187,8 +191,8 @@ export function renderChannelEditor(
       row(
         channelSelect(
           customId(SETTINGS_NS, 'chset', spec.key),
-          spec.kind === 'category' ? 'Choose a category' : 'Choose a channel',
-          { kind: spec.kind, current },
+          `Choose ${describeKinds(spec.accepts)}`,
+          { accepts: spec.accepts, current },
         ),
       ),
       row(

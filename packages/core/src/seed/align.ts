@@ -1,5 +1,5 @@
 import { is, sql, type SQL } from 'drizzle-orm';
-import { getTableConfig, PgTable, PgTimestamp } from 'drizzle-orm/pg-core';
+import { type AnyPgColumn, getTableConfig, PgTable, PgTimestamp } from 'drizzle-orm/pg-core';
 import {
   auditLogs,
   type Database,
@@ -44,7 +44,7 @@ function auditTime(aggregate: 'min' | 'max', targetType: string, targetId: SQL, 
 
 /** Row-specific story times for the columns known to be stamped by the database. */
 function alignmentStatements(anchor: Date): SQL[] {
-  const after = (column: PgTimestamp) => sql`${column} > ${sql.param(anchor, column)}`;
+  const after = (column: AnyPgColumn) => sql`${column} > ${sql.param(anchor, column)}`;
   return [
     sql`update ${members} set created_at = coalesce(${members.joinedGuildAt}, ${members.createdAt}) where ${after(members.createdAt)}`,
     sql`update ${members} set updated_at = coalesce(greatest(${members.joinedGuildAt}, ${members.onboardedAt}, ${members.leftGuildAt}), ${members.createdAt}) where ${after(members.updatedAt)}`,

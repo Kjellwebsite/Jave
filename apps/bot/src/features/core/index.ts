@@ -8,6 +8,7 @@ import { onboardingComponents, onboardingModals, startCommand } from './onboardi
 import { profileCommand, profileComponents, profileContextCommand } from './profile';
 import { rankCommand } from './rank';
 import { roleSyncHandler } from './role-sync';
+import { jobComponents } from './job-admin';
 import { settingsCommand, settingsComponents } from './settings-command';
 import { setupComponents } from './setup';
 import { statusCommand } from './status';
@@ -25,7 +26,13 @@ export function coreFeature(catalog: () => readonly CommandDefinition[]): BotFea
       statusCommand,
       settingsCommand,
     ],
-    components: [onboardingComponents, profileComponents, settingsComponents, setupComponents],
+    components: [
+      onboardingComponents,
+      profileComponents,
+      settingsComponents,
+      setupComponents,
+      jobComponents,
+    ],
     modals: [onboardingModals],
     jobHandlers: (services) => ({
       [DISCORD_ROLE_SYNC_JOB]: roleSyncHandler(services),

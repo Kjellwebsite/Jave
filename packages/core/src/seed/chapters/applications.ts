@@ -73,8 +73,7 @@ const STORIES: Partial<Record<CastKey, ApplicationStory>> = {
   jun: {
     motivation:
       'I want to test my models against people who will attack their assumptions, not admire them.',
-    experience:
-      'Two years of agent-based modelling; one working paper on informal credit markets.',
+    experience: 'Two years of agent-based modelling; one working paper on informal credit markets.',
     projects: 'Open simulation framework for emerging-market credit, with reproducible notebooks.',
     references: 'Supervisor of the working paper.',
   },
@@ -95,7 +94,8 @@ const STORIES: Partial<Record<CastKey, ApplicationStory>> = {
   },
   luca: {
     motivation: 'I have a big idea and want investors and co-founders from this network.',
-    experience: 'Started building a note-taking app with AI features this spring, still in progress.',
+    experience:
+      'Started building a note-taking app with AI features this spring, still in progress.',
     projects: 'Note-taking app, private beta planned.',
     references: 'None yet.',
   },
@@ -117,8 +117,7 @@ const STORIES: Partial<Record<CastKey, ApplicationStory>> = {
   },
   freya: {
     motivation: 'I want to learn to turn field data into tools other researchers use.',
-    experience:
-      'Four summers of Arctic seabird tagging; maintains the station’s tracking dataset.',
+    experience: 'Four summers of Arctic seabird tagging; maintains the station’s tracking dataset.',
     projects: 'Cleaned, documented tracking dataset used in two published studies.',
     references: 'Station lead scientist.',
   },
@@ -245,7 +244,14 @@ export function admitSecondCohort(story: Story): void {
     });
   });
   story.at(-27, 16, (run) =>
-    review(run, 'operations', id('luca'), 'reject', 2, 'No shipped work yet; claims exceed the evidence.'),
+    review(
+      run,
+      'operations',
+      id('luca'),
+      'reject',
+      2,
+      'No shipped work yet; claims exceed the evidence.',
+    ),
   );
   story.at(-26, 10, (run) => accept(run, 'core', id('jun')));
   story.at(-26, 11, (run) => accept(run, 'kai', id('elif')));
@@ -259,7 +265,9 @@ export function admitSecondCohort(story: Story): void {
     });
   });
   story.at(-20, 9, async (run) => {
-    await withdrawApplication(await run.as('hana'), { reason: 'Finishing a portfolio piece first.' });
+    await withdrawApplication(await run.as('hana'), {
+      reason: 'Finishing a portfolio piece first.',
+    });
   });
 }
 
@@ -278,10 +286,24 @@ export function openApplicationQueue(story: Story): void {
     ids.set('freya', await submit(run, 'freya'));
   });
   story.at(-7, 10, (run) =>
-    review(run, 'theo', ids.get('tomas')!, 'interview', 4, 'Exceptional reasoning; building record thin.'),
+    review(
+      run,
+      'theo',
+      ids.get('tomas')!,
+      'interview',
+      4,
+      'Exceptional reasoning; building record thin.',
+    ),
   );
   story.at(-5, 15, (run) =>
-    review(run, 'operations', ids.get('freya')!, 'accept', 4, 'Real field data, carefully maintained.'),
+    review(
+      run,
+      'operations',
+      ids.get('freya')!,
+      'accept',
+      4,
+      'Real field data, carefully maintained.',
+    ),
   );
   story.at(-4, 11, async (run) => {
     await scheduleInterview(await run.as('core'), {

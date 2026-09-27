@@ -4,6 +4,7 @@ import {
   authorize,
   can,
   getAllSettings,
+  isJaveError,
   isSnowflake,
   NotFoundError,
   type OrgRole,
@@ -13,19 +14,25 @@ import {
   ValidationError,
 } from '@jave/core';
 import type { CommandDefinition, ComponentHandler, HandlerContext } from '../../interactions/types';
+import { renderError } from '../../interactions/errors';
 import { failure, field, panel, success } from '../../ui/components';
 import { COLORS } from '../../ui/theme';
 import { introspect } from './readiness-probe';
-import { permissionLabel } from './readiness';
 import {
+  acceptsChannel,
   CHANNELS,
   type ChannelSpec,
   channelSpec,
+  describeKinds,
+  elevatedPermissions,
   FLAGS,
   type FlagSpec,
   flagSpec,
+  mayCarryElevated,
   parseRoleTarget,
+  permissionLabel,
   QUARANTINE_TARGET,
+  roleHolders,
   ROLE_TARGETS,
   type RoleTarget,
   roleTargetLabel,
@@ -65,38 +72,57 @@ async function acknowledge(h: HandlerContext): Promise<void> {
   }
 }
 
+/**
+ * After a component's deferred update the router would replace the settings
+ * panel with the error. A refusal (wrong channel, role not allowed…) instead
+ * arrives as its own ephemeral message and the panel stays usable. Slash
+ * commands and unexpected errors go to the router as usual (the latter are
+ * logged with a reference).
+ */
+async function keepingPanel(h: HandlerContext, action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch (error) {
+    const { interaction } = h;
+    const component = interaction.kind === 'button' || interaction.kind === 'select';
+    if (!isJaveError(error) || !component || !interaction.deferred || interaction.replied) {
+      throw error;
+    }
+    await interaction.followUp(renderError(error, h.ctx.logger).payload);
+  }
+}
+
 // ─── Channels ────────────────────────────────────────────────────────────────
 
 async function setChannel(h: HandlerContext, spec: ChannelSpec, channelId: string) {
   await requireManager(h, 'channels');
   if (!isSnowflake(channelId)) throw new ValidationError('Choose a channel.');
   await acknowledge(h);
-  const probe = await introspect(() => h.services.gateway.botPermissionsIn(channelId));
-  if (!probe) throw new NotFoundError('Channel');
-  const expected = spec.kind === 'category' ? ['category'] : ['text', 'announcement'];
-  if (probe.visible && !expected.includes(probe.kind)) {
-    throw new ValidationError(
-      `${spec.label} needs ${spec.kind === 'category' ? 'a category' : 'a text or announcement channel'}.`,
+  await keepingPanel(h, async () => {
+    const probe = await introspect(() => h.services.gateway.botPermissionsIn(channelId));
+    if (!probe) throw new NotFoundError('Channel');
+    if (probe.visible && !acceptsChannel(spec, probe.kind)) {
+      throw new ValidationError(`${spec.label} needs ${describeKinds(spec.accepts)}.`);
+    }
+    await updateSettings(h.ctx, 'channels', { [spec.key]: channelId });
+    const warnings: string[] = [];
+    if (!probe.visible) {
+      warnings.push('JAVE cannot see this channel. Allow View Channel for its role.');
+    } else {
+      const missing = spec.needs.filter((p) => !probe.permissions.includes(p));
+      if (missing.length)
+        warnings.push(`JAVE is missing ${missing.map(permissionLabel).join(', ')}.`);
+    }
+    const settings = await getAllSettings(h.ctx);
+    await showPanel(
+      h,
+      renderChannelEditor(
+        settings,
+        spec,
+        outcome('Channel set', `${spec.label.toUpperCase()} → <#${channelId}>`, warnings),
+      ),
     );
-  }
-  await updateSettings(h.ctx, 'channels', { [spec.key]: channelId });
-  const warnings: string[] = [];
-  if (!probe.visible)
-    warnings.push('JAVE cannot see this channel. Allow View Channel for its role.');
-  else {
-    const missing = spec.needs.filter((p) => !probe.permissions.includes(p));
-    if (missing.length)
-      warnings.push(`JAVE is missing ${missing.map(permissionLabel).join(', ')}.`);
-  }
-  const settings = await getAllSettings(h.ctx);
-  await showPanel(
-    h,
-    renderChannelEditor(
-      settings,
-      spec,
-      outcome('Channel set', `${spec.label.toUpperCase()} → <#${channelId}>`, warnings),
-    ),
-  );
+  });
 }
 
 async function clearChannel(h: HandlerContext, spec: ChannelSpec) {
@@ -111,54 +137,62 @@ async function clearChannel(h: HandlerContext, spec: ChannelSpec) {
 
 // ─── Roles ───────────────────────────────────────────────────────────────────
 
-function mappingPatch(
-  current: Settings<'roles'>,
-  target: RoleTarget,
-  roleId: string | undefined,
-): Partial<Settings<'roles'>> {
-  if (target === QUARANTINE_TARGET) return { quarantineRoleId: roleId };
-  const next: Partial<Record<OrgRole, string>> = { ...current.discordRoleIds };
-  if (roleId) next[target] = roleId;
-  else delete next[target];
-  return { discordRoleIds: next };
+/**
+ * The mapping change as a function of the stored value: core applies it to
+ * the fresh section, so a mapping made meanwhile elsewhere is never dropped.
+ */
+function mappingPatch(target: RoleTarget, roleId: string | undefined) {
+  return (current: Settings<'roles'>): Partial<Settings<'roles'>> => {
+    if (target === QUARANTINE_TARGET) return { quarantineRoleId: roleId };
+    const next: Partial<Record<OrgRole, string>> = { ...current.discordRoleIds };
+    if (roleId) next[target] = roleId;
+    else delete next[target];
+    return { discordRoleIds: next };
+  };
 }
 
 async function setRole(h: HandlerContext, target: RoleTarget, roleId: string) {
   await requireManager(h, 'roles');
   if (!isSnowflake(roleId)) throw new ValidationError('Choose a role.');
   await acknowledge(h);
-  const [roles, bot] = await introspect(() =>
-    Promise.all([h.services.gateway.listRoles(), h.services.gateway.botMember()]),
-  );
-  const role = roles.find((r) => r.id === roleId);
-  if (!role) throw new NotFoundError('Role');
-  if (role.everyone) throw new ValidationError('@everyone cannot be mapped.');
-  if (role.managed) {
-    throw new ValidationError(
-      'That role is managed by an integration. Discord does not let JAVE assign it.',
+  await keepingPanel(h, async () => {
+    const [roles, bot] = await introspect(() =>
+      Promise.all([h.services.gateway.listRoles(), h.services.gateway.botMember()]),
     );
-  }
-  const before = await getAllSettings(h.ctx);
-  await updateSettings(h.ctx, 'roles', mappingPatch(before.roles, target, roleId));
-  const warnings =
-    role.position >= bot.highestRolePosition
-      ? [`JAVE's role sits below <@&${roleId}>. Drag it above, or role changes will fail.`]
-      : [];
-  const settings = await getAllSettings(h.ctx);
-  await showPanel(
-    h,
-    renderRoleEditor(
-      settings,
-      target,
-      outcome('Role mapped', `${roleTargetLabel(target)} → <@&${roleId}>`, warnings),
-    ),
-  );
+    const role = roles.find((r) => r.id === roleId);
+    if (!role) throw new NotFoundError('Role');
+    if (role.everyone) throw new ValidationError('@everyone cannot be mapped.');
+    if (role.managed) {
+      throw new ValidationError(
+        'That role is managed by an integration. Discord does not let JAVE assign it.',
+      );
+    }
+    const elevated = elevatedPermissions(role);
+    if (elevated.length > 0 && !mayCarryElevated(target)) {
+      throw new ValidationError(
+        `That role grants ${elevated.map(permissionLabel).join(', ')}. JAVE would hand it to ${roleHolders(target)}. Map a role without elevated permissions.`,
+      );
+    }
+    await updateSettings(h.ctx, 'roles', mappingPatch(target, roleId));
+    const warnings =
+      role.position >= bot.highestRolePosition
+        ? [`JAVE's role sits below <@&${roleId}>. Drag it above, or role changes will fail.`]
+        : [];
+    const settings = await getAllSettings(h.ctx);
+    await showPanel(
+      h,
+      renderRoleEditor(
+        settings,
+        target,
+        outcome('Role mapped', `${roleTargetLabel(target)} → <@&${roleId}>`, warnings),
+      ),
+    );
+  });
 }
 
 async function clearRole(h: HandlerContext, target: RoleTarget) {
   await requireManager(h, 'roles');
-  const before = await getAllSettings(h.ctx);
-  await updateSettings(h.ctx, 'roles', mappingPatch(before.roles, target, undefined));
+  await updateSettings(h.ctx, 'roles', mappingPatch(target, undefined));
   const settings = await getAllSettings(h.ctx);
   const label = roleTargetLabel(target);
   await showPanel(
@@ -169,21 +203,20 @@ async function clearRole(h: HandlerContext, target: RoleTarget) {
 
 // ─── Flags ───────────────────────────────────────────────────────────────────
 
-async function writeFlag<S extends SettingsSection>(
-  h: HandlerContext,
-  section: S,
-  fieldName: string,
-  value: boolean,
-): Promise<void> {
-  await updateSettings(h.ctx, section, { [fieldName]: value } as Partial<Settings<S>>);
+/** Write a flag; true when the stored value actually changed. */
+async function writeFlag(h: HandlerContext, flag: FlagSpec, value: boolean): Promise<boolean> {
+  let previous: unknown;
+  await updateSettings(h.ctx, flag.section, (current: Settings<SettingsSection>) => {
+    previous = (current as Record<string, unknown>)[flag.field];
+    return { [flag.field]: value } as Partial<Settings<SettingsSection>>;
+  });
+  return previous !== value;
 }
 
 async function setFlag(h: HandlerContext, flag: FlagSpec, value: boolean) {
   await requireManager(h, flag.section);
-  const before = await getAllSettings(h.ctx);
-  const changed = flagValue(before, flag) !== value;
-  if (changed) await writeFlag(h, flag.section, flag.field, value);
-  const settings = changed ? await getAllSettings(h.ctx) : before;
+  const changed = await writeFlag(h, flag, value);
+  const settings = await getAllSettings(h.ctx);
   const state = value ? 'ON' : 'OFF';
   await showPanel(
     h,

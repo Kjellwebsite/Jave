@@ -7,6 +7,7 @@ import {
 } from 'discord.js';
 import type { HandlerContext, ReplyPayload } from '../../interactions/types';
 import { LIMITS } from '../../ui/theme';
+import type { OutputChannelKind } from './settings-catalog';
 
 /** Custom id namespaces of the settings and setup controls. */
 export const SETTINGS_NS = 'settings';
@@ -15,19 +16,26 @@ export const SETUP_NS = 'setup';
 /** Placeholders are capped by Discord at 150 characters. */
 const PLACEHOLDER_MAX = 150;
 
-const TEXT_CHANNEL_TYPES = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
+const CHANNEL_TYPES: Record<
+  OutputChannelKind,
+  ChannelType.GuildText | ChannelType.GuildAnnouncement | ChannelType.GuildCategory
+> = {
+  text: ChannelType.GuildText,
+  announcement: ChannelType.GuildAnnouncement,
+  category: ChannelType.GuildCategory,
+};
 
 /** Native Discord channel picker, filtered to the kinds the setting accepts. */
 export function channelSelect(
   customId: string,
   placeholder: string,
-  options: { kind: 'text' | 'category'; current?: string },
+  options: { accepts: readonly OutputChannelKind[]; current?: string },
 ): APIChannelSelectComponent {
   return {
     type: ComponentType.ChannelSelect,
     custom_id: customId,
     placeholder: placeholder.slice(0, PLACEHOLDER_MAX),
-    channel_types: options.kind === 'category' ? [ChannelType.GuildCategory] : TEXT_CHANNEL_TYPES,
+    channel_types: options.accepts.map((kind) => CHANNEL_TYPES[kind]),
     min_values: 1,
     max_values: 1,
     ...(options.current && {

@@ -54,7 +54,8 @@ describe('role sync: quarantine', () => {
       reason: 'lapsed while quarantined',
     });
     await bot.drain();
-    expect(discordRoles()).toEqual([UNRELATED_ROLE]);
+    // Moderation applies the quarantine role; role sync strips every managed role.
+    expect(discordRoles()).toEqual([QUARANTINE_ROLE, UNRELATED_ROLE].sort());
 
     await moderation.releaseMember(bot.kit.as(moderator), {
       targetUserId: target.actor.userId,

@@ -6,6 +6,10 @@ import { ForbiddenError, ValidationError } from '../kernel/errors';
 import { defaultSettings, SETTINGS_SECTIONS } from './schemas';
 import { getAllSettings, getSettings, updateSettings } from './settings.service';
 import { DISCORD_ROLE_SYNC_JOB } from '../identity/users.service';
+import { TtlCache } from '../kernel/cache';
+
+const MEMBER_ROLE = '500000000000000001';
+const VERIFIED_ROLE = '500000000000000002';
 
 describe('settings', () => {
   let kit: TestKit;
@@ -94,6 +98,45 @@ describe('settings', () => {
     expect(
       (await kit.db.select().from(jobs).where(eq(jobs.type, DISCORD_ROLE_SYNC_JOB))).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('merges over the stored value, never over the stale cache of another process', async () => {
+    const founder = await kit.member({ roles: ['founder'] });
+    // Two processes (bot and dashboard): same database, separate caches.
+    const bot = { ...kit.as(founder), cache: new TtlCache(() => kit.clock.now().getTime()) };
+    const dashboard = kit.as(founder);
+    expect((await getSettings(bot, 'roles')).discordRoleIds).toEqual({});
+
+    await updateSettings(dashboard, 'roles', { discordRoleIds: { member: MEMBER_ROLE } });
+    // The bot still caches the old section; its own changes must not undo the dashboard's.
+    expect((await getSettings(bot, 'roles')).discordRoleIds).toEqual({});
+    await updateSettings(bot, 'roles', { syncToDiscord: false });
+    await updateSettings(bot, 'roles', (current) => ({
+      discordRoleIds: { ...current.discordRoleIds, verified: VERIFIED_ROLE },
+    }));
+    expect(await getSettings(kit.as(founder), 'roles')).toMatchObject({
+      discordRoleIds: { member: MEMBER_ROLE, verified: VERIFIED_ROLE },
+      syncToDiscord: false,
+    });
+  });
+
+  it('writes the value, its audit entry and its event together or not at all', async () => {
+    const founder = kit.as(await kit.member({ roles: ['founder'] }));
+    await updateSettings(founder, 'roles', { discordRoleIds: { member: MEMBER_ROLE } });
+    const audits = async () =>
+      (await kit.db.select().from(auditLogs).where(eq(auditLogs.action, 'settings.updated')))
+        .length;
+    const before = await audits();
+    await expect(
+      updateSettings(founder, 'roles', (current) => ({
+        discordRoleIds: { ...current.discordRoleIds, verified: MEMBER_ROLE },
+      })),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(await audits()).toBe(before);
+    expect((await getSettings(founder, 'roles')).discordRoleIds).toEqual({ member: MEMBER_ROLE });
+    // A patch that changes nothing writes nothing.
+    await updateSettings(founder, 'roles', { discordRoleIds: { member: MEMBER_ROLE } });
+    expect(await audits()).toBe(before);
   });
 
   it('BREAK: operations can view but not change settings', async () => {

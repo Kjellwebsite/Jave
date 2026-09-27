@@ -68,7 +68,15 @@ const FOUNDING_REVIEW_REASON =
   'Founding review: portfolio, references and a live walkthrough of shipped work.';
 
 /** Join, then a role from someone above (founding staff and cohort). */
-function appoint(story: Story, day: number, hour: number, key: CastKey, by: CastKey, role: OrgRole, reason: string) {
+function appoint(
+  story: Story,
+  day: number,
+  hour: number,
+  key: CastKey,
+  by: CastKey,
+  role: OrgRole,
+  reason: string,
+) {
   story.at(day, hour, async (run) => {
     await join(run, key);
     await grant(run, by, key, role, reason);
@@ -82,7 +90,15 @@ function appoint(story: Story, day: number, hour: number, key: CastKey, by: Cast
 export function foundOrganization(story: Story): void {
   story.at(-150, 9, (run) => join(run, 'founder'));
   appoint(story, -148, 10, 'core', 'founder', 'core', 'Founding core team.');
-  appoint(story, -146, 14, 'kai', 'founder', 'core', 'Founding core team: security and infrastructure.');
+  appoint(
+    story,
+    -146,
+    14,
+    'kai',
+    'founder',
+    'core',
+    'Founding core team: security and infrastructure.',
+  );
   appoint(story, -145, 11, 'mara', 'founder', 'verified', 'Founding cohort, admitted on evidence.');
   appoint(story, -144, 11, 'sana', 'founder', 'verified', 'Founding cohort, admitted on evidence.');
   appoint(story, -142, 11, 'aiko', 'founder', 'verified', 'Founding cohort, admitted on evidence.');

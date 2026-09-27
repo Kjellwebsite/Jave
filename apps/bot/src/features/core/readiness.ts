@@ -6,7 +6,19 @@ import type {
   RoleSnapshot,
 } from '../../discord/gateway';
 import { REQUIRED_PERMISSIONS } from '../../discord/permissions';
-import { CHANNELS, type ChannelKey, QUARANTINE_TARGET, roleTargetLabel } from './settings-catalog';
+import {
+  acceptsChannel,
+  CHANNELS,
+  type ChannelKey,
+  describeKinds,
+  elevatedPermissions,
+  mayCarryElevated,
+  permissionLabel,
+  QUARANTINE_TARGET,
+  roleHolders,
+  type RoleTarget,
+  roleTargetLabel,
+} from './settings-catalog';
 
 /**
  * Pure readiness evaluation for /jave setup: given what Discord reports and
@@ -48,11 +60,6 @@ export interface ReadinessInput {
 
 export const REQUIRED_PERMISSION_NAMES = Object.keys(REQUIRED_PERMISSIONS) as DiscordPermission[];
 
-/** 'SendMessagesInThreads' → 'Send Messages In Threads'. */
-export function permissionLabel(permission: DiscordPermission): string {
-  return permission.replace(/([a-z])([A-Z])/g, '$1 $2');
-}
-
 function permissionsSection(bot: BotMemberSnapshot): ReadinessSection {
   const items: CheckItem[] = [];
   const missing = REQUIRED_PERMISSION_NAMES.filter((p) => !bot.permissions.includes(p));
@@ -80,6 +87,7 @@ function permissionsSection(bot: BotMemberSnapshot): ReadinessSection {
 }
 
 interface MappedRole {
+  target: RoleTarget;
   label: string;
   id: string;
 }
@@ -87,10 +95,14 @@ interface MappedRole {
 function mappedRoles(settings: Settings<'roles'>): MappedRole[] {
   const mapped: MappedRole[] = ROLE_KEYS.flatMap((role) => {
     const id = settings.discordRoleIds[role];
-    return id ? [{ label: roleTargetLabel(role), id }] : [];
+    return id ? [{ target: role, label: roleTargetLabel(role), id }] : [];
   });
   if (settings.quarantineRoleId) {
-    mapped.push({ label: roleTargetLabel(QUARANTINE_TARGET), id: settings.quarantineRoleId });
+    mapped.push({
+      target: QUARANTINE_TARGET,
+      label: roleTargetLabel(QUARANTINE_TARGET),
+      id: settings.quarantineRoleId,
+    });
   }
   return mapped;
 }
@@ -120,10 +132,14 @@ function hierarchySection(input: ReadinessInput): ReadinessSection {
   return { key: 'hierarchy', title: 'Role hierarchy', items };
 }
 
-function roleProblem(role: RoleSnapshot | undefined): string | null {
+function roleProblem(target: RoleTarget, role: RoleSnapshot | undefined): string | null {
   if (!role) return 'no longer exists';
   if (role.everyone) return 'is @everyone';
   if (role.managed) return 'is managed by an integration; Discord will not let JAVE assign it';
+  const elevated = elevatedPermissions(role);
+  if (elevated.length > 0 && !mayCarryElevated(target)) {
+    return `grants ${elevated.map(permissionLabel).join(', ')} to ${roleHolders(target)}`;
+  }
   return null;
 }
 
@@ -138,8 +154,8 @@ function mappingSection(input: ReadinessInput): ReadinessSection {
       fix: '/settings toggle → Role sync.',
     });
   }
-  for (const { label, id } of mappedRoles(roleSettings)) {
-    const problem = roleProblem(byId.get(id));
+  for (const { target, label, id } of mappedRoles(roleSettings)) {
+    const problem = roleProblem(target, byId.get(id));
     if (problem) {
       items.push({
         state: 'fail',
@@ -190,11 +206,10 @@ function channelItem(
       fix: 'Allow View Channel for the JAVE role there.',
     };
   }
-  const expected = spec.kind === 'category' ? ['category'] : ['text', 'announcement'];
-  if (!expected.includes(probe.kind)) {
+  if (!acceptsChannel(spec, probe.kind)) {
     return {
       state: 'fail',
-      text: `${spec.label} — <#${id}> must be a ${spec.kind === 'category' ? 'category' : 'text channel'}.`,
+      text: `${spec.label} — <#${id}> must be ${describeKinds(spec.accepts)}.`,
       fix,
     };
   }

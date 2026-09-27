@@ -14,13 +14,16 @@ import {
   notifications,
   projects,
   rankHistory,
+  rankTiers,
   researchItems,
   securityEvents,
   ticketMessages,
   tickets,
   tournamentMatches,
+  trialParticipants,
   trialResults,
   trials,
+  trialTeams,
   users,
   verifications,
 } from '@jave/database';
@@ -29,8 +32,12 @@ import { STARTER_ACHIEVEMENTS } from '../achievements';
 import { PROGRESSION_ROLES } from '../permissions/roles';
 import {
   CAST,
+  type CastKey,
   castMember,
+  existingMemberCount,
+  javeTables,
   PERSONA_KEYS,
+  resetDatabase,
   SeedRefusedError,
   seedDevelopmentData,
   type SeedReport,
@@ -207,18 +214,58 @@ describe('development seed', () => {
       .select()
       .from(trialResults)
       .where(eq(trialResults.trialId, completed.id));
-    const outcomes = new Set(results.map((result) => result.outcome));
-    expect(outcomes).toContain('fail');
-    expect(outcomes).toContain('distinction');
+    const outcomeOf = async (key: CastKey) => {
+      const { member } = await memberOf(castMember(key).discordId);
+      return results.find((result) => result.memberId === member.id)?.outcome;
+    };
+    expect(await outcomeOf('ilya')).toBe('distinction');
+    for (const key of ['verified', 'noor', 'leo'] as const)
+      expect(await outcomeOf(key)).toBe('pass');
+    expect(await outcomeOf('priya')).toBe('fail');
     const passing = results.filter((r) => r.outcome === 'pass' || r.outcome === 'distinction');
-    expect(passing.length).toBeGreaterThan(0);
     for (const result of passing) expect(result.rankHistoryId).not.toBeNull();
     const ilya = await memberOf(castMember('ilya').discordId);
-    expect(results.find((r) => r.memberId === ilya.member.id)!.outcome).toBe('distinction');
     expect(await rolesOf(ilya.member.id)).toContain('verified');
     const priya = await memberOf(castMember('priya').discordId);
-    expect(results.find((r) => r.memberId === priya.member.id)!.outcome).toBe('fail');
     expect(await rolesOf(priya.member.id)).toContain('trial');
+  });
+
+  it('deals the same rosters on every run', async () => {
+    const rosterOf = async (status: 'completed' | 'active') => {
+      const [trial] = await db()
+        .select({ id: trials.id })
+        .from(trials)
+        .where(eq(trials.status, status));
+      const rows = await db()
+        .select({
+          ordinal: trialTeams.ordinal,
+          role: trialParticipants.teamRole,
+          username: users.username,
+        })
+        .from(trialParticipants)
+        .innerJoin(trialTeams, eq(trialTeams.id, trialParticipants.teamId))
+        .innerJoin(members, eq(members.id, trialParticipants.memberId))
+        .innerJoin(users, eq(users.id, members.userId))
+        .where(eq(trialParticipants.trialId, trial!.id));
+      const teams = new Map<number, { lead: string; members: string[] }>();
+      for (const row of rows) {
+        const team = teams.get(row.ordinal) ?? { lead: '', members: [] };
+        if (row.role === 'lead') team.lead = row.username;
+        team.members.push(row.username);
+        teams.set(row.ordinal, team);
+      }
+      return [...teams.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([, team]) => ({ lead: team.lead, members: team.members.sort() }));
+    };
+    expect(await rosterOf('completed')).toEqual([
+      { lead: 'ilya', members: ['dev_verified', 'ilya', 'priya'] },
+      { lead: 'leo', members: ['leo', 'noor'] },
+    ]);
+    expect(await rosterOf('active')).toEqual([
+      { lead: 'jun', members: ['elif', 'jun'] },
+      { lead: 'mateo', members: ['mateo', 'priya'] },
+    ]);
   });
 
   it('has missions and projects in every state', async () => {
@@ -263,7 +310,7 @@ describe('development seed', () => {
     const internal = await db()
       .select({ id: ticketMessages.id })
       .from(ticketMessages)
-      .where(eq(ticketMessages.internal, true));
+      .where(eq(ticketMessages.isInternal, true));
     expect(internal.length).toBeGreaterThan(0);
   });
 
@@ -334,4 +381,22 @@ describe('development seed', () => {
       SeedRefusedError,
     );
   });
+
+  it(
+    'resets to an empty organization with its reference data, and replays the same story',
+    async () => {
+      const tables = await resetDatabase(db());
+      expect(tables).toBe(javeTables().length);
+      expect(await existingMemberCount(db())).toBe(0);
+      const [tiers] = await db()
+        .select({ count: sql<number>`count(*)::int` })
+        .from(rankTiers);
+      expect(tiers!.count).toBeGreaterThan(0);
+
+      const replay = await seedDevelopmentData(db(), { anchor: ANCHOR });
+      expect(replay.jobFailures).toEqual([]);
+      expect(replay.counts).toEqual(report.counts);
+    },
+    SEED_TIMEOUT_MS,
+  );
 });

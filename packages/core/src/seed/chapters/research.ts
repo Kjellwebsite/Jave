@@ -10,7 +10,8 @@ import type { Story } from '../story';
  * paper or person.
  */
 
-type EvidenceLevel = 'anecdotal' | 'observational' | 'experimental' | 'peer_reviewed' | 'meta_analysis';
+type EvidenceLevel =
+  'anecdotal' | 'observational' | 'experimental' | 'peer_reviewed' | 'meta_analysis';
 
 interface ItemPlan {
   submitter: CastKey;

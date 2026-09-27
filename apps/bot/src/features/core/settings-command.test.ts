@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { auditLogs } from '@jave/database';
-import { getSettings, revokeRoleUnchecked, type UserActor } from '@jave/core';
+import {
+  getSettings,
+  revokeRoleUnchecked,
+  TtlCache,
+  updateSettings,
+  type UserActor,
+} from '@jave/core';
 import {
   type APIActionRowComponent,
   type APIComponentInMessageActionRow,
+  ChannelType,
   ComponentType,
 } from 'discord.js';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
@@ -15,9 +22,13 @@ import type { RecordedResponse } from '../../testing/fake-interaction';
 const TEXT_CHANNEL = '600000000000000001';
 const CATEGORY = '600000000000000002';
 const LOCKED_CHANNEL = '600000000000000003';
+const NEWS_CHANNEL = '600000000000000004';
 const VERIFIED_ROLE = '500000000000000002';
 const HIGH_ROLE = '500000000000000080';
 const BOOSTER_ROLE = '500000000000000555';
+const ADMIN_ROLE = '500000000000000070';
+const MODS_ROLE = '500000000000000060';
+const PATRON_ROLE = '500000000000000050';
 
 type Person = { actor: UserActor; user: InteractionUser };
 
@@ -48,9 +59,12 @@ describe('/settings', () => {
       kind: 'text',
       denied: ['SendMessages', 'EmbedLinks'],
     });
+    bot.gateway.addGuildChannel(NEWS_CHANNEL, { name: 'news', kind: 'announcement' });
     bot.gateway.addRole(VERIFIED_ROLE, 'Verified', 20);
     bot.gateway.addRole(HIGH_ROLE, 'Admins', 90);
     bot.gateway.addRole(BOOSTER_ROLE, 'Server Booster', 3, true);
+    bot.gateway.addRole(ADMIN_ROLE, 'Operators', 30, false, ['Administrator', 'BanMembers']);
+    bot.gateway.addRole(MODS_ROLE, 'Mods', 25, false, ['KickMembers', 'ModerateMembers']);
   });
   afterEach(async () => {
     await bot.close();
@@ -138,6 +152,23 @@ describe('/settings', () => {
       expect((await getSettings(bot.kit.system, 'channels')).welcome).toBeUndefined();
     });
 
+    it('keeps the panel when a pick is refused; tickets need a plain text channel', async () => {
+      const editor = await press(founder.user, 'settings:channel', ['tickets']);
+      expect(lastComponents(editor.interaction.responses)[0]).toMatchObject({
+        type: ComponentType.ChannelSelect,
+        channel_types: [ChannelType.GuildText],
+      });
+      const refused = await press(founder.user, 'settings:chset:tickets', [NEWS_CHANNEL]);
+      // The panel is untouched; the refusal arrives as its own ephemeral message.
+      expect(refused.interaction.responses.map((r) => r.type)).toEqual(['deferUpdate', 'followUp']);
+      expect(refused.interaction.lastText()).toContain('Tickets needs a text channel.');
+      expect(refused.interaction.lastPayload()!.ephemeral).toBe(true);
+      expect((await getSettings(bot.kit.system, 'channels')).tickets).toBeUndefined();
+
+      const news = await press(founder.user, 'settings:chset:announcements', [NEWS_CHANNEL]);
+      expect(news.interaction.lastText()).toContain('CHANNEL SET');
+    });
+
     it('saves but flags a channel where JAVE lacks permissions', async () => {
       const { interaction } = await settings(founder.user, 'channel', {
         output: 'announcements',
@@ -209,6 +240,46 @@ describe('/settings', () => {
       const high = await press(founder.user, 'settings:roleset:core', [HIGH_ROLE]);
       expect(high.interaction.lastText()).toContain('▲ ROLE MAPPED');
       expect(high.interaction.lastText()).toContain("JAVE's role sits below");
+    });
+
+    it('BREAK: never hands a role with elevated permissions to non-staff members', async () => {
+      for (const target of [
+        'verified',
+        'trial',
+        'applicant',
+        'member',
+        'supporter',
+        'quarantine',
+      ]) {
+        const refused = await press(founder.user, `settings:roleset:${target}`, [ADMIN_ROLE]);
+        expect(refused.interaction.lastText(), target).toContain('grants Administrator.');
+      }
+      for (const target of ['verified', 'quarantine']) {
+        const mods = await press(founder.user, `settings:roleset:${target}`, [MODS_ROLE]);
+        expect(mods.interaction.lastText(), target).toContain(
+          'grants Kick Members, Moderate Members.',
+        );
+      }
+      expect(await getSettings(bot.kit.system, 'roles')).toMatchObject({ discordRoleIds: {} });
+      expect((await getSettings(bot.kit.system, 'roles')).quarantineRoleId).toBeUndefined();
+
+      const staff = await press(founder.user, 'settings:roleset:moderator', [MODS_ROLE]);
+      expect(staff.interaction.lastText()).toContain(`MODERATOR → <@&${MODS_ROLE}>`);
+    });
+
+    it('never drops a mapping made elsewhere meanwhile (stale cache)', async () => {
+      await press(founder.user, 'settings:roleset:verified', [VERIFIED_ROLE]);
+      // The dashboard (another process, its own cache) maps SUPPORTER in the meantime.
+      const dashboard = { ...bot.kit.as(founder.actor), cache: new TtlCache() };
+      await updateSettings(dashboard, 'roles', (current) => ({
+        discordRoleIds: { ...current.discordRoleIds, supporter: PATRON_ROLE },
+      }));
+      await press(founder.user, 'settings:roleset:moderator', [MODS_ROLE]);
+      expect((await getSettings(dashboard, 'roles')).discordRoleIds).toEqual({
+        verified: VERIFIED_ROLE,
+        supporter: PATRON_ROLE,
+        moderator: MODS_ROLE,
+      });
     });
 
     it('clears a mapping', async () => {

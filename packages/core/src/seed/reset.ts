@@ -15,7 +15,7 @@ export async function existingMemberCount(db: Database): Promise<number> {
 
 /** Every table of the JAVE schema, as quoted `schema.table` identifiers. */
 export function javeTables(): string[] {
-  const names = Object.values(schema)
+  const names = Object.values(schema as Record<string, unknown>)
     .filter((value): value is PgTable => is(value, PgTable))
     .map((table) => {
       const config = getTableConfig(table);

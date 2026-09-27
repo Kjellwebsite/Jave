@@ -1,5 +1,7 @@
+import { activeRoles } from '../../identity/users.service';
 import * as trials from '../../trials';
-import type { CastKey } from '../cast';
+import { leadPriority } from '../../trials/guards';
+import { type CastKey, castMember } from '../cast';
 import type { SeedRun } from '../run';
 import type { Story } from '../story';
 import { grant } from './people';
@@ -8,12 +10,25 @@ import { grant } from './people';
  * Trials: a completed 48-Hour Ship (teams, versions, team and individual
  * evaluations, published results, rank consequences, promotions), an active
  * evidence sprint mid-flight, and a strategy trial recruiting.
+ *
+ * Every run tells the same story: the rosters are dealt from a seed searched
+ * for them (see `assignmentSeed`), and criterion scores vary around exact
+ * targets, so who passes, fails or earns a distinction never depends on the
+ * random draw.
  */
 
 const SCORE_FLOOR = 0;
 const SCORE_CEILING = 10;
+/** How far one criterion may sit from its target (its pair moves the other way). */
+const SCORE_SPREAD = 1;
 const HOURS_PER_DAY = 24;
 const MINUTES_PER_HOUR = 60;
+/** Seeds tried when looking for the roster the story needs (pure computation, no I/O). */
+const MAX_ASSIGNMENT_SEED_ATTEMPTS = 1000;
+const SHIP_TEAM_SIZE = 3;
+const SPRINT_TEAM_SIZE = 2;
+/** The evidence sprint runs over a long weekend, so it is live at the anchor. */
+const SPRINT_DAYS = 3;
 
 const SHIP_TEMPLATE = 'build-48-hour-ship';
 const SPRINT_TEMPLATE = 'research-evidence-sprint';
@@ -24,7 +39,24 @@ type Rubric = trials.TemplateView['rubric'];
 const FIRST_COHORT = ['verified', 'ilya', 'noor', 'leo', 'priya'] as const;
 const SECOND_COHORT = ['jun', 'elif', 'mateo', 'priya'] as const;
 
-/** Individual score targets for the 48-Hour Ship (team targets below). */
+/** A team the story needs, by ordinal: the lead first, then the other members. */
+type Roster = readonly (readonly [CastKey, ...CastKey[]])[];
+
+/** UNIT ALPHA ships the climbing-club scheduler; UNIT BRAVO the makerspace tracker. */
+const SHIP_ROSTER: Roster = [
+  ['ilya', 'verified', 'priya'],
+  ['leo', 'noor'],
+];
+const SPRINT_ROSTER: Roster = [
+  ['jun', 'elif'],
+  ['mateo', 'priya'],
+];
+
+/**
+ * Individual score targets for the 48-Hour Ship. With the default weights
+ * (60% team, 40% individual; pass 6, distinction 8.5): Ilya earns a
+ * distinction, Priya fails, the rest pass whichever unit they are in.
+ */
 const SHIP_INDIVIDUAL_TARGET: Record<(typeof FIRST_COHORT)[number], number> = {
   verified: 7,
   ilya: 10,
@@ -32,8 +64,9 @@ const SHIP_INDIVIDUAL_TARGET: Record<(typeof FIRST_COHORT)[number], number> = {
   leo: 8,
   priya: 2,
 };
-/** Team targets by team ordinal: the first unit delivered more than the second. */
-const SHIP_TEAM_TARGET = [8, 6];
+/** The unit Ilya is in delivered more than the other. */
+const LEADING_TEAM_TARGET = 8;
+const TRAILING_TEAM_TARGET = 6;
 
 const STATEMENTS: Partial<Record<CastKey, string>> = {
   verified: 'I ship backend systems for a living. I want the clock and the rubric to decide.',
@@ -46,14 +79,72 @@ const STATEMENTS: Partial<Record<CastKey, string>> = {
   mateo: 'I want to be measured on evidence, not on how confident I sound.',
 };
 
-/** Per-criterion integer scores whose weighted mean lands near `target`. */
-function scoresFor(run: SeedRun, rubric: Rubric, target: number) {
-  return Object.fromEntries(
-    rubric.map((criterion) => [
-      criterion.key,
-      Math.min(SCORE_CEILING, Math.max(SCORE_FLOOR, target + run.rng.int(-1, 1))),
-    ]),
+/**
+ * Whole-number criterion scores whose weighted mean is exactly `target`:
+ * criteria of equal weight are paired and move in opposite directions.
+ */
+function scoresFor(run: SeedRun, rubric: Rubric, target: number): Record<string, number> {
+  const scores: Record<string, number> = {};
+  const byWeight = new Map<number, string[]>();
+  for (const criterion of rubric) {
+    scores[criterion.key] = target;
+    byWeight.set(criterion.weight, [...(byWeight.get(criterion.weight) ?? []), criterion.key]);
+  }
+  for (const keys of byWeight.values()) {
+    for (let index = 0; index + 1 < keys.length; index += 2) {
+      const spread = run.rng.int(-SCORE_SPREAD, SCORE_SPREAD);
+      const fits =
+        target - Math.abs(spread) >= SCORE_FLOOR && target + Math.abs(spread) <= SCORE_CEILING;
+      if (!fits) continue;
+      scores[keys[index]!] = target + spread;
+      scores[keys[index + 1]!] = target - spread;
+    }
+  }
+  return scores;
+}
+
+function matchesRoster(run: SeedRun, plan: readonly trials.PlannedTeam[], roster: Roster) {
+  return (
+    plan.length === roster.length &&
+    roster.every((team, ordinal) => {
+      const planned = plan[ordinal]!;
+      const [lead, ...others] = team.map((key) => run.person(key).memberId);
+      return (
+        planned.leadMemberId === lead &&
+        planned.memberIds.length === team.length &&
+        others.every((memberId) => planned.memberIds.includes(memberId))
+      );
+    })
   );
+}
+
+/**
+ * Team assignment deals from candidates sorted by member id, and the
+ * database generates those ids, so one seed deals different rosters on
+ * different runs. `planTeams` is pure: find the seed that deals the roster
+ * the story needs (a mismatch still seeds a valid, if different, trial).
+ */
+async function assignmentSeed(
+  run: SeedRun,
+  base: string,
+  options: { strategy: trials.AssignmentStrategy; teamSize: number },
+  roster: Roster,
+): Promise<string> {
+  const candidates = await Promise.all(
+    roster.flat().map(async (key) => {
+      const memberId = run.person(key).memberId;
+      return {
+        memberId,
+        primaryDomain: castMember(key).primaryDomain,
+        leadPriority: leadPriority(await activeRoles(run.system, memberId)),
+      };
+    }),
+  );
+  for (let attempt = 0; attempt < MAX_ASSIGNMENT_SEED_ATTEMPTS; attempt++) {
+    const seed = attempt === 0 ? base : `${base}-${attempt}`;
+    if (matchesRoster(run, trials.planTeams(candidates, { ...options, seed }), roster)) return seed;
+  }
+  return base;
 }
 
 async function templateNamed(run: SeedRun, key: string) {
@@ -70,9 +161,6 @@ async function applyAll(run: SeedRun, trialId: string, keys: readonly CastKey[])
   }
 }
 
-const teamOf = (teams: readonly trials.AssignedTeamView[], memberId: string) =>
-  teams.find((team) => team.memberIds.includes(memberId))!;
-
 /** Chapter 3 (86–72 days ago): the first Gauntlet. */
 export function runFirstTrial(story: Story): void {
   let trialId = '';
@@ -88,7 +176,7 @@ export function runFirstTrial(story: Story): void {
       templateId: template.id,
       summary: 'Ship a working tool for a real user in 48 hours. Outcomes count, effort does not.',
       maxParticipants: 8,
-      teamSize: 3,
+      teamSize: SHIP_TEAM_SIZE,
     });
     trialId = trial.id;
     await trials.openRecruitment(await run.as('operations'), {
@@ -105,10 +193,11 @@ export function runFirstTrial(story: Story): void {
       trialId,
       memberIds: run.memberIds(FIRST_COHORT),
     });
+    const options = { strategy: 'balanced', teamSize: SHIP_TEAM_SIZE } as const;
     const assignment = await trials.assignTeams(await run.as('operations'), {
       trialId,
-      strategy: 'balanced',
-      seed: 'first-gauntlet',
+      ...options,
+      seed: await assignmentSeed(run, 'first-gauntlet', options, SHIP_ROSTER),
     });
     teams = assignment.teams;
   });
@@ -145,12 +234,14 @@ export function runFirstTrial(story: Story): void {
   });
   // Submissions close on their own at deadline + grace (the trials.close_submissions job).
   story.at(-76, 11, async (run) => {
-    for (const [ordinal, team] of teams.entries()) {
+    const ilya = run.person('ilya').memberId;
+    for (const team of teams) {
       await run.later(run.rng.int(20, 60));
+      const target = team.memberIds.includes(ilya) ? LEADING_TEAM_TARGET : TRAILING_TEAM_TARGET;
       await trials.evaluate(await run.as('theo'), {
         trialId,
         teamId: team.id,
-        scores: scoresFor(run, rubric, SHIP_TEAM_TARGET[ordinal] ?? SHIP_TEAM_TARGET[1]!),
+        scores: scoresFor(run, rubric, target),
         notes: 'Judged on what real users could do at the deadline.',
       });
     }
@@ -168,9 +259,9 @@ export function runFirstTrial(story: Story): void {
     ({ results } = await trials.publishResults(await run.as('operations'), { trialId }));
   });
   story.at(-74, 15, async (run) => {
-    for (const result of results) {
-      if (result.outcome !== 'pass' && result.outcome !== 'distinction') continue;
-      const key = memberKey.get(result.memberId)!;
+    for (const key of FIRST_COHORT) {
+      const result = results.find((candidate) => candidate.memberId === run.person(key).memberId);
+      if (!result || !trials.isPassing(result.outcome)) continue;
       await run.later(run.rng.int(5, 30));
       await trials.applyRankConsequence(await run.as('core'), {
         trialId,
@@ -194,8 +285,8 @@ export function runActiveTrial(story: Story): void {
       templateId: template.id,
       title: 'Evidence Sprint: Sleep and Memory',
       summary: 'Settle a contested claim about sleep and memory with evidence. Teams of two.',
-      durationMinutes: 3 * HOURS_PER_DAY * MINUTES_PER_HOUR,
-      teamSize: 2,
+      durationMinutes: SPRINT_DAYS * HOURS_PER_DAY * MINUTES_PER_HOUR,
+      teamSize: SPRINT_TEAM_SIZE,
       maxParticipants: 6,
     });
     trialId = trial.id;
@@ -212,10 +303,11 @@ export function runActiveTrial(story: Story): void {
       trialId,
       memberIds: run.memberIds(SECOND_COHORT),
     });
+    const options = { strategy: 'random', teamSize: SPRINT_TEAM_SIZE } as const;
     const assignment = await trials.assignTeams(await run.as('theo'), {
       trialId,
-      strategy: 'random',
-      seed: 'evidence-sprint',
+      ...options,
+      seed: await assignmentSeed(run, 'evidence-sprint', options, SPRINT_ROSTER),
     });
     teams = assignment.teams;
   });

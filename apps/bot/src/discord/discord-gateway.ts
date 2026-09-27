@@ -479,6 +479,7 @@ export class DiscordJsGateway implements DiscordGateway {
       position: role.position,
       managed: role.managed,
       everyone: role.id === guild.id,
+      permissions: permissionNames(role.permissions),
     }));
   }
 

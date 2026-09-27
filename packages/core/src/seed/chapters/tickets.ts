@@ -65,7 +65,10 @@ export function runTicketDesk(story: Story): void {
     await tickets.claimTicket(await run.as('rhea'), { ticketId: id });
     await desk.say(run, id, 'rhea', 'Primary domain is yours to set: Profile, then Edit.');
     await desk.say(run, id, 'aiko', 'Found it. Fixed, thank you.');
-    await tickets.closeTicket(await run.as('rhea'), { ticketId: id, reason: 'Resolved: self-service.' });
+    await tickets.closeTicket(await run.as('rhea'), {
+      ticketId: id,
+      reason: 'Resolved: self-service.',
+    });
   });
 
   story.at(-24, 11, async (run) => {

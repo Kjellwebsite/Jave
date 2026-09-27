@@ -200,6 +200,8 @@ export interface RoleSnapshot {
   managed: boolean;
   /** The @everyone role (same id as the guild). */
   everyone: boolean;
+  /** Permissions the role grants server-wide (Administrator implies every flag). */
+  permissions: DiscordPermission[];
 }
 
 /** Discord caps message nonces at 25 characters. */

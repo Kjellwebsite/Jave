@@ -1,11 +1,12 @@
 import {
+  isStaffRole,
   type OrgRole,
   ROLE_KEYS,
   type Settings,
   type SettingsSection,
   ValidationError,
 } from '@jave/core';
-import type { DiscordPermission } from '../../discord/gateway';
+import type { ChannelKind, DiscordPermission, RoleSnapshot } from '../../discord/gateway';
 
 /**
  * What the Discord surface knows about settings: which channel outputs exist
@@ -16,15 +17,40 @@ import type { DiscordPermission } from '../../discord/gateway';
 
 export type ChannelKey = keyof Settings<'channels'>;
 
+/** Channel kinds an output can live in. */
+export type OutputChannelKind = Extract<ChannelKind, 'text' | 'announcement' | 'category'>;
+
 export interface ChannelSpec {
   key: ChannelKey;
   label: string;
   purpose: string;
-  kind: 'text' | 'category';
+  /** Channel kinds that can hold this output. */
+  accepts: readonly OutputChannelKind[];
   /** Permissions the bot needs inside this channel. */
   needs: readonly DiscordPermission[];
   /** Readiness warns when a recommended channel is unset. */
   recommended: boolean;
+}
+
+const POSTABLE: readonly OutputChannelKind[] = ['text', 'announcement'];
+/** Discord creates private threads only in plain text channels. */
+const THREAD_PARENT: readonly OutputChannelKind[] = ['text'];
+const CATEGORY: readonly OutputChannelKind[] = ['category'];
+
+/** 'SendMessagesInThreads' → 'Send Messages In Threads'. */
+export function permissionLabel(permission: DiscordPermission): string {
+  return permission.replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+
+/** True when a channel of this kind can hold the output. */
+export function acceptsChannel(spec: Pick<ChannelSpec, 'accepts'>, kind: ChannelKind): boolean {
+  return spec.accepts.some((accepted) => accepted === kind);
+}
+
+/** 'a text channel', 'a text or announcement channel', 'a category'. */
+export function describeKinds(accepts: readonly OutputChannelKind[]): string {
+  if (accepts.includes('category')) return 'a category';
+  return accepts.includes('announcement') ? 'a text or announcement channel' : 'a text channel';
 }
 
 const POSTING: readonly DiscordPermission[] = [
@@ -38,105 +64,105 @@ const CHANNEL_SPECS: Record<ChannelKey, Omit<ChannelSpec, 'key'>> = {
   welcome: {
     label: 'Welcome',
     purpose: 'Greets new members with the onboarding button.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
   },
   announcements: {
     label: 'Announcements',
     purpose: 'Trial and mission announcements.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
   },
   applicationsReview: {
     label: 'Applications review',
     purpose: 'Staff review cards for applications.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
   },
   verificationQueue: {
     label: 'Verification queue',
     purpose: 'Staff cards for verification requests.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
   },
   tickets: {
     label: 'Tickets',
     purpose: 'Parent channel of private ticket threads.',
-    kind: 'text',
+    accepts: THREAD_PARENT,
     needs: [...POSTING, 'CreatePrivateThreads', 'SendMessagesInThreads', 'ManageThreads'],
     recommended: true,
   },
   ticketArchive: {
     label: 'Ticket archive',
     purpose: 'Transcripts of closed tickets.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: [...POSTING, 'AttachFiles'],
     recommended: false,
   },
   trialsCategory: {
     label: 'Trials category',
     purpose: 'Category for private trial team channels.',
-    kind: 'category',
+    accepts: CATEGORY,
     needs: ['ViewChannel', 'ManageChannels'],
     recommended: true,
   },
   securityAlerts: {
     label: 'Security alerts',
     purpose: 'Security event cards and raid notices.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: true,
   },
   staffAlerts: {
     label: 'Staff alerts',
     purpose: 'Raid notices when no security channel is set.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
   },
   missions: {
     label: 'Missions',
     purpose: 'Mission cards. Falls back to announcements.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
   },
   events: {
     label: 'Events',
     purpose: 'Event announcements.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
   },
   achievements: {
     label: 'Achievements',
     purpose: 'Public achievement announcements.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
   },
   research: {
     label: 'Research',
     purpose: 'Research digests.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
   },
   modLog: {
     label: 'Moderation log',
     purpose: 'Moderation case log.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
   },
   auditLog: {
     label: 'Audit log',
     purpose: 'Audit feed.',
-    kind: 'text',
+    accepts: POSTABLE,
     needs: POSTING,
     recommended: false,
   },
@@ -167,6 +193,47 @@ export function parseRoleTarget(value: string): RoleTarget {
 
 export function roleTargetLabel(target: RoleTarget): string {
   return target === QUARANTINE_TARGET ? 'QUARANTINE' : target.toUpperCase();
+}
+
+/**
+ * Discord's elevated permissions (the ones it gates behind two-factor
+ * authentication for moderators). A role carrying one hands real power over
+ * the server to everyone who holds it.
+ */
+export const ELEVATED_PERMISSIONS: readonly DiscordPermission[] = [
+  'Administrator',
+  'ManageGuild',
+  'ManageRoles',
+  'ManageChannels',
+  'ManageWebhooks',
+  'ManageMessages',
+  'ManageThreads',
+  'ManageGuildExpressions',
+  'KickMembers',
+  'BanMembers',
+  'ModerateMembers',
+];
+
+/** The elevated permissions a role grants (Administrator alone stands for all of them). */
+export function elevatedPermissions(role: Pick<RoleSnapshot, 'permissions'>): DiscordPermission[] {
+  if (role.permissions.includes('Administrator')) return ['Administrator'];
+  return ELEVATED_PERMISSIONS.filter((permission) => role.permissions.includes(permission));
+}
+
+/**
+ * Only staff roles may follow a Discord role with elevated permissions. JAVE
+ * hands a mapped role to every holder of the JAVE role, so an elevated role
+ * behind VERIFIED or MEMBER (or quarantine) would be privilege escalation.
+ */
+export function mayCarryElevated(target: RoleTarget): boolean {
+  return target !== QUARANTINE_TARGET && isStaffRole(target);
+}
+
+/** Who would hold a mapped Discord role: "every VERIFIED member", "quarantined members". */
+export function roleHolders(target: RoleTarget): string {
+  return target === QUARANTINE_TARGET
+    ? 'every quarantined member'
+    : `every ${roleTargetLabel(target)} member`;
 }
 
 type BooleanKeys<T> = { [K in keyof T]-?: T[K] extends boolean ? K : never }[keyof T];

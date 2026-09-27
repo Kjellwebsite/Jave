@@ -7,7 +7,8 @@ import { createBotHarness, type BotHarness } from '../../testing/harness';
 import { DiscordActionError } from '../../discord/gateway';
 import type { InteractionUser } from '../../interactions/types';
 import { customId } from '../../interactions/custom-id';
-import { evaluateReadiness, permissionLabel } from './readiness';
+import { evaluateReadiness } from './readiness';
+import { permissionLabel } from './settings-catalog';
 import { fitLines } from './settings-ui';
 
 const ROLE = {
@@ -16,6 +17,8 @@ const ROLE = {
   quarantine: '500000000000000009',
   missing: '500000000000000404',
   booster: '500000000000000555',
+  admin: '500000000000000070',
+  mods: '500000000000000060',
 };
 const CHANNEL = {
   welcome: '600000000000000001',
@@ -23,6 +26,7 @@ const CHANNEL = {
   trials: '600000000000000003',
   deleted: '600000000000000404',
   hidden: '600000000000000005',
+  news: '600000000000000006',
 };
 
 describe('/jave setup', () => {
@@ -107,6 +111,23 @@ describe('/jave setup', () => {
     expect(text).toContain(`✕ Tickets — <#${CHANNEL.tickets}> missing Create Private Threads.`);
     expect(text).toContain(`✓ Welcome — <#${CHANNEL.welcome}>`);
     expect(text).toContain('→ Drag JAVE');
+  });
+
+  it('fails a non-staff mapping to a role with elevated permissions, and tickets in a news channel', async () => {
+    bot.gateway.addRole(ROLE.admin, 'Operators', 20, false, ['Administrator']);
+    bot.gateway.addRole(ROLE.mods, 'Mods', 15, false, ['KickMembers', 'BanMembers']);
+    bot.gateway.addGuildChannel(CHANNEL.news, { name: 'news', kind: 'announcement' });
+    await updateSettings(bot.kit.as(founder.actor), 'roles', {
+      discordRoleIds: { verified: ROLE.admin, moderator: ROLE.mods },
+    });
+    await updateSettings(bot.kit.as(founder.actor), 'channels', { tickets: CHANNEL.news });
+
+    const text = (await setup(founder.user)).interaction.lastText();
+    expect(text).toContain(
+      `✕ VERIFIED → role \`${ROLE.admin}\` grants Administrator to every VERIFIED member.`,
+    );
+    expect(text).not.toContain('MODERATOR → role');
+    expect(text).toContain(`✕ Tickets — <#${CHANNEL.news}> must be a text channel.`);
   });
 
   it('warns when the bot holds Administrator (least privilege)', async () => {

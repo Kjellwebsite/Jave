@@ -300,8 +300,14 @@ export class FakeDiscordGateway implements DiscordGateway {
   /** Guild channels visible to introspection (created text channels count as text). */
   readonly guildChannels = new Map<string, FakeGuildChannel>();
 
-  addRole(id: string, name: string, position: number, managed = false): RoleSnapshot {
-    const role = { id, name, position, managed, everyone: false };
+  addRole(
+    id: string,
+    name: string,
+    position: number,
+    managed = false,
+    permissions: DiscordPermission[] = [],
+  ): RoleSnapshot {
+    const role = { id, name, position, managed, everyone: false, permissions };
     this.roles.set(id, role);
     return role;
   }
@@ -348,7 +354,10 @@ export class FakeDiscordGateway implements DiscordGateway {
   async listRoles(): Promise<RoleSnapshot[]> {
     this.record('listRoles');
     const everyone = { id: this.guildId, name: '@everyone', position: 0, managed: false };
-    return [{ ...everyone, everyone: true }, ...[...this.roles.values()].map((r) => ({ ...r }))];
+    return [
+      { ...everyone, everyone: true, permissions: [] },
+      ...[...this.roles.values()].map((r) => ({ ...r, permissions: [...r.permissions] })),
+    ];
   }
 
   /** channelId:nonce → message id, like Discord's enforce_nonce window. */

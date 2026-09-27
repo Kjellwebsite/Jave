@@ -18,6 +18,10 @@ export const ACTION = {
   queueClaim: 'queue-claim',
   /** List select (/ticket mine, Member tickets): open the chosen ticket. */
   view: 'view',
+  /** Staff panel with every handler control for one ticket (card and /ticket view). */
+  manage: 'manage',
+  unclaim: 'unclaim',
+  resume: 'resume',
 } as const;
 
 /** Modal field ids. */
@@ -71,12 +75,21 @@ export const SUMMARY_DISPLAY_MAX = 3500;
  */
 export const TRANSCRIPT_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
 
+/**
+ * Ticket threads archive after a week without messages (Discord's longest
+ * idle period), so a quiet requester still finds their thread in the list.
+ * The jobs unarchive it whenever they need to act in it.
+ */
+export const THREAD_AUTO_ARCHIVE_MINUTES = 10080;
+
 /** Discord error codes the ticket jobs react to. */
 export const DISCORD_ERROR = {
   unknownChannel: 10003,
   unknownMember: 10007,
   unknownMessage: 10008,
   unknownUser: 10013,
+  /** An edit or member add in an archived thread. */
+  threadArchived: 50083,
 } as const;
 
 /** Audit-log reasons on Discord actions. */
@@ -84,5 +97,6 @@ export const DISCORD_REASON = {
   openThread: 'JAVE ticket opened',
   closeThread: 'JAVE ticket closed',
   reopenThread: 'JAVE ticket reopened',
+  unarchiveThread: 'JAVE ticket update in an idle thread',
   duplicateThread: 'JAVE duplicate ticket thread (another run recorded the ticket first)',
 } as const;

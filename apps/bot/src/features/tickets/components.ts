@@ -4,13 +4,17 @@ import { failure } from '../../ui/components';
 import {
   applyPriority,
   claim,
+  promptNote,
   promptReason,
+  resume,
   submitNote,
   submitReason,
   transferTo,
+  unclaim,
 } from './actions';
 import { ACTION, TICKETS_NS } from './constants';
 import { showTicket } from './lists';
+import { showManage } from './manage';
 import { showOpenForm, submitOpen } from './open';
 import { ticketIdArg } from './resolve';
 import { isForced, showSummary } from './summary';
@@ -56,6 +60,16 @@ export const ticketComponents: ComponentHandler = {
         return claim(h, ticketIdArg(h.interaction.values));
       case ACTION.view:
         return showTicket(h, ticketIdArg(h.interaction.values));
+      case ACTION.manage:
+        return showManage(h, ticketIdArg(args));
+      case ACTION.unclaim:
+        return unclaim(h, ticketIdArg(args));
+      case ACTION.resume:
+        return resume(h, ticketIdArg(args));
+      case ACTION.waiting:
+        return promptReason(h, ACTION.waiting, ticketIdArg(args));
+      case ACTION.note:
+        return promptNote(h, ticketIdArg(args));
       default:
         return expired(h);
     }

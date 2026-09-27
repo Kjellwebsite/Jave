@@ -36,6 +36,8 @@ export interface QueueFilters {
   assignee?: string;
   /** Handlers only. */
   sla?: SlaFilter;
+  /** Handlers only: one member's tickets (their user id), e.g. from Discord's Member tickets. */
+  opener?: string;
   sort: QueueSort;
   scope?: 'own';
   offset: number;
@@ -58,6 +60,7 @@ const filterSchema = z.object({
     .optional()
     .catch(undefined),
   sla: z.enum(SLA_FILTERS).optional().catch(undefined),
+  opener: tickets.listTicketsSchema.shape.openerUserId.catch(undefined),
   sort: z.enum(SORTS).optional().catch(undefined),
   scope: z.enum(SCOPES).optional().catch(undefined),
 });
@@ -75,6 +78,7 @@ export function parseQueueFilters(params: SearchParams, handler: boolean): Queue
     priority: firstParam(params.priority) || undefined,
     assignee: firstParam(params.assignee) || undefined,
     sla: firstParam(params.sla) || undefined,
+    opener: firstParam(params.opener) || undefined,
     sort: firstParam(params.sort) || undefined,
     scope: firstParam(params.scope) || undefined,
   });
@@ -87,6 +91,7 @@ export function parseQueueFilters(params: SearchParams, handler: boolean): Queue
     priority: raw.priority,
     assignee: staffQueue ? raw.assignee : undefined,
     sla: staffQueue ? raw.sla : undefined,
+    opener: staffQueue ? raw.opener : undefined,
     sort: !staffQueue && sort === 'sla' ? 'activity' : sort,
     scope: handler ? raw.scope : undefined,
     offset: offsetParam(params.offset),
@@ -113,6 +118,7 @@ export function listInputFor(filters: QueueFilters, mode: QueueMode): tickets.Li
     search: filters.q,
     assignee: mode === 'handler' ? filters.assignee : undefined,
     breached: mode === 'handler' && filters.sla ? filters.sla === 'missed' : undefined,
+    openerUserId: mode === 'handler' ? filters.opener : undefined,
     sort: filters.sort,
     limit: QUEUE_PAGE_SIZE,
     offset: filters.offset,
@@ -134,6 +140,7 @@ export function filterQuery(
     priority: filters.priority,
     assignee: filters.assignee,
     sla: filters.sla,
+    opener: filters.opener,
     sort: filters.sort === defaultSort ? undefined : filters.sort,
     scope: filters.scope,
   };
@@ -141,7 +148,12 @@ export function filterQuery(
 
 export function isFiltered(filters: QueueFilters): boolean {
   return Boolean(
-    filters.q || filters.category || filters.priority || filters.assignee || filters.sla,
+    filters.q ||
+    filters.category ||
+    filters.priority ||
+    filters.assignee ||
+    filters.sla ||
+    filters.opener,
   );
 }
 
@@ -164,9 +176,13 @@ export const QUICK_VIEWS: readonly QuickView[] = [
   { key: 'own', label: 'Opened by me', params: { scope: 'own' } },
 ];
 
-/** The quick view whose defining parameters equal the current filters, if any. */
+/**
+ * The quick view whose defining parameters equal the current filters, if any.
+ * One member's history is none of them.
+ */
 export function activeQuickView(filters: QueueFilters, mode: QueueMode): string | null {
   const current = filterQuery(filters, mode);
+  if (current.opener) return null;
   const match = QUICK_VIEWS.find(
     (view) =>
       (view.params.status ?? undefined) === current.status &&

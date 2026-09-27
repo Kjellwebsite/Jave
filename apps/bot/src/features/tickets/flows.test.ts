@@ -74,6 +74,7 @@ describe('tickets — Discord flows', SUITE, () => {
     expect(customIdsOf(card)).toEqual([
       customId(TICKETS_NS, ACTION.claim, ticket.id),
       customId(TICKETS_NS, ACTION.close, ticket.id),
+      customId(TICKETS_NS, ACTION.manage, ticket.id),
     ]);
   });
 
@@ -94,7 +95,10 @@ describe('tickets — Discord flows', SUITE, () => {
     const card = messageState(bot, ticket.cardMessageId);
     expect(textOf(card)).toContain('#0001 · CLAIMED');
     expect(textOf(card)).toContain(`<@${staff.actor.discordId}>`);
-    expect(customIdsOf(card)).toEqual([customId(TICKETS_NS, ACTION.close, ticket.id)]);
+    expect(customIdsOf(card)).toEqual([
+      customId(TICKETS_NS, ACTION.close, ticket.id),
+      customId(TICKETS_NS, ACTION.manage, ticket.id),
+    ]);
     expect(bot.gateway.channels.get(ticket.threadId)!.members.has(staff.actor.discordId)).toBe(
       true,
     );

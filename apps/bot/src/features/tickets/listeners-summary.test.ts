@@ -102,6 +102,37 @@ describe('tickets — gateway listeners', SUITE, () => {
     expect(await recorded(ticket.id)).toHaveLength(before);
   });
 
+  it('a purge (bulk delete) in a ticket thread flags every message it removed', async () => {
+    const requester = await person(bot, ['verified']);
+    const ticket = await openViaDiscord(bot, requester.user);
+    const [keep, leak, doxx] = [
+      threadMessage(ticket.threadId, requester.user, 'Still relevant.'),
+      threadMessage(ticket.threadId, requester.user, 'my token is abc.def.ghi'),
+      threadMessage(ticket.threadId, requester.user, 'their home address is …'),
+    ];
+    for (const message of [keep, leak, doxx]) await bot.app.events.message(message);
+
+    // A purge elsewhere never touches the ticket, even with the same ids.
+    await bot.app.events.messageDeleteBulk({
+      ids: [leak.id],
+      channelId: '500000000000000002',
+      guildId: leak.guildId,
+    });
+    expect((await recorded(ticket.id)).every((row) => row.deletedAt === null)).toBe(true);
+
+    await bot.app.events.messageDeleteBulk({
+      ids: [leak.id, doxx.id, '600000000000000001'],
+      channelId: ticket.threadId,
+      guildId: leak.guildId,
+    });
+    const rows = await recorded(ticket.id);
+    const deleted = rows.filter((row) => row.deletedAt !== null).map((row) => row.discordMessageId);
+    expect(deleted.sort()).toEqual([leak.id, doxx.id].sort());
+    const view = await tickets.getTicket(bot.kit.as(requester.actor), { ticketId: ticket.id });
+    expect(view.messages.map((m) => m.body)).not.toContain('my token is abc.def.ghi');
+    expect(view.messages.map((m) => m.body)).toContain('Still relevant.');
+  });
+
   it('a staff reply in the thread stamps the first response', async () => {
     const requester = await person(bot, ['verified']);
     const staff = await person(bot, ['moderator']);

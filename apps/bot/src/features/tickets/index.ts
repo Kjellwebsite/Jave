@@ -7,7 +7,12 @@ import { closeThreadHandler } from './jobs/close-thread';
 import { openThreadHandler } from './jobs/open-thread';
 import { reopenThreadHandler } from './jobs/reopen-thread';
 import { updateCardHandler } from './jobs/update-card';
-import { onTicketMessage, onTicketMessageDelete, onTicketMessageUpdate } from './listeners';
+import {
+  onTicketMessage,
+  onTicketMessageDelete,
+  onTicketMessageDeleteBulk,
+  onTicketMessageUpdate,
+} from './listeners';
 
 /**
  * Discord surface for the tickets domain: /ticket, the Member tickets context
@@ -29,4 +34,5 @@ export const feature: BotFeature = {
   onMessage: onTicketMessage,
   onMessageUpdate: onTicketMessageUpdate,
   onMessageDelete: onTicketMessageDelete,
+  onMessageDeleteBulk: onTicketMessageDeleteBulk,
 };

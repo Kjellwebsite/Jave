@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { LifeBuoy, Search } from 'lucide-react';
 import { can, tickets } from '@jave/core';
 import {
+  Badge,
   Button,
   buttonStyles,
   Card,
@@ -27,7 +28,7 @@ import { formatRelative, formatTimestamp } from '@/lib/time';
 import { requireConsoleContext } from '@/server/context';
 import { loadViewer } from '@/server/data/viewer';
 import { guarded } from '@/server/guard';
-import { listTicketHandlers } from '@/server/tickets/people';
+import { listTicketHandlers, peopleNames } from '@/server/tickets/people';
 import {
   activeQuickView,
   filterQuery,
@@ -49,7 +50,7 @@ const SEARCH_MAX_LENGTH = 64;
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   ...optionsOf(STATUS_LABELS),
-  { value: 'all', label: 'Every status' },
+  { value: 'all', label: 'Any status' },
 ];
 const SLA_OPTIONS = [
   { value: 'missed', label: 'Target missed' },
@@ -87,17 +88,19 @@ export default async function TicketsPage({
     );
   }
   const page = result.value;
-  const [viewer, counts, performance, handlers] = await Promise.all([
+  const [viewer, counts, performance, handlers, openerNames] = await Promise.all([
     loadViewer(ctx),
     staff ? loadQueueCounts(ctx) : null,
     staff ? loadTicketPerformance(ctx) : null,
     staff ? listTicketHandlers(ctx) : [],
+    filters.opener ? peopleNames(ctx, [filters.opener]) : new Map<string, string>(),
   ]);
   const tz = viewer.timeZone;
   const now = ctx.clock.now();
   const query = filterQuery(filters, mode);
   const filtered = isFiltered(filters);
   const quickView = handler ? activeQuickView(filters, mode) : null;
+  const openerName = filters.opener ? (openerNames.get(filters.opener) ?? 'Unknown member') : null;
 
   const rows: QueueRow[] = page.items.map((item) => ({
     id: item.id,
@@ -200,6 +203,7 @@ export default async function TicketsPage({
               className="border-b border-line-subtle p-4"
             >
               {filters.scope ? <input type="hidden" name="scope" value={filters.scope} /> : null}
+              {filters.opener ? <input type="hidden" name="opener" value={filters.opener} /> : null}
               <Toolbar
                 className={
                   staff
@@ -282,6 +286,22 @@ export default async function TicketsPage({
                 </div>
               </Toolbar>
             </form>
+          ) : null}
+
+          {openerName ? (
+            <div
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line-subtle px-4 py-3"
+              data-testid="opener-filter"
+            >
+              <Badge>Opened by</Badge>
+              <span className="min-w-0 truncate text-small text-fg">{openerName}</span>
+              <Link
+                href={`/tickets${toQueryString({ ...query, opener: undefined })}`}
+                className={buttonStyles({ variant: 'ghost', size: 'sm', className: 'ml-auto' })}
+              >
+                All requesters
+              </Link>
+            </div>
           ) : null}
 
           {showFilters ? (

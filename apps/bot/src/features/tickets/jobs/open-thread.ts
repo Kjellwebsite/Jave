@@ -1,6 +1,6 @@
 import { ConflictError, type JobHandler, type ServiceContext, tickets } from '@jave/core';
 import type { BotServices } from '../../../runtime';
-import { DISCORD_REASON } from '../constants';
+import { DISCORD_REASON, THREAD_AUTO_ARCHIVE_MINUTES } from '../constants';
 import { isActiveStatus } from '../labels';
 import { ticketCard } from '../render';
 import { addMember, asJobError, isThreadGone, parsePayload } from './shared';
@@ -11,7 +11,8 @@ type OpenPayload = tickets.TicketDiscordJobPayload<typeof tickets.OPEN_THREAD_JO
  * A thread is already recorded (a retry after success, or a re-run): make sure
  * the opener is in it. If Discord no longer has it, clear it in core and
  * report `null` so this run provisions a fresh one — a re-provision enqueued
- * from inside this job would be deduplicated against the job itself.
+ * from inside this job would be deduplicated against the job itself. A closed
+ * ticket's thread belongs to close_thread (locked and archived): untouched.
  */
 async function ensureExisting(
   services: BotServices,
@@ -20,6 +21,7 @@ async function ensureExisting(
   threadId: string,
   payload: OpenPayload,
 ): Promise<Record<string, unknown> | null> {
+  if (!isActiveStatus(card.status)) return { status: 'exists', threadId, skipped: 'closed' };
   try {
     const openerAdded = await addMember(services, ctx, threadId, payload.openerDiscordId);
     return { status: 'exists', threadId, openerAdded };
@@ -49,6 +51,7 @@ async function createThread(
     threadId = await gateway.createPrivateThread(payload.parentChannelId, {
       name: payload.threadName,
       reason: `${DISCORD_REASON.openThread} ${card.reference}`,
+      autoArchiveMinutes: THREAD_AUTO_ARCHIVE_MINUTES,
     });
     cardMessageId = (await gateway.sendMessage(threadId, ticketCard(card))).messageId;
   } catch (error) {

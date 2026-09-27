@@ -9,6 +9,7 @@ import { listTicketHandlers, peopleNames } from './people';
 import {
   activeQuickView,
   filterQuery,
+  isFiltered,
   listInputFor,
   loadQueueCounts,
   loadTicketPerformance,
@@ -47,6 +48,7 @@ describe('queue filters', () => {
         priority: ['urgent', 'low'],
         assignee: "' or 1=1 --",
         sla: 'maybe',
+        opener: "1'; drop table tickets; --",
         sort: 'random',
         offset: '-5',
         q: 'x'.repeat(500),
@@ -60,6 +62,7 @@ describe('queue filters', () => {
       priority: 'urgent',
       assignee: undefined,
       sla: undefined,
+      opener: undefined,
       sort: 'sla',
       scope: undefined,
       offset: 0,
@@ -68,12 +71,13 @@ describe('queue filters', () => {
 
   it('BREAK: handler-only filters are ignored for members', () => {
     const filters = parseQueueFilters(
-      { assignee: UUID, sla: 'missed', sort: 'sla', scope: 'own' },
+      { assignee: UUID, sla: 'missed', opener: UUID, sort: 'sla', scope: 'own' },
       false,
     );
     expect(filters).toMatchObject({
       assignee: undefined,
       sla: undefined,
+      opener: undefined,
       sort: 'activity',
       scope: undefined,
     });
@@ -89,6 +93,7 @@ describe('queue filters', () => {
       priority: undefined,
       assignee: 'none',
       sla: undefined,
+      opener: undefined,
       sort: undefined,
       scope: undefined,
     });
@@ -96,6 +101,22 @@ describe('queue filters', () => {
     expect(queueMode(own, true)).toBe('requester');
     expect(activeQuickView(own, 'requester')).toBe('own');
     expect(activeQuickView(parseQueueFilters({ status: 'open' }, true), 'handler')).toBeNull();
+  });
+
+  it("one member's history (Discord's Member tickets link) filters the staff queue by opener", () => {
+    const history = parseQueueFilters({ opener: UUID, status: 'all' }, true);
+    expect(history).toMatchObject({ opener: UUID, status: 'all' });
+    expect(isFiltered(history)).toBe(true);
+    expect(listInputFor(history, 'handler')).toMatchObject({
+      openerUserId: UUID,
+      status: ['open', 'claimed', 'waiting', 'closed', 'archived'],
+    });
+    expect(filterQuery(history, 'handler')).toMatchObject({ opener: UUID, status: 'all' });
+    expect(activeQuickView(parseQueueFilters({ opener: UUID }, true), 'handler')).toBeNull();
+    // Opened by me is the requester view: the opener filter does not apply there.
+    const own = parseQueueFilters({ opener: UUID, scope: 'own' }, true);
+    expect(own.opener).toBeUndefined();
+    expect(listInputFor(own, queueMode(own, true)).openerUserId).toBeUndefined();
   });
 });
 

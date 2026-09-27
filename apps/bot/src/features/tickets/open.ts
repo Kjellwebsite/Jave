@@ -4,7 +4,6 @@ import {
   getSettings,
   InvalidStateError,
   recordAudit,
-  requireMember,
   tickets,
   ValidationError,
 } from '@jave/core';
@@ -28,8 +27,7 @@ function categoryRow() {
 
 /**
  * Tickets need the feature switched on and a ticket channel to hold the
- * private threads. Checked before the form opens so nobody writes a message
- * that cannot be filed; core enforces both again on submit.
+ * private threads (checked before a manager posts the public panel).
  */
 async function assertTicketsReady(h: HandlerContext): Promise<string> {
   const [settings, channels] = await Promise.all([
@@ -43,10 +41,14 @@ async function assertTicketsReady(h: HandlerContext): Promise<string> {
   return channels.tickets;
 }
 
-/** /ticket open — step 1: choose a category (then the form opens). */
+/**
+ * /ticket open — step 1: choose a category (then the form opens). Core's
+ * preflight refuses up front, in the words the submit would use (standing,
+ * tickets off, no ticket channel, open-ticket limit, hourly limit), so nobody
+ * writes a long message that cannot be filed.
+ */
 export async function startOpen(h: HandlerContext): Promise<void> {
-  requireMember(h.ctx);
-  await assertTicketsReady(h);
+  await tickets.assertCanOpenTicket(h.ctx);
   await h.respond({
     embeds: [
       panel({
@@ -61,12 +63,11 @@ export async function startOpen(h: HandlerContext): Promise<void> {
   });
 }
 
-/** Category chosen (ephemeral prompt or public panel) → the form. */
+/** Category chosen (ephemeral prompt or public panel) → preflight → the form. */
 export async function showOpenForm(h: HandlerContext): Promise<void> {
   const category = h.interaction.values[0];
   if (!isCategory(category)) throw new ValidationError('Choose a category from the list.');
-  requireMember(h.ctx);
-  await assertTicketsReady(h);
+  await tickets.assertCanOpenTicket(h.ctx);
   await h.interaction.showModal(openTicketModal(category));
 }
 

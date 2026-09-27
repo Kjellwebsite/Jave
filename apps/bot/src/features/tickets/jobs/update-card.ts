@@ -4,6 +4,7 @@ import { announcement } from '../render';
 import {
   addMember,
   asJobError,
+  inOpenThread,
   isThreadGone,
   parsePayload,
   recoverMissingThread,
@@ -29,7 +30,12 @@ export function updateCardHandler(services: BotServices): JobHandler {
       if (plan.addMemberDiscordId) {
         await addMember(services, ctx, threadId, plan.addMemberDiscordId);
       }
-      if (plan.announce) await services.gateway.sendMessage(threadId, announcement(plan.announce));
+      const line = plan.announce;
+      if (line) {
+        await inOpenThread(services, threadId, () =>
+          services.gateway.sendMessage(threadId, announcement(line)),
+        );
+      }
     } catch (error) {
       if (isThreadGone(error)) {
         return recoverMissingThread(services, ctx, card.ticketId, threadId);

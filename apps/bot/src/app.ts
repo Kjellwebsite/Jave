@@ -16,6 +16,7 @@ import type { BotFeature } from './features/types';
 import type {
   IncomingMessage,
   JoinedMember,
+  MessageBulkDeletion,
   MessageDeletion,
   MessageUpdate,
 } from './gateway-events/types';
@@ -56,6 +57,7 @@ export interface GatewayDispatcher {
   memberJoin(member: JoinedMember): Promise<void>;
   memberLeave(userId: string): Promise<void>;
   invitesChanged(): Promise<void>;
+  messageDeleteBulk(deletion: MessageBulkDeletion): Promise<void>;
 }
 
 /** Merge job handler maps, refusing duplicates (two owners for one job type is a bug). */
@@ -162,6 +164,7 @@ export function createBotApp(options: BotAppOptions): BotApp {
     memberJoin: (m) => fanOut('onMemberJoin', (fn) => fn(services, m)),
     memberLeave: (id) => fanOut('onMemberLeave', (fn) => fn(services, id)),
     invitesChanged: () => fanOut('onInvitesChanged', (fn) => fn(services)),
+    messageDeleteBulk: (d) => fanOut('onMessageDeleteBulk', (fn) => fn(services, d)),
   };
 
   return {

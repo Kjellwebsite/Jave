@@ -13,10 +13,10 @@ import {
 } from './constants';
 import { PRIORITY_LABELS, STATUS_LABELS } from './labels';
 import { SUPPORT_KICKER, ticketChoiceName, ticketInfoPanel, ticketLine } from './render';
-import { requireHandling } from './resolve';
+import { findTicketByNumber, parseTicketNumber, requireHandling, ticketDigits } from './resolve';
 
 const ACTIVE = [...tickets.ACTIVE_STATUSES];
-const TICKET_NUMBER_QUERY = /^#?(\d{1,6})$/;
+const EVERY_STATUS = [...tickets.TICKET_STATUSES];
 const SEARCH_MAX = 64;
 
 export function moreFooter(shown: number, total: number): string | undefined {
@@ -30,7 +30,7 @@ export function viewSelectRow(items: readonly tickets.TicketSummary[]) {
   return row(
     stringSelect(
       customId(TICKETS_NS, ACTION.view),
-      'Open a ticket',
+      'View a ticket',
       items.map((item) => ({
         value: item.id,
         label: ticketChoiceName(item, CHOICE_NAME_MAX),
@@ -40,10 +40,11 @@ export function viewSelectRow(items: readonly tickets.TicketSummary[]) {
   );
 }
 
-/** /ticket mine — your own tickets (requester view, even for staff). */
+/** /ticket mine — your own tickets, every status (requester view, even for staff). */
 export async function showMine(h: HandlerContext): Promise<void> {
   const page = await tickets.listTickets(h.ctx, {
     mine: true,
+    status: EVERY_STATUS,
     sort: 'activity',
     limit: LIST_LIMIT,
   });
@@ -114,21 +115,30 @@ export async function showTicket(h: HandlerContext, ticketId: string): Promise<v
 
 /**
  * Autocomplete for the `ticket` option: by number ("42", "#0042") or by
- * subject. Core scopes the list: staff see every ticket, members their own.
+ * subject. A number finds that exact ticket in any status, then recent ones
+ * whose number contains it. Core scopes every list: staff see every ticket,
+ * members their own.
  */
 export async function ticketChoices(
   h: HandlerContext,
   query: string,
 ): Promise<AutocompleteChoice[]> {
   const trimmed = query.trim();
-  const numberQuery = TICKET_NUMBER_QUERY.exec(trimmed)?.[1];
-  const page = await tickets.listTickets(h.ctx, {
-    sort: 'activity',
-    limit: numberQuery || !trimmed ? AUTOCOMPLETE_SCAN_LIMIT : AUTOCOMPLETE_LIMIT,
-    ...(trimmed && !numberQuery ? { search: trimmed.slice(0, SEARCH_MAX) } : {}),
-  });
-  return page.items
-    .filter((item) => !numberQuery || item.reference.slice(1).includes(numberQuery))
+  const digits = ticketDigits(trimmed);
+  const number = parseTicketNumber(trimmed);
+  const [exact, page] = await Promise.all([
+    number === null ? null : findTicketByNumber(h, number),
+    tickets.listTickets(h.ctx, {
+      sort: 'activity',
+      limit: digits !== null || !trimmed ? AUTOCOMPLETE_SCAN_LIMIT : AUTOCOMPLETE_LIMIT,
+      ...(trimmed && digits === null ? { search: trimmed.slice(0, SEARCH_MAX) } : {}),
+    }),
+  ]);
+  const matches = page.items.filter(
+    (item) => digits === null || item.reference.slice(1).includes(digits),
+  );
+  const items = exact ? [exact, ...matches.filter((item) => item.id !== exact.id)] : matches;
+  return items
     .slice(0, AUTOCOMPLETE_LIMIT)
     .map((item) => ({ name: ticketChoiceName(item, CHOICE_NAME_MAX), value: item.id }));
 }

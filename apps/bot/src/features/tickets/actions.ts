@@ -42,7 +42,8 @@ export async function resume(h: HandlerContext, ticketId: string): Promise<void>
   );
 }
 
-function userSelect(custom: string, placeholder: string): APIUserSelectComponent {
+/** Discord's member picker (routing only; core validates the chosen handler). */
+export function userSelect(custom: string, placeholder: string): APIUserSelectComponent {
   return {
     type: ComponentType.UserSelect,
     custom_id: custom,

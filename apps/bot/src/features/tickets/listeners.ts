@@ -5,7 +5,12 @@ import {
   tickets,
   ValidationError,
 } from '@jave/core';
-import type { IncomingMessage, MessageDeletion, MessageUpdate } from '../../gateway-events/types';
+import type {
+  IncomingMessage,
+  MessageBulkDeletion,
+  MessageDeletion,
+  MessageUpdate,
+} from '../../gateway-events/types';
 import type { BotServices } from '../../runtime';
 import { clip } from '../../ui/format';
 
@@ -14,6 +19,8 @@ const MAX_ATTACHMENTS = 10;
 const ATTACHMENT_NAME_MAX = 256;
 const MIME_TYPE = /^[\w.+-]+\/[\w.+-]+(;.*)?$/;
 const CONTENT_TYPE_MAX = 128;
+/** Discord deletes at most 100 messages in one bulk delete. */
+const BULK_DELETE_MAX_MESSAGES = 100;
 
 function systemContext(services: BotServices, reason: string): ServiceContext {
   return createContext({
@@ -118,4 +125,31 @@ export async function onTicketMessageDelete(
       deletedAt: services.clock.now(),
     }),
   );
+}
+
+/**
+ * A purge (MessageDeleteBulk, also JAVE's own bulk deletes) in a ticket
+ * thread: every message is flagged exactly like a single deletion, so it
+ * leaves the requester's conversation, exports and the archived transcript.
+ * Purges elsewhere cost one lookup.
+ */
+export async function onTicketMessageDeleteBulk(
+  services: BotServices,
+  deletion: MessageBulkDeletion,
+): Promise<void> {
+  if (!inHomeGuild(services, deletion.guildId) || deletion.ids.length === 0) return;
+  const ctx = systemContext(services, 'gateway:ticket-message-bulk-delete');
+  const ticketId = await tickets
+    .getTicketIdForThread(ctx, { threadId: deletion.channelId })
+    .catch((error: unknown) => {
+      if (error instanceof ValidationError) return null;
+      throw error;
+    });
+  if (!ticketId) return;
+  const deletedAt = services.clock.now();
+  for (const id of deletion.ids.slice(0, BULK_DELETE_MAX_MESSAGES)) {
+    await tolerateInvalid(ctx, 'messageDeleteBulk', () =>
+      tickets.recordMessageDelete(ctx, { discordMessageId: id, deletedAt }),
+    );
+  }
 }

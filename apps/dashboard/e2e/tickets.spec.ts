@@ -16,6 +16,8 @@ const SAVE = process.env.JAVE_SCREENSHOTS === '1';
 const MAX_CAPTURE_HEIGHT = 2200;
 const TICKET_PATH = /\/tickets\/[0-9a-f-]{36}$/;
 const INTERNAL_NOTE = 'Second evaluator is Theo; nudged him.';
+/** A well-formed user id that is not the viewer's. */
+const FOREIGN_USER_ID = '0b5a3f0e-8d1c-4f47-9e7a-2d6c1b9f4a10';
 
 function toasts(page: Page): Locator {
   return page.getByRole('list', { name: 'Notifications' });
@@ -96,6 +98,32 @@ test.describe('staff', () => {
     await expect(page.getByText('NO MATCHES')).toBeVisible();
     await page.getByRole('link', { name: 'Clear filters' }).click();
     await expect(queueRows(page).first()).toBeVisible();
+  });
+
+  test("a requester's history: from their ticket to every ticket they opened", async ({ page }) => {
+    await openTicket(page, TICKET_FIXTURES.requester);
+    const link = page.getByTestId('requester-history');
+    const name = (await link.textContent())?.trim() ?? '';
+    expect(name.length).toBeGreaterThan(0);
+    await link.click();
+    await page.waitForURL(/opener=[0-9a-f-]{36}/);
+    const url = new URL(page.url());
+    paths.history = `${url.pathname}${url.search}`;
+
+    const bar = page.getByTestId('opener-filter');
+    await expect(bar).toContainText(/opened by/i);
+    await expect(bar).toContainText(name);
+    await expect(queueRows(page)).toHaveCount(1);
+    await expect(queueRows(page).first()).toContainText(TICKET_FIXTURES.requester);
+    // One member's history is not a triage view.
+    await expect(
+      page.getByRole('navigation', { name: 'Queue views' }).locator('[aria-current="page"]'),
+    ).toHaveCount(0);
+
+    await bar.getByRole('link', { name: 'All requesters' }).click();
+    await page.waitForURL((next) => !next.searchParams.has('opener'));
+    await expect(page.getByTestId('opener-filter')).toHaveCount(0);
+    await expect(queueRows(page).filter({ hasText: TICKET_FIXTURES.overdue })).toHaveCount(1);
   });
 
   test('a handler claims, notes, prioritises, waits, resumes, closes and reopens', async ({
@@ -255,6 +283,14 @@ test.describe('requester', () => {
     await expect(page.getByTestId('claim-ticket')).toHaveCount(0);
     await expect(page.getByTestId('close-ticket')).toBeVisible();
     await expect(page.getByLabel('Include internal notes')).toHaveCount(0);
+    await expect(page.getByTestId('requester-history')).toHaveCount(0);
+  });
+
+  test("BREAK: the opener filter never widens a member's list", async ({ page }) => {
+    await page.goto(`/tickets?opener=${FOREIGN_USER_ID}&status=all`);
+    await expect(page.getByTestId('opener-filter')).toHaveCount(0);
+    await expect(queueRows(page)).toHaveCount(1);
+    await expect(queueRows(page).first()).toContainText(TICKET_FIXTURES.requester);
   });
 
   test('exports their own transcript, without internal notes', async ({ page }) => {
@@ -357,6 +393,7 @@ interface Shot {
 
 const SHOTS: readonly Shot[] = [
   { name: 'tickets-queue', persona: 'founder', path: () => '/tickets' },
+  { name: 'tickets-history', persona: 'moderator', path: () => paths.history! },
   { name: 'tickets-detail-staff', persona: 'moderator', path: () => paths.claimed! },
   { name: 'tickets-detail-manager', persona: 'operations', path: () => paths.own! },
   { name: 'tickets-empty', persona: 'founder', path: () => '/tickets?q=nothing-matches-this' },

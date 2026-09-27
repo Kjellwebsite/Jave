@@ -14,6 +14,7 @@ import { ClaimAction, TicketControlList } from '@/components/tickets/ticket-cont
 import { referencedUserIds, TicketTimeline } from '@/components/tickets/ticket-timeline';
 import { TranscriptExport } from '@/components/tickets/transcript-export';
 import { CATEGORY_LABELS, formatMinutes, ticketControls } from '@/lib/ticket-view';
+import { toQueryString } from '@/lib/search-params';
 import { formatRelative, formatTimestamp } from '@/lib/time';
 import { requireConsoleContext } from '@/server/context';
 import { loadViewer } from '@/server/data/viewer';
@@ -149,7 +150,20 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       />
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-6">
-        <Fact label="REQUESTER">{ticket.opener?.displayName ?? 'Unknown'}</Fact>
+        <Fact label="REQUESTER">
+          {staff && ticket.opener ? (
+            <Link
+              href={`/tickets${toQueryString({ opener: ticket.opener.userId, status: 'all' })}`}
+              className="underline decoration-line-strong decoration-dotted underline-offset-4 hover:text-fg hover:decoration-fg-subtle"
+              title={`Every ticket from ${ticket.opener.displayName}`}
+              data-testid="requester-history"
+            >
+              {ticket.opener.displayName}
+            </Link>
+          ) : (
+            (ticket.opener?.displayName ?? 'Unknown')
+          )}
+        </Fact>
         <Fact label="HANDLER">
           {ticket.assignee ? (
             ticket.assignee.displayName

@@ -10,13 +10,19 @@ import { DiscordActionError } from '../../../discord/gateway';
 import type { BotServices } from '../../../runtime';
 import { DISCORD_REASON, TRANSCRIPT_UPLOAD_MAX_BYTES } from '../constants';
 import { archiveCard, closingCard, ticketCard } from '../render';
-import { isMessageGone, isThreadGone, parsePayload } from './shared';
+import { inOpenThread, isMessageGone, isThreadGone, parsePayload } from './shared';
 
 /**
  * The close runs as three steps. Posting is not idempotent, so a failed run
- * records the step it stopped at in its error and the retry resumes there:
- * the closing card is never posted twice, and posting never unarchives a
- * thread that was already locked.
+ * records the step it was in (in the job's error) and the retry resumes
+ * there. Every failure inside the handler names its step, including reading
+ * the ticket and reporting a deleted thread.
+ *
+ * A retry that finds no step (the worker died mid-run and its lease was
+ * recovered, or the run failed after the handler returned) asks Discord: a
+ * locked thread means finalize and lock are done, because the lock comes last
+ * in the thread. The one gap: a worker that dies between posting the closing
+ * card and locking the thread posts the card again on the retry.
  *
  * - `finalize`: edit the status card to its closed state, then post the closing card;
  * - `lock`: lock and archive the thread (last in the thread: posting unarchives);
@@ -27,59 +33,80 @@ export type CloseStep = (typeof CLOSE_STEPS)[number];
 
 const STEP_ERROR_PREFIX = 'close step ';
 const STEP_ERROR = /^close step (\w+) failed: /;
+/** JaveError codes retrying cannot fix: the worker's own rule. */
+const FINAL_ERROR_CODES: readonly string[] = [
+  'VALIDATION',
+  'NOT_FOUND',
+  'FORBIDDEN',
+  'INVALID_STATE',
+];
 
 /** The error message a failed step leaves on the job (`close step lock failed: …`). */
 export function stepErrorMessage(step: CloseStep, reason: string): string {
   return `${STEP_ERROR_PREFIX}${step} failed: ${reason}`;
 }
 
-/**
- * Where a retry resumes: the step named in the last error, or the start when
- * the last run left no step (first run, a crash, a recovered lease).
- */
-export function resumeStep(job: Pick<JobRecord, 'lastError'>): CloseStep {
+/** The step the last failed run named, if any. */
+export function namedStep(job: Pick<JobRecord, 'lastError'>): CloseStep | null {
   const named = job.lastError ? STEP_ERROR.exec(job.lastError)?.[1] : undefined;
-  return CLOSE_STEPS.find((step) => step === named) ?? CLOSE_STEPS[0];
+  return CLOSE_STEPS.find((step) => step === named) ?? null;
+}
+
+/** Where a retry resumes when the last error names a step; the start otherwise. */
+export function resumeStep(job: Pick<JobRecord, 'lastError'>): CloseStep {
+  return namedStep(job) ?? CLOSE_STEPS[0];
+}
+
+function isPermanent(error: unknown): boolean {
+  return (
+    error instanceof PermanentJobError ||
+    (isJaveError(error) && FINAL_ERROR_CODES.includes(error.code)) ||
+    (error instanceof DiscordActionError && error.permanent)
+  );
 }
 
 /**
- * Retrying cannot fix a permanent Discord failure or a domain refusal: those
- * dead-letter. Anything else retries, resuming at `step`.
+ * A failure at `step` (or at an unknown point: `null`, so the retry asks
+ * Discord again). Permanent failures dead-letter; anything else retries.
+ * Exported for tests.
  */
-function stepFailure(step: CloseStep, error: unknown): Error {
+export function failAt(step: CloseStep | null, error: unknown): Error {
   const reason = error instanceof Error ? error.message : String(error);
-  const message = stepErrorMessage(step, reason);
-  const permanent =
-    error instanceof PermanentJobError ||
-    isJaveError(error) ||
-    (error instanceof DiscordActionError && error.permanent);
-  return permanent ? new PermanentJobError(message) : new Error(message);
+  const message = step ? stepErrorMessage(step, reason) : reason;
+  if (isPermanent(error)) return new PermanentJobError(message);
+  return step || !(error instanceof Error) ? new Error(message) : error;
 }
 
-async function runStep<T>(step: CloseStep, work: () => Promise<T>): Promise<T> {
+async function runStep<T>(step: CloseStep | null, work: () => Promise<T>): Promise<T> {
   try {
     return await work();
   } catch (error) {
-    throw stepFailure(step, error);
+    throw failAt(step, error);
   }
 }
 
-/** The status card to its closed state (no buttons), then the closing card. */
+/**
+ * The status card to its closed state (no buttons), then the closing card.
+ * A thread that archived itself while idle is unarchived first.
+ */
 async function finalize(
   services: BotServices,
   card: tickets.TicketCard,
   threadId: string,
 ): Promise<void> {
   const { gateway } = services;
-  if (card.cardMessageId) {
+  const { cardMessageId } = card;
+  if (cardMessageId) {
     try {
-      await gateway.editMessage(threadId, card.cardMessageId, ticketCard(card));
+      await inOpenThread(services, threadId, () =>
+        gateway.editMessage(threadId, cardMessageId, ticketCard(card)),
+      );
     } catch (error) {
       // A deleted status card is not re-posted: the closing card below says it all.
       if (!isMessageGone(error)) throw error;
     }
   }
-  await gateway.sendMessage(threadId, closingCard(card));
+  await inOpenThread(services, threadId, () => gateway.sendMessage(threadId, closingCard(card)));
 }
 
 async function lock(
@@ -87,10 +114,12 @@ async function lock(
   card: tickets.TicketCard,
   threadId: string,
 ): Promise<void> {
-  await services.gateway.setThreadState(
-    threadId,
-    { locked: true, archived: true },
-    `${DISCORD_REASON.closeThread} ${card.reference}`,
+  await inOpenThread(services, threadId, () =>
+    services.gateway.setThreadState(
+      threadId,
+      { locked: true, archived: true },
+      `${DISCORD_REASON.closeThread} ${card.reference}`,
+    ),
   );
 }
 
@@ -126,29 +155,49 @@ async function uploadTranscript(
 }
 
 /**
- * The thread's part of the close (finalize, lock) from `from` on. A deleted
- * thread is reported to core — a closed ticket is not re-provisioned, core
- * only clears the stale reference — and the transcript still goes out.
+ * A retry that finds no step in the last error. The lock is the marker
+ * Discord keeps: the thread is locked only after the closing card is posted.
+ */
+async function unnamedResume(
+  services: BotServices,
+  job: Pick<JobRecord, 'attempts'>,
+  threadId: string,
+): Promise<CloseStep> {
+  if (job.attempts <= 1) return 'finalize';
+  const state = await services.gateway.fetchThreadState(threadId);
+  return state.locked ? 'transcript' : 'finalize';
+}
+
+/**
+ * The thread's part of the close (finalize, lock), resumed where the last
+ * run stopped. A deleted thread is reported to core (a closed ticket is not
+ * re-provisioned, core only clears the stale reference) and the transcript
+ * still goes out.
  */
 async function closeThread(
   services: BotServices,
   ctx: ServiceContext,
   card: tickets.TicketCard,
   threadId: string,
-  from: CloseStep,
-): Promise<boolean> {
-  let step: CloseStep = from;
+  job: Pick<JobRecord, 'attempts' | 'lastError'>,
+): Promise<{ from: CloseStep; threadMissing: boolean }> {
+  let step = namedStep(job);
+  let from: CloseStep = step ?? CLOSE_STEPS[0];
   try {
+    if (!step) from = await unnamedResume(services, job, threadId);
+    step = from;
     if (step === 'finalize') {
       await finalize(services, card, threadId);
       step = 'lock';
     }
     if (step === 'lock') await lock(services, card, threadId);
-    return false;
+    return { from, threadMissing: false };
   } catch (error) {
-    if (!isThreadGone(error)) throw stepFailure(step, error);
-    await tickets.markThreadMissing(ctx, { ticketId: card.ticketId, threadId });
-    return true;
+    if (!isThreadGone(error)) throw failAt(step, error);
+    await runStep(step, () =>
+      tickets.markThreadMissing(ctx, { ticketId: card.ticketId, threadId }),
+    );
+    return { from, threadMissing: true };
   }
 }
 
@@ -156,7 +205,10 @@ async function closeThread(
 export function closeThreadHandler(services: BotServices): JobHandler {
   return async (ctx, raw, job) => {
     const payload = parsePayload(tickets.CLOSE_THREAD_JOB, raw);
-    const card = await tickets.getTicketCard(ctx, { ticketId: payload.ticketId });
+    // A failure before any step keeps the resume point the last run left.
+    const card = await runStep(namedStep(job), () =>
+      tickets.getTicketCard(ctx, { ticketId: payload.ticketId }),
+    );
     if (card.status !== 'closed' && card.status !== 'archived') {
       return { skipped: 'reopened since' };
     }
@@ -164,15 +216,14 @@ export function closeThreadHandler(services: BotServices): JobHandler {
       return { skipped: 'thread superseded' };
     }
 
-    const from = resumeStep(job);
+    let from = resumeStep(job);
     let threadMissing = card.threadId === null;
     if (!threadMissing && from !== 'transcript') {
-      threadMissing = await closeThread(services, ctx, card, payload.threadId, from);
+      ({ from, threadMissing } = await closeThread(services, ctx, card, payload.threadId, job));
     }
-    const archive = payload.archiveChannelId
-      ? await runStep('transcript', () =>
-          uploadTranscript(services, ctx, card, payload.archiveChannelId!),
-        )
+    const { archiveChannelId } = payload;
+    const archive = archiveChannelId
+      ? await runStep('transcript', () => uploadTranscript(services, ctx, card, archiveChannelId))
       : { uploaded: false, reason: 'no archive channel' };
     return { threadMissing, resumedAt: from, archive };
   };

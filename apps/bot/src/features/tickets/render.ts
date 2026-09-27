@@ -50,12 +50,18 @@ export function formatMinutes(minutes: number): string {
   return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
 }
 
+/** MANAGE: the staff panel for one ticket (thread card, staff /ticket view). Routing only. */
+function manageButton(ticketId: string) {
+  return button('Manage', customId(TICKETS_NS, ACTION.manage, ticketId));
+}
+
 // ─── Thread card ─────────────────────────────────────────────────────────────
 
 /**
  * The status card in the ticket thread. Requester-safe only: the requester is
- * a member of the thread. CLAIM while active and unassigned; CLOSE while
- * active; no buttons once closed (an empty component list clears them on edit).
+ * a member of the thread. CLAIM while active and unassigned; CLOSE and MANAGE
+ * (staff controls, refused to everyone else) while active; no buttons once
+ * closed (an empty component list clears them on edit).
  */
 export function ticketCard(card: tickets.TicketCard): MessagePayload {
   const active = isActiveStatus(card.status);
@@ -77,7 +83,10 @@ export function ticketCard(card: tickets.TicketCard): MessagePayload {
     buttons.push(button('Claim', customId(TICKETS_NS, ACTION.claim, card.ticketId), 'primary'));
   }
   if (active) {
-    buttons.push(button('Close', customId(TICKETS_NS, ACTION.close, card.ticketId)));
+    buttons.push(
+      button('Close', customId(TICKETS_NS, ACTION.close, card.ticketId)),
+      manageButton(card.ticketId),
+    );
   }
   return {
     embeds: [
@@ -184,10 +193,16 @@ function slaLine(sla: tickets.TicketSla): string {
   }
 }
 
-function dashboardLink(publicUrl: string | undefined, ticketId: string): string | null {
+/** An http(s) link into the dashboard, or null when no valid public URL is configured. */
+export function dashboardUrl(
+  publicUrl: string | undefined,
+  path: string,
+  query: Readonly<Record<string, string>> = {},
+): string | null {
   if (!publicUrl) return null;
   try {
-    const url = new URL(`${publicUrl.replace(/\/+$/, '')}/tickets/${ticketId}`);
+    const url = new URL(`${publicUrl.replace(/\/+$/, '')}${path}`);
+    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
     return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
   } catch {
     return null;
@@ -214,10 +229,13 @@ export function ticketInfoPanel(
   if (view.closeReason)
     fields.push(field('Close reason', userText(view.closeReason, REASON_DISPLAY_MAX)));
   const buttons = [];
-  if (staff && isActiveStatus(view.status) && !view.assignee) {
-    buttons.push(button('Claim', customId(TICKETS_NS, ACTION.claim, view.id), 'primary'));
+  if (staff && isActiveStatus(view.status)) {
+    if (!view.assignee) {
+      buttons.push(button('Claim', customId(TICKETS_NS, ACTION.claim, view.id), 'primary'));
+    }
+    buttons.push(manageButton(view.id));
   }
-  const link = dashboardLink(publicUrl, view.id);
+  const link = dashboardUrl(publicUrl, `/tickets/${view.id}`);
   if (link) buttons.push(linkButton('Open in dashboard', link));
   return {
     embeds: [

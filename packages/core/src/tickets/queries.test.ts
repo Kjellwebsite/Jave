@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { tickets } from '@jave/database';
-import { HOUR, MINUTE } from '../kernel/clock';
+import { DAY, HOUR, MINUTE } from '../kernel/clock';
 import type { TestKit } from '../testing';
 import { claimTicket } from './assignment.service';
+import { TICKET_STATUSES } from './constants';
 import { closeTicket } from './lifecycle.service';
 import { listTickets } from './queries.service';
 import { runSlaSweep } from './sweeps';
@@ -86,6 +87,49 @@ describe('tickets: queries', INTEGRATION_SUITE, () => {
     await kit.db.update(tickets).set({ status: 'archived' }).where(eq(tickets.id, mine.id));
     expect((await listTickets(kit.as(a), {})).total).toBe(0);
     expect((await listTickets(kit.as(a), { status: ['archived'] })).total).toBe(1);
+  });
+
+  it("a handler's own tickets keep the requester view inside the staff list", async () => {
+    const mod = await kit.member({ roles: ['moderator'] });
+    const member = await kit.member();
+    const own = await openAs(kit, mod, { subject: 'My own account problem' });
+    const other = await openAs(kit, member);
+    kit.clock.advance(2 * DAY);
+    await runSlaSweep(botContext(kit));
+
+    const page = await listTickets(kit.as(mod), {});
+    const byId = new Map(page.items.map((item) => [item.id, item]));
+    expect(byId.get(own.id)!.sla).toBeNull();
+    expect(byId.get(other.id)!.sla).toMatchObject({ state: 'breached' });
+    // The SLA filters never reveal the outcome of your own ticket, either way.
+    const missed = await listTickets(kit.as(mod), { breached: true });
+    expect(missed.items.map((t) => t.id)).toEqual([other.id]);
+    expect((await listTickets(kit.as(mod), { breached: false })).total).toBe(0);
+    // Another handler sees it as staff.
+    const lead = await kit.member({ roles: ['operations'] });
+    const theirs = await listTickets(kit.as(lead), { breached: true });
+    expect(theirs.items.map((t) => t.id).sort()).toEqual([own.id, other.id].sort());
+  });
+
+  it('finds a ticket by exact number within the caller scope, archived included on request', async () => {
+    const a = await kit.member();
+    const b = await kit.member();
+    const mod = await kit.member({ roles: ['moderator'] });
+    const mine = await openAs(kit, a);
+    const theirs = await openAs(kit, b);
+    const every = [...TICKET_STATUSES];
+
+    expect((await listTickets(kit.as(mod), { number: theirs.number })).items).toEqual([
+      expect.objectContaining({ id: theirs.id }),
+    ]);
+    expect((await listTickets(kit.as(a), { number: mine.number })).total).toBe(1);
+    expect((await listTickets(kit.as(a), { number: theirs.number })).total).toBe(0);
+
+    await closeTicket(kit.as(a), { ticketId: mine.id, reason: 'Resolved it.' });
+    await kit.db.update(tickets).set({ status: 'archived' }).where(eq(tickets.id, mine.id));
+    expect((await listTickets(kit.as(mod), { number: mine.number })).total).toBe(0);
+    expect((await listTickets(kit.as(mod), { number: mine.number, status: every })).total).toBe(1);
+    await expect(listTickets(kit.as(mod), { number: 0 })).rejects.toThrow();
   });
 
   it('builds a requester-safe card and resolves threads for allowed viewers', async () => {

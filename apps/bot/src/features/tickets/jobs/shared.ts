@@ -1,7 +1,7 @@
 import { PermanentJobError, type ServiceContext, tickets } from '@jave/core';
 import { DiscordActionError } from '../../../discord/gateway';
 import type { BotServices } from '../../../runtime';
-import { DISCORD_ERROR } from '../constants';
+import { DISCORD_ERROR, DISCORD_REASON } from '../constants';
 import { ticketCard } from '../render';
 
 type JobType = tickets.TicketDiscordJobType;
@@ -35,6 +35,35 @@ function isMemberGone(error: unknown): boolean {
   return hasCode(error, [DISCORD_ERROR.unknownMember, DISCORD_ERROR.unknownUser]);
 }
 
+function isThreadArchived(error: unknown): boolean {
+  return hasCode(error, [DISCORD_ERROR.threadArchived]);
+}
+
+/**
+ * Act in a ticket thread that may have archived itself while idle. Discord
+ * refuses edits and member adds in an archived thread with 50083 (a post
+ * unarchives an unlocked thread by itself): on that refusal the thread is
+ * unarchived explicitly and the action runs once more. The lock is left as
+ * it is.
+ */
+export async function inOpenThread<T>(
+  services: BotServices,
+  threadId: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (!isThreadArchived(error)) throw error;
+    await services.gateway.setThreadState(
+      threadId,
+      { archived: false },
+      DISCORD_REASON.unarchiveThread,
+    );
+    return work();
+  }
+}
+
 /** Retrying cannot fix a permanent Discord failure: dead-letter it. Anything else retries. */
 export function asJobError(error: unknown): never {
   if (error instanceof DiscordActionError && error.permanent) {
@@ -55,7 +84,9 @@ export async function addMember(
   discordUserId: string,
 ): Promise<boolean> {
   try {
-    await services.gateway.addThreadMember(threadId, discordUserId);
+    await inOpenThread(services, threadId, () =>
+      services.gateway.addThreadMember(threadId, discordUserId),
+    );
     return true;
   } catch (error) {
     if (!isMemberGone(error)) throw error;
@@ -74,15 +105,20 @@ export async function syncCard(
   card: tickets.TicketCard,
   threadId: string,
 ): Promise<void> {
-  if (card.cardMessageId) {
+  const { cardMessageId } = card;
+  if (cardMessageId) {
     try {
-      await services.gateway.editMessage(threadId, card.cardMessageId, ticketCard(card));
+      await inOpenThread(services, threadId, () =>
+        services.gateway.editMessage(threadId, cardMessageId, ticketCard(card)),
+      );
       return;
     } catch (error) {
       if (!isMessageGone(error)) throw error;
     }
   }
-  const sent = await services.gateway.sendMessage(threadId, ticketCard(card));
+  const sent = await inOpenThread(services, threadId, () =>
+    services.gateway.sendMessage(threadId, ticketCard(card)),
+  );
   await tickets.markThreadCreated(ctx, {
     ticketId: card.ticketId,
     threadId,

@@ -9,6 +9,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  ne,
   type SQL,
   sql,
 } from 'drizzle-orm';
@@ -65,6 +66,10 @@ const NON_ARCHIVED = TICKET_STATUSES.filter((s) => s !== 'archived');
  * Ticket list. Handlers see every ticket and may filter by assignee, SLA
  * breach and opener; everyone else (and handlers with `mine: true`) sees only
  * the tickets they opened. Archived tickets appear only when asked for.
+ *
+ * A handler's own tickets keep the requester view inside the staff list: no
+ * SLA fields, and the SLA filters leave them out (their presence under
+ * "missed" would reveal the SLA outcome).
  */
 export async function listTickets(
   ctx: ServiceContext,
@@ -77,6 +82,7 @@ export async function listTickets(
 
   const filters: SQL[] = [inArray(tickets.status, [...(q.status ?? NON_ARCHIVED)])];
   if (viewer === 'requester' && userId) filters.push(eq(tickets.openerUserId, userId));
+  if (q.number !== undefined) filters.push(eq(tickets.number, q.number));
   if (q.category) filters.push(eq(tickets.category, q.category));
   if (q.priority) filters.push(eq(tickets.priority, q.priority));
   if (q.search) filters.push(ilike(tickets.subject, `%${escapeLike(q.search)}%`));
@@ -87,6 +93,7 @@ export async function listTickets(
       filters.push(eq(tickets.assigneeUserId, q.assignee));
     if (q.breached !== undefined) {
       filters.push(q.breached ? isNotNull(tickets.slaBreachedAt) : isNull(tickets.slaBreachedAt));
+      if (userId) filters.push(ne(tickets.openerUserId, userId));
     }
     if (q.openerUserId) filters.push(eq(tickets.openerUserId, q.openerUserId));
   }
@@ -123,7 +130,9 @@ export async function listTickets(
   );
   const now = ctx.clock.now();
   return {
-    items: rows.map((row) => toSummary(row, viewer, people, now)),
+    items: rows.map((row) =>
+      toSummary(row, row.openerUserId === userId ? 'requester' : viewer, people, now),
+    ),
     total: total?.value ?? 0,
     limit: q.limit,
     offset: q.offset,

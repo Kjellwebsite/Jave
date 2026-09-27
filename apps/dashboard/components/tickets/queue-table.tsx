@@ -49,7 +49,7 @@ export interface QueueRow {
   /** Pre-formatted in the viewer's time zone ("3h ago"). */
   activityLabel: string;
   activityAt: Date;
-  /** Staff only. */
+  /** Staff only; null on the viewer's own tickets (they get the requester view). */
   sla: SlaInput | null;
   dueLabel: string | null;
 }
@@ -272,7 +272,10 @@ export function QueueTable({ rows, staff, renderedAt, bulk, empty }: QueueTableP
                         dueLabel={row.dueLabel ?? undefined}
                         className="justify-end"
                       />
-                    ) : null}
+                    ) : (
+                      // Core leaves out SLA data only on the viewer's own tickets.
+                      <span className="text-small text-fg-subtle">Your ticket</span>
+                    )}
                   </TableCell>
                 ) : null}
                 <TableCell className="hidden whitespace-nowrap text-right md:table-cell">

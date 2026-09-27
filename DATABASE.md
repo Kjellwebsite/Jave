@@ -550,41 +550,45 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 #### `adversarial_roles`
 
-| Column                       | Type                                                              | Null | Default             | References                            |
-| ---------------------------- | ----------------------------------------------------------------- | :--: | ------------------- | ------------------------------------- |
-| `id` **PK**                  | uuid                                                              |      | `gen_random_uuid()` |                                       |
-| `trial_id`                   | uuid                                                              |      |                     | `trials.id` (on delete cascade)       |
-| `team_id`                    | uuid                                                              |  ✓   |                     | `trial_teams.id` (on delete set null) |
-| `operative_member_id`        | uuid                                                              |      |                     | `members.id`                          |
-| `scenario_id`                | uuid                                                              |      |                     | `adversarial_scenarios.id`            |
-| `objective`                  | text                                                              |      |                     |                                       |
-| `guardrails`                 | text                                                              |      |                     |                                       |
-| `sandbox_assets`             | text                                                              |      |                     |                                       |
-| `status`                     | enum(planned · briefed · active · concluded · revealed · aborted) |      | `"planned"`         |                                       |
-| `authorized_by_user_id`      | uuid                                                              |  ✓   |                     | `users.id`                            |
-| `authorized_at`              | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `sandbox_attested`           | boolean                                                           |      | `false`             |                                       |
-| `briefed_at`                 | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `briefing_revision`          | smallint                                                          |      | `1`                 |                                       |
-| `briefing_delivery`          | enum(pending · sent · undeliverable)                              |  ✓   |                     |                                       |
-| `briefing_delivered_at`      | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `activated_at`               | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `concluded_at`               | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `revealed_at`                | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `aborted_at`                 | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `abort_reason`               | text                                                              |  ✓   |                     |                                       |
-| `aborted_by_user_id`         | uuid                                                              |  ✓   |                     | `users.id`                            |
-| `red_flag_raised_at`         | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `red_flag_raised_by_user_id` | uuid                                                              |  ✓   |                     | `users.id`                            |
-| `stop_notice_delivery`       | enum(pending · sent · undeliverable)                              |  ✓   |                     |                                       |
-| `stop_notice_delivered_at`   | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `debrief_delivery`           | enum(pending · sent · undeliverable)                              |  ✓   |                     |                                       |
-| `debrief_channel_id`         | varchar(20)                                                       |  ✓   |                     |                                       |
-| `debrief_message_id`         | varchar(20)                                                       |  ✓   |                     |                                       |
-| `debrief_posted_at`          | timestamp with time zone                                          |  ✓   |                     |                                       |
-| `created_by_user_id`         | uuid                                                              |  ✓   |                     | `users.id`                            |
-| `created_at`                 | timestamp with time zone                                          |      | `now()`             |                                       |
-| `updated_at`                 | timestamp with time zone                                          |      | `now()`             |                                       |
+| Column                       | Type                                                                                                            | Null | Default             | References                            |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------- | :--: | ------------------- | ------------------------------------- |
+| `id` **PK**                  | uuid                                                                                                            |      | `gen_random_uuid()` |                                       |
+| `trial_id`                   | uuid                                                                                                            |      |                     | `trials.id` (on delete cascade)       |
+| `team_id`                    | uuid                                                                                                            |  ✓   |                     | `trial_teams.id` (on delete set null) |
+| `operative_member_id`        | uuid                                                                                                            |      |                     | `members.id`                          |
+| `scenario_id`                | uuid                                                                                                            |      |                     | `adversarial_scenarios.id`            |
+| `objective`                  | text                                                                                                            |      |                     |                                       |
+| `scenario_title`             | varchar(120)                                                                                                    |      |                     |                                       |
+| `technique`                  | enum(social_engineering · instruction_integrity · permission_hygiene · data_handling · verification_discipline) |      |                     |                                       |
+| `guardrails`                 | text                                                                                                            |      |                     |                                       |
+| `sandbox_assets`             | text                                                                                                            |      |                     |                                       |
+| `status`                     | enum(planned · briefed · active · concluded · revealed · aborted)                                               |      | `"planned"`         |                                       |
+| `plan_revision`              | smallint                                                                                                        |      | `1`                 |                                       |
+| `authorized_by_user_id`      | uuid                                                                                                            |  ✓   |                     | `users.id`                            |
+| `authorized_at`              | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `sandbox_attested`           | boolean                                                                                                         |      | `false`             |                                       |
+| `authorization_note`         | text                                                                                                            |  ✓   |                     |                                       |
+| `briefed_at`                 | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `briefing_revision`          | smallint                                                                                                        |      | `1`                 |                                       |
+| `briefing_delivery`          | enum(pending · sent · undeliverable)                                                                            |  ✓   |                     |                                       |
+| `briefing_delivered_at`      | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `activated_at`               | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `concluded_at`               | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `revealed_at`                | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `aborted_at`                 | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `abort_reason`               | text                                                                                                            |  ✓   |                     |                                       |
+| `aborted_by_user_id`         | uuid                                                                                                            |  ✓   |                     | `users.id`                            |
+| `red_flag_raised_at`         | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `red_flag_raised_by_user_id` | uuid                                                                                                            |  ✓   |                     | `users.id`                            |
+| `stop_notice_delivery`       | enum(pending · sent · undeliverable)                                                                            |  ✓   |                     |                                       |
+| `stop_notice_delivered_at`   | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `debrief_delivery`           | enum(pending · sent · undeliverable)                                                                            |  ✓   |                     |                                       |
+| `debrief_channel_id`         | varchar(20)                                                                                                     |  ✓   |                     |                                       |
+| `debrief_message_id`         | varchar(20)                                                                                                     |  ✓   |                     |                                       |
+| `debrief_posted_at`          | timestamp with time zone                                                                                        |  ✓   |                     |                                       |
+| `created_by_user_id`         | uuid                                                                                                            |  ✓   |                     | `users.id`                            |
+| `created_at`                 | timestamp with time zone                                                                                        |      | `now()`             |                                       |
+| `updated_at`                 | timestamp with time zone                                                                                        |      | `now()`             |                                       |
 
 - `adversarial_roles_trial_idx` (trial_id)
 - `adversarial_roles_operative_idx` (operative_member_id)
@@ -612,17 +616,19 @@ PostgreSQL 16 · Drizzle ORM · migrations in `packages/database/drizzle` · ref
 
 #### `adversarial_triggers`
 
-| Column               | Type                     | Null | Default             | References                                 |
-| -------------------- | ------------------------ | :--: | ------------------- | ------------------------------------------ |
-| `id` **PK**          | uuid                     |      | `gen_random_uuid()` |                                            |
-| `role_id`            | uuid                     |      |                     | `adversarial_roles.id` (on delete cascade) |
-| `label`              | varchar(120)             |      |                     |                                            |
-| `description`        | text                     |      |                     |                                            |
-| `planned_for`        | timestamp with time zone |  ✓   |                     |                                            |
-| `fired_at`           | timestamp with time zone |  ✓   |                     |                                            |
-| `fired_by_user_id`   | uuid                     |  ✓   |                     | `users.id`                                 |
-| `created_by_user_id` | uuid                     |  ✓   |                     | `users.id`                                 |
-| `created_at`         | timestamp with time zone |      | `now()`             |                                            |
+| Column                | Type                     | Null | Default             | References                                 |
+| --------------------- | ------------------------ | :--: | ------------------- | ------------------------------------------ |
+| `id` **PK**           | uuid                     |      | `gen_random_uuid()` |                                            |
+| `role_id`             | uuid                     |      |                     | `adversarial_roles.id` (on delete cascade) |
+| `label`               | varchar(120)             |      |                     |                                            |
+| `description`         | text                     |      |                     |                                            |
+| `planned_for`         | timestamp with time zone |  ✓   |                     |                                            |
+| `fired_at`            | timestamp with time zone |  ✓   |                     |                                            |
+| `fired_by_user_id`    | uuid                     |  ✓   |                     | `users.id`                                 |
+| `created_by_user_id`  | uuid                     |  ✓   |                     | `users.id`                                 |
+| `approved_by_user_id` | uuid                     |  ✓   |                     | `users.id`                                 |
+| `approved_at`         | timestamp with time zone |  ✓   |                     |                                            |
+| `created_at`          | timestamp with time zone |      | `now()`             |                                            |
 
 - `adversarial_triggers_role_idx` (role_id)
 

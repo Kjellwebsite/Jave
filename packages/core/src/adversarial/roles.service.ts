@@ -1,4 +1,4 @@
-import { eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { z } from 'zod';
 import { adversarialRoles, adversarialTriggers } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
@@ -9,13 +9,12 @@ import {
   InvalidStateError,
   isUniqueViolation,
   NotFoundError,
-  UnauthenticatedError,
   ValidationError,
 } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { cancelJob, enqueueJob } from '../jobs/queue';
-import { actorUserId } from '../permissions/actor';
-import { authorize, can, isSelf, requireUser } from '../permissions/authorize';
+import { actorUserId, type UserActor } from '../permissions/actor';
+import { authorize, isSelf, requireUser } from '../permissions/authorize';
 import {
   ABORT_MAX_ATTEMPTS,
   ADVERSARIAL_ABORT_JOB,
@@ -26,11 +25,9 @@ import {
 } from './discord-jobs';
 import {
   assertKillSwitchOn,
+  assertRoleStillRunnable,
   AUDIT_TARGET_ROLE,
-  actorParticipatesIn,
   assertNotTrialParticipant,
-  denyAsNotFound,
-  findRole,
   isForeignKeyViolation,
   loadManagedRole,
   loadTeam,
@@ -38,19 +35,18 @@ import {
   lockRole,
   memberUserId,
   operativeIneligibility,
-  type TrialContext,
+  roleAuditContext,
   transitionRole,
   trialBlocker,
 } from './guards';
-import { alertStaff, notifyOperative, notifyStaffUser, requestAuthorization } from './notify';
-import { assertSafe, type SafetyField, sanitizeStopText, STOP_WORD } from './safety';
+import { notifyOperative, notifyStaffUser, requestAuthorization } from './notify';
+import { assertSafe, type SafetyField, sanitizeStopText } from './safety';
 import { loadScenario } from './scenarios.service';
 import {
   abortRoleSchema,
   authorizeRoleSchema,
   LIMITS,
   planRoleSchema,
-  raiseRedFlagSchema,
   roleIdSchema,
 } from './schemas';
 import {
@@ -60,40 +56,67 @@ import {
   type RoleStatus,
 } from './state';
 
+const PLAN_CHANGED = 'The plan changed since you reviewed it. Reload it and review it again.';
+
 // ─── Shared checks ───────────────────────────────────────────────────────────
 
-/** Every operative-facing text of a role, re-validated before authorization and briefing. */
-async function roleSafetyFields(ctx: ServiceContext, role: RoleRecord): Promise<SafetyField[]> {
-  const triggers = await ctx.db
+/**
+ * Every operative-facing text of a role, re-validated before authorization
+ * (the whole plan) and briefing (what is sent: approved triggers only).
+ */
+async function roleSafetyFields(
+  ctx: ServiceContext,
+  role: RoleRecord,
+  triggers: 'all' | 'approved',
+): Promise<SafetyField[]> {
+  const rows = await ctx.db
     .select({ label: adversarialTriggers.label, description: adversarialTriggers.description })
     .from(adversarialTriggers)
-    .where(eq(adversarialTriggers.roleId, role.id));
+    .where(
+      and(
+        eq(adversarialTriggers.roleId, role.id),
+        triggers === 'approved' ? isNotNull(adversarialTriggers.approvedAt) : undefined,
+      ),
+    );
   return [
+    { field: 'scenarioTitle', text: role.scenarioTitle, kind: 'content' },
     { field: 'objective', text: role.objective, kind: 'content' },
     { field: 'sandboxAssets', text: role.sandboxAssets, kind: 'content' },
     { field: 'guardrails', text: role.guardrails, kind: 'guardrails' },
-    ...triggers.flatMap((trigger, index): SafetyField[] => [
+    ...rows.flatMap((trigger, index): SafetyField[] => [
       { field: `triggers.${index}.label`, text: trigger.label, kind: 'content' },
       { field: `triggers.${index}.description`, text: trigger.description, kind: 'content' },
     ]),
   ];
 }
 
-/** The trial still accepts the role and the operative is still eligible. */
-async function assertRoleStillRunnable(
+/**
+ * Why the authorizer may not sign this plan, or null. Two-person rule: they
+ * did not plan it, are not the operative, and wrote none of its triggers
+ * (every trigger present is approved by this signature).
+ */
+async function authorizationConflict(
   ctx: ServiceContext,
   role: RoleRecord,
-): Promise<TrialContext> {
-  const trial = await loadTrial(ctx, role.trialId);
-  const blocker = trialBlocker(trial);
-  if (blocker) throw new InvalidStateError(blocker);
-  const ineligible = await operativeIneligibility(ctx, {
-    trialId: role.trialId,
-    teamId: role.teamId,
-    memberId: role.operativeMemberId,
-  });
-  if (ineligible) throw new InvalidStateError(ineligible);
-  return trial;
+  authorizer: UserActor,
+): Promise<string | null> {
+  if (role.createdByUserId === null || role.createdByUserId === authorizer.userId)
+    return 'Two-person rule: a different staff member must authorize this role.';
+  if (isSelf(authorizer, role.operativeMemberId))
+    return 'The operative cannot authorize their own role.';
+  const [ownTrigger] = await ctx.db
+    .select({ id: adversarialTriggers.id })
+    .from(adversarialTriggers)
+    .where(
+      and(
+        eq(adversarialTriggers.roleId, role.id),
+        eq(adversarialTriggers.createdByUserId, authorizer.userId),
+      ),
+    )
+    .limit(1);
+  if (ownTrigger)
+    return 'Two-person rule: you wrote a trigger in this plan, so a different staff member must authorize it.';
+  return null;
 }
 
 function assertStatus(role: RoleRecord, allowed: readonly RoleStatus[], action: string): void {
@@ -145,6 +168,7 @@ export async function planRole(
   if (!scenario.active) throw new InvalidStateError('This scenario is archived.');
   const objective = data.objective ?? scenario.objective;
   assertSafe([
+    { field: 'scenarioTitle', text: scenario.title, kind: 'content' },
     { field: 'objective', text: objective, kind: 'content' },
     { field: 'sandboxAssets', text: scenario.sandboxAssets, kind: 'content' },
     { field: 'guardrails', text: scenario.guardrails, kind: 'guardrails' },
@@ -161,6 +185,8 @@ export async function planRole(
           teamId: team.id,
           operativeMemberId: data.operativeMemberId,
           scenarioId: scenario.id,
+          scenarioTitle: scenario.title,
+          technique: scenario.technique,
           objective,
           guardrails: scenario.guardrails,
           sandboxAssets: scenario.sandboxAssets,
@@ -170,17 +196,13 @@ export async function planRole(
         })
         .returning();
       const role = row!;
+      // Trial, team and operative live on the role row (canManageAdversarial only); the
+      // shared audit log names the role alone until the reveal.
       await recordAudit(tx, {
         action: 'adversarial.role_planned',
         targetType: AUDIT_TARGET_ROLE,
         targetId: role.id,
-        context: {
-          trialId: trial.id,
-          teamId: team.id,
-          operativeMemberId: role.operativeMemberId,
-          scenarioKey: scenario.key,
-          customObjective: data.objective !== undefined,
-        },
+        context: { scenarioKey: scenario.key, customObjective: data.objective !== undefined },
       });
       await requestAuthorization(tx, {
         roleId: role.id,
@@ -204,9 +226,12 @@ export async function planRole(
 }
 
 /**
- * Second-person authorization. The authorizer must hold canAuthorizeAdversarial,
- * must not be the planner or the operative, and must attest that the scenario
- * uses only fictional data and sandbox accounts.
+ * Second-person authorization of the plan revision the authorizer reviewed.
+ * The authorizer must hold canAuthorizeAdversarial, must not be the planner,
+ * the operative or the author of any trigger, and must attest that the
+ * scenario uses only fictional data and sandbox accounts. Every trigger in the
+ * plan is approved by this signature. A plan that changed since the review
+ * (`planRevision` mismatch) is refused.
  */
 export async function authorizeRole(
   ctx: ServiceContext,
@@ -220,12 +245,7 @@ export async function authorizeRole(
   const role = await loadManagedRole(ctx, data.roleId, 'adversarial.authorize_role');
   assertStatus(role, ['planned'], 'authorize');
   if (role.authorizedAt) throw new ConflictError('This role is already authorized.');
-  const conflict =
-    role.createdByUserId === null || role.createdByUserId === authorizer.userId
-      ? 'Two-person rule: a different staff member must authorize this role.'
-      : isSelf(authorizer, role.operativeMemberId)
-        ? 'The operative cannot authorize their own role.'
-        : null;
+  const conflict = await authorizationConflict(ctx, role, authorizer);
   if (conflict) {
     await recordAudit(
       ctx,
@@ -243,24 +263,39 @@ export async function authorizeRole(
   const trial = await assertRoleStillRunnable(ctx, role);
 
   return withTransaction(ctx, async (tx) => {
-    // Validate under the row lock: a trigger added concurrently is covered too.
-    assertSafe(await roleSafetyFields(tx, await lockRole(tx, role.id)));
+    // Under the row lock (addTrigger and withdrawTrigger take it and bump the
+    // revision): the plan signed is exactly the plan reviewed.
+    const current = await lockRole(tx, role.id);
+    if (current.planRevision !== data.planRevision) throw new ConflictError(PLAN_CHANGED);
+    assertSafe(await roleSafetyFields(tx, current, 'all'));
+    const now = tx.clock.now();
     const updated = await transitionRole(
       tx,
       role.id,
       ['planned'],
       {
         authorizedByUserId: authorizer.userId,
-        authorizedAt: tx.clock.now(),
+        authorizedAt: now,
         sandboxAttested: true,
+        authorizationNote: data.note ?? null,
       },
       isNull(adversarialRoles.authorizedAt),
     );
+    const approved = await tx.db
+      .update(adversarialTriggers)
+      .set({ approvedByUserId: authorizer.userId, approvedAt: now })
+      .where(and(eq(adversarialTriggers.roleId, role.id), isNull(adversarialTriggers.approvedAt)))
+      .returning({ id: adversarialTriggers.id });
     await recordAudit(tx, {
       action: 'adversarial.role_authorized',
       targetType: AUDIT_TARGET_ROLE,
       targetId: role.id,
-      context: { sandboxAttested: true, note: data.note ?? null },
+      context: {
+        sandboxAttested: true,
+        planRevision: current.planRevision,
+        approvedTriggerIds: approved.map((trigger) => trigger.id),
+        hasNote: data.note !== undefined && data.note !== '',
+      },
     });
     await notifyStaffUser(tx, {
       userId: role.createdByUserId,
@@ -291,7 +326,7 @@ export async function briefRole(
   const trial = await assertRoleStillRunnable(ctx, role);
 
   return withTransaction(ctx, async (tx) => {
-    assertSafe(await roleSafetyFields(tx, await lockRole(tx, role.id)));
+    assertSafe(await roleSafetyFields(tx, await lockRole(tx, role.id), 'approved'));
     const updated = await transitionRole(
       tx,
       role.id,
@@ -424,12 +459,12 @@ export async function abortWithinTx(
     );
     await notifyOperative(tx, updated, 'stop', trialNumber);
   }
-  await recordAudit(tx, {
+  // The free-text reason stays on the role row (staff-only), never in the shared audit log.
+  await recordAudit(roleAuditContext(tx, current.operativeMemberId), {
     action: 'adversarial.role_aborted',
     targetType: AUDIT_TARGET_ROLE,
     targetId: roleId,
     context: {
-      reason: options.reason,
       source: options.source,
       previousStatus: current.status,
       operativeStopped: mustStop,
@@ -455,57 +490,4 @@ export async function abortRole(
   return withTransaction(ctx, (tx) =>
     abortWithinTx(tx, role.id, trial.number, { reason, source: 'staff' }),
   );
-}
-
-export interface RedFlagResult {
-  roleId: string;
-  status: 'aborted';
-  alreadyStopped: boolean;
-}
-
-/**
- * The stop word. The operative (for their own briefed role) or staff can raise
- * it; the exercise ends immediately and every manager is alerted. Idempotent.
- * Anyone else gets the same answer as for a role that does not exist.
- */
-export async function raiseRedFlag(
-  ctx: ServiceContext,
-  input: z.input<typeof raiseRedFlagSchema>,
-): Promise<RedFlagResult> {
-  const data = parseInput(raiseRedFlagSchema, input);
-  if (ctx.actor.kind === 'anonymous') throw new UnauthenticatedError();
-  const role = await findRole(ctx, data.roleId);
-  const isOperative = role !== null && isSelf(ctx.actor, role.operativeMemberId);
-  // The stop word stays open to the operative whatever their standing: a STOP is never blocked.
-  const visible =
-    role !== null &&
-    ((isOperative && role.briefedAt !== null) ||
-      (can(ctx, 'canManageAdversarial') && !(await actorParticipatesIn(ctx, role.trialId))));
-  if (!role || !visible) return denyAsNotFound(ctx, data.roleId, 'adversarial.red_flag');
-  if (role.status === 'aborted')
-    return { roleId: role.id, status: 'aborted', alreadyStopped: true };
-  assertStatus(role, ABORTABLE_STATUSES, `raise ${STOP_WORD}`);
-  const note = data.note?.trim() ? sanitizeStopText(data.note, LIMITS.stopText) : null;
-  const raisedBy = isOperative ? 'the operative' : 'staff';
-  const trial = await loadTrial(ctx, role.trialId);
-  const raiserUserId = actorUserId(ctx.actor);
-
-  const alreadyStopped = await withTransaction(ctx, async (tx) => {
-    // A concurrent RED FLAG (or abort) may have won the race: the stop word never errors.
-    if ((await lockRole(tx, role.id)).status === 'aborted') return true;
-    await abortWithinTx(tx, role.id, trial.number, {
-      reason: `${STOP_WORD} raised by ${raisedBy}${note ? `: ${note}` : '.'}`,
-      source: 'red_flag',
-    });
-    await alertStaff(tx, {
-      roleId: role.id,
-      trialId: role.trialId,
-      fact: 'red-flag',
-      title: `${STOP_WORD} — TRIAL #${trial.number}`,
-      body: `${STOP_WORD} was raised by ${raisedBy}. The exercise is stopped. Follow up with the operative now.`,
-      excludeUserIds: raiserUserId ? [raiserUserId] : [],
-    });
-    return false;
-  });
-  return { roleId: role.id, status: 'aborted', alreadyStopped };
 }

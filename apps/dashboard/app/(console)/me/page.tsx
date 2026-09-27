@@ -155,7 +155,7 @@ async function PreferencesTab({ ctx }: { ctx: UserContext }) {
     <Card className="max-w-3xl">
       <PreferencesForm
         action={updatePreferencesAction}
-        timeZones={timeZoneOptions()}
+        timeZones={timeZoneOptions(preferences.timezone)}
         types={types}
         values={{
           timezone: preferences.timezone,

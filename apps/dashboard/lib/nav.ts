@@ -10,6 +10,7 @@ import {
   Settings2,
   ShieldAlert,
   ShieldCheck,
+  Swords,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -56,7 +57,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       },
     ],
   },
-  { label: 'OPERATIONS', items: [] },
+  {
+    label: 'OPERATIONS',
+    items: [{ href: '/trials', label: 'Trials', icon: Swords, capability: 'canManageTrials' }],
+  },
   {
     label: 'SUPPORT & SAFETY',
     items: [

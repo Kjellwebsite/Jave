@@ -131,6 +131,8 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
       ? (interaction as ButtonInteraction | AnySelectMenuInteraction)
       : null;
   const modal = interaction.isModalSubmit() ? (interaction as ModalSubmitInteraction) : null;
+  const modalOnMessage = modal?.isFromMessage() ? modal : null;
+  const source = component?.message ?? modalOnMessage?.message ?? null;
   const memberRoles = interaction.inCachedGuild()
     ? interaction.member.roles.cache.map((r) => r.id)
     : [];
@@ -190,10 +192,12 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
       await requireRepliable().editReply(options);
     },
     followUp: async (payload) => void (await requireRepliable().followUp(toReplyOptions(payload))),
+    sourceMessage: source ? { ephemeral: source.flags.has(MessageFlags.Ephemeral) } : null,
     update: async (payload) => {
-      if (!component) throw new Error('update() is only valid for component interactions');
       const { flags: _flags, ...options } = toReplyOptions(payload);
-      await component.update(options);
+      if (component) await component.update(options);
+      else if (modalOnMessage) await modalOnMessage.update(options);
+      else throw new Error('update() is only valid for interactions that came from a message');
     },
     deferUpdate: async () => {
       if (!component) throw new Error('deferUpdate() is only valid for component interactions');

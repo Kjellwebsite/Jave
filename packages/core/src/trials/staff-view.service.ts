@@ -1,6 +1,7 @@
 import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import {
+  rankHistory,
   trialEvaluations,
   trialResults,
   trialScores,
@@ -72,6 +73,11 @@ export interface StaffResultView {
   facetKey: string | null;
   recommendedRank: string | null;
   rankApplied: boolean;
+  /**
+   * The verified rank the consequence granted (from rank history) — at most
+   * the recommendation, possibly lower. Null until applied.
+   */
+  appliedRank: string | null;
 }
 
 export interface StaffTrialView extends TrialSummaryView {
@@ -102,6 +108,7 @@ function fromComputed(result: ComputedResult): StaffResultView {
     facetKey: result.facetKey,
     recommendedRank: result.recommendedRank,
     rankApplied: false,
+    appliedRank: null,
   };
 }
 
@@ -159,10 +166,14 @@ export async function getTrialForStaff(
 
   let results: StaffTrialView['results'] = null;
   if (trial.status === 'completed') {
-    const rows = await ctx.db.select().from(trialResults).where(eq(trialResults.trialId, trialId));
+    const rows = await ctx.db
+      .select({ result: trialResults, appliedRank: rankHistory.toRank })
+      .from(trialResults)
+      .leftJoin(rankHistory, eq(rankHistory.id, trialResults.rankHistoryId))
+      .where(eq(trialResults.trialId, trialId));
     results = {
       published: true,
-      rows: rows.map((row) => ({
+      rows: rows.map(({ result: row, appliedRank }) => ({
         memberId: row.memberId,
         teamId: row.teamId,
         teamScore: row.teamScore,
@@ -172,6 +183,7 @@ export async function getTrialForStaff(
         facetKey: row.facetKey,
         recommendedRank: row.recommendedRank,
         rankApplied: row.rankHistoryId !== null,
+        appliedRank: row.rankHistoryId !== null ? appliedRank : null,
       })),
     };
   } else if (trial.status === 'evaluating') {

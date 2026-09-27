@@ -148,6 +148,20 @@ export interface DiscordGateway {
   ): Promise<void>;
   cancelScheduledEvent(eventId: string, reason: string): Promise<void>;
 
+  // Trials (appended)
+  /**
+   * Create or replace one permission overwrite, leaving the channel's other
+   * overwrites untouched (e.g. lock a member out of sending without dropping
+   * the evaluator roles' access).
+   */
+  setChannelOverwrite(
+    channelId: string,
+    overwrite: PermissionOverwriteSpec,
+    reason: string,
+  ): Promise<void>;
+  /** Discord user ids currently holding a role (empty when the role is unknown). */
+  roleMemberIds(roleId: string): Promise<string[]>;
+
   // Idempotent posting
   /**
    * Post with an enforced nonce (≤ 25 characters, e.g. a prefix plus the job

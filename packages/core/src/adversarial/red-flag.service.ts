@@ -36,11 +36,31 @@ export interface RedFlagResult {
   alreadyStopped: boolean;
 }
 
+/** Who raised the RED FLAG, as the alert and the abort reason name them. */
+export type RedFlagRaiser = 'the operative' | 'staff' | 'JAVE';
+
+/** How it was raised: a RED FLAG control (Discord button, dashboard) or typed in Discord chat. */
+export type RedFlagChannel = 'control' | 'chat';
+
 interface RedFlagRaise {
-  raisedBy: 'the operative' | 'staff';
+  raisedBy: RedFlagRaiser;
+  via: RedFlagChannel;
   raiserUserId: string | null;
   note: string | null;
   trialNumber: number;
+}
+
+const AUDIT_RAISER: Record<RedFlagRaiser, string> = {
+  'the operative': 'operative',
+  staff: 'staff',
+  JAVE: 'system',
+};
+
+/** "raised by staff", "typed in chat by the operative". */
+function describeRaise(raise: Pick<RedFlagRaise, 'raisedBy' | 'via'>): string {
+  return raise.via === 'chat'
+    ? `typed in chat by ${raise.raisedBy}`
+    : `raised by ${raise.raisedBy}`;
 }
 
 /**
@@ -66,7 +86,8 @@ async function recordRedFlagAfterEnd(
       targetId: role.id,
       context: {
         status: role.status,
-        by: raise.raisedBy === 'staff' ? 'staff' : 'operative',
+        by: AUDIT_RAISER[raise.raisedBy],
+        via: raise.via,
         hasNote: raise.note !== null,
       },
     });
@@ -76,7 +97,7 @@ async function recordRedFlagAfterEnd(
       trialId: role.trialId,
       fact: 'red-flag',
       title: `${STOP_WORD} — TRIAL #${raise.trialNumber}`,
-      body: `${STOP_WORD} was raised by ${raise.raisedBy} after the exercise ${ended}. Nothing is running. Follow up now.${raise.note ? ` Note: ${raise.note}` : ''}`,
+      body: `${STOP_WORD} was ${describeRaise(raise)} after the exercise ${ended}. Nothing is running. Follow up now.${raise.note ? ` Note: ${raise.note}` : ''}`,
       excludeUserIds: raise.raiserUserId ? [raise.raiserUserId] : [],
     });
   }
@@ -104,13 +125,31 @@ export async function raiseRedFlag(
     ((isOperative && role.briefedAt !== null) ||
       (can(ctx, 'canManageAdversarial') && !(await actorParticipatesIn(ctx, role.trialId))));
   if (!role || !visible) return denyAsNotFound(ctx, data.roleId, 'adversarial.red_flag', role);
+  return stopForRedFlag(ctx, role, {
+    raisedBy: isOperative ? 'the operative' : ctx.actor.kind === 'system' ? 'JAVE' : 'staff',
+    via: 'control',
+    note: data.note ?? null,
+  });
+}
+
+/**
+ * Stop (or, after a normal end, record) for a RED FLAG whose raiser was
+ * already established — by `raiseRedFlag`'s visibility rules or by the
+ * stop-word classifier. Runs as `ctx.actor`, who is recorded as the raiser.
+ */
+export async function stopForRedFlag(
+  ctx: ServiceContext,
+  role: RoleRecord,
+  input: { raisedBy: RedFlagRaiser; via: RedFlagChannel; note: string | null },
+): Promise<RedFlagResult> {
   if (role.status === 'aborted')
     return { roleId: role.id, status: 'aborted', alreadyStopped: true };
   const trial = await loadTrial(ctx, role.trialId);
   const raise: RedFlagRaise = {
-    raisedBy: isOperative ? 'the operative' : 'staff',
+    raisedBy: input.raisedBy,
+    via: input.via,
     raiserUserId: actorUserId(ctx.actor),
-    note: data.note?.trim() ? sanitizeStopText(data.note, LIMITS.stopText) : null,
+    note: input.note?.trim() ? sanitizeStopText(input.note, LIMITS.stopText) : null,
     trialNumber: trial.number,
   };
 
@@ -122,7 +161,7 @@ export async function raiseRedFlag(
       return { roleId: role.id, status: current.status, alreadyStopped: true };
     if (!LIVE_STATUSES.includes(current.status)) return recordRedFlagAfterEnd(tx, current, raise);
     await abortWithinTx(tx, role.id, trial.number, {
-      reason: `${STOP_WORD} raised by ${raise.raisedBy}${raise.note ? `: ${raise.note}` : '.'}`,
+      reason: `${STOP_WORD} ${describeRaise(raise)}${raise.note ? `: ${raise.note}` : '.'}`,
       source: 'red_flag',
     });
     await alertStaff(tx, {
@@ -130,7 +169,7 @@ export async function raiseRedFlag(
       trialId: role.trialId,
       fact: 'red-flag',
       title: `${STOP_WORD} — TRIAL #${trial.number}`,
-      body: `${STOP_WORD} was raised by ${raise.raisedBy}. The exercise is stopped. Follow up with the operative now.`,
+      body: `${STOP_WORD} was ${describeRaise(raise)}. The exercise is stopped. Follow up with the operative now.`,
       excludeUserIds: raise.raiserUserId ? [raise.raiserUserId] : [],
     });
     return { roleId: role.id, status: 'aborted', alreadyStopped: false };

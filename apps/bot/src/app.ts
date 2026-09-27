@@ -10,12 +10,13 @@ import {
   Worker,
 } from '@jave/core';
 import type { Database } from '@jave/database';
-import type { Clock, CoreConfig, Logger, TtlCache } from '@jave/core';
+import type { ai, Clock, CoreConfig, Logger, TtlCache } from '@jave/core';
 import type { DiscordGateway } from './discord/gateway';
 import type { BotFeature } from './features/types';
 import type {
   IncomingMessage,
   JoinedMember,
+  MessageBulkDeletion,
   MessageDeletion,
   MessageUpdate,
 } from './gateway-events/types';
@@ -35,6 +36,8 @@ export interface BotAppOptions {
   features: BotFeature[];
   worker: { concurrency: number; pollMs: number };
   extraHealthChecks?: HealthCheck[];
+  /** AI provider for features that use JAVE AI (optional). */
+  ai?: ai.AiDeps;
 }
 
 export interface BotApp {
@@ -54,6 +57,7 @@ export interface GatewayDispatcher {
   memberJoin(member: JoinedMember): Promise<void>;
   memberLeave(userId: string): Promise<void>;
   invitesChanged(): Promise<void>;
+  messageDeleteBulk(deletion: MessageBulkDeletion): Promise<void>;
 }
 
 /** Merge job handler maps, refusing duplicates (two owners for one job type is a bug). */
@@ -83,6 +87,7 @@ export function createBotApp(options: BotAppOptions): BotApp {
     config: options.config,
     discord: options.discord,
     gateway: options.gateway,
+    ai: options.ai,
     runJobsNow: async (ids) => {
       if (worker) await worker.runNow(ids);
     },
@@ -159,6 +164,7 @@ export function createBotApp(options: BotAppOptions): BotApp {
     memberJoin: (m) => fanOut('onMemberJoin', (fn) => fn(services, m)),
     memberLeave: (id) => fanOut('onMemberLeave', (fn) => fn(services, id)),
     invitesChanged: () => fanOut('onInvitesChanged', (fn) => fn(services)),
+    messageDeleteBulk: (d) => fanOut('onMessageDeleteBulk', (fn) => fn(services, d)),
   };
 
   return {

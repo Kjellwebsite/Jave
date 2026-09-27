@@ -1,21 +1,17 @@
 import Link from 'next/link';
+import { ArrowUpRight } from 'lucide-react';
 import {
   ChartFrame,
   ChartLegend,
   ColumnChart,
   formatCount,
+  Icon,
   LineChart,
   Meter,
   Panel,
 } from '@jave/ui';
 import type { analytics } from '@jave/core';
-import {
-  flowPoints,
-  latestValue,
-  seriesTotal,
-  signed,
-  toChartPoints,
-} from '@/lib/analytics-view';
+import { flowPoints, latestValue, seriesTotal, signed, toChartPoints } from '@/lib/analytics-view';
 import { formatDate } from '@/lib/time';
 import type { AnalyticsView } from '@/server/data/analytics';
 import { AnalyticsSection, ReadoutGrid } from './readouts';
@@ -40,7 +36,11 @@ export function MembersSection({ view, timeZone }: { view: AnalyticsView; timeZo
       description="Who arrives, who stays. Joins and leaves come from the guild event stream; retention follows each join."
     >
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <Panel title="Joins and leaves" description={`Daily snapshots, last ${range} days (UTC).`}>
+        <Panel
+          level={3}
+          title="Joins and leaves"
+          description={`Daily snapshots, last ${range} days (UTC).`}
+        >
           <ChartFrame
             title="Daily flow"
             description="Joins above the baseline, leaves below. Shaded days have no snapshot."
@@ -83,7 +83,7 @@ export function MembersSection({ view, timeZone }: { view: AnalyticsView; timeZo
           </ChartFrame>
         </Panel>
 
-        <Panel title="Retention" description="Each cohort had the full horizon to leave.">
+        <Panel level={3} title="Retention" description="Each cohort had the full horizon to leave.">
           <div className="space-y-6">
             <Meter
               label="D7 retention"
@@ -105,7 +105,11 @@ export function MembersSection({ view, timeZone }: { view: AnalyticsView; timeZo
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <Panel title="Members present" description="Captured once a day, just after midnight UTC.">
+        <Panel
+          level={3}
+          title="Members present"
+          description="Captured once a day, just after midnight UTC."
+        >
           <ChartFrame
             title="Present in the guild"
             value={formatCount(latestValue(present.points))}
@@ -124,13 +128,9 @@ export function MembersSection({ view, timeZone }: { view: AnalyticsView; timeZo
           </ChartFrame>
         </Panel>
         <Panel
+          level={3}
           title="Referrals"
           description="Joins attributed to a source, and referrals that became VALID."
-          actions={
-            <Link href="/referrals" className="text-small text-fg-subtle hover:text-fg">
-              Referrals
-            </Link>
-          }
         >
           <ReadoutGrid
             columns={2}
@@ -143,8 +143,14 @@ export function MembersSection({ view, timeZone }: { view: AnalyticsView; timeZo
           />
           <p className="mt-4 text-small text-fg-subtle">
             Referrals become VALID only after the member stays; raw invite volume never counts.
-            Funnels by inviter and campaign are on the Referrals page.
           </p>
+          <Link
+            href="/referrals"
+            className="mt-3 inline-flex items-center gap-1 text-small text-fg-muted hover:text-fg"
+          >
+            Funnels by inviter and campaign
+            <Icon icon={ArrowUpRight} size="sm" />
+          </Link>
         </Panel>
       </div>
     </AnalyticsSection>

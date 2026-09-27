@@ -184,7 +184,8 @@ describe('invites: leaderboard, funnels and member view', () => {
         retained: 3,
         valid: 2,
         left: 1,
-        flagged: 2,
+        // f2 (VALID, flagged) awaits review; f4 LEFT is closed, its flag is history.
+        flagged: 1,
         fastLeaves: 1,
         retentionRate: 0.5,
         validRate: 0.3333,
@@ -224,6 +225,10 @@ describe('invites: leaderboard, funnels and member view', () => {
         status: 'retained',
         flags: ['similar_usernames'],
       });
+      const gone = await referral('ada-inv', 'gone_friend', {
+        status: 'left',
+        flags: ['fast_leave'],
+      });
       await kit.db
         .update(members)
         .set({ profileVisibility: 'staff' })
@@ -232,7 +237,8 @@ describe('invites: leaderboard, funnels and member view', () => {
       const view = await getMyReferrals(kit.as(ada.actor));
       expect(view.codes).toHaveLength(1);
       expect(view.codes[0]!.claims).toBe(0);
-      expect(view.funnel.joined).toBe(2);
+      expect(view.funnel.joined).toBe(3);
+      expect(view.funnel.flagged).toBe(1);
       const byId = new Map(view.referrals.map((r) => [r.id, r]));
       expect(byId.get(open.referralId)).toMatchObject({
         inviteeName: 'visible_friend',
@@ -242,6 +248,8 @@ describe('invites: leaderboard, funnels and member view', () => {
         inviteeName: 'Private member',
         underReview: true,
       });
+      // A closed referral is not "under review": its flag is history.
+      expect(byId.get(gone.referralId)).toMatchObject({ status: 'left', underReview: false });
       expect(JSON.stringify(view)).not.toContain('similar_usernames');
       expect(view.usedCode).toBeNull();
     });
@@ -255,6 +263,20 @@ describe('invites: leaderboard, funnels and member view', () => {
       expect(queue.items[0]).toMatchObject({ inviteeName: 'dodgy', anomalyFlags: ['join_burst'] });
       const clean = await listReferrals(kit.as(core), { flagged: false, status: 'retained' });
       expect(clean.items.map((i) => i.inviteeName)).toEqual(['clean']);
+    });
+
+    it('the reviewable queue holds only flagged referrals a reviewer can still act on', async () => {
+      await inviterWithInvite('ada', 'ada-inv');
+      await referral('ada-inv', 'open', { status: 'retained', flags: ['join_burst'] });
+      await referral('ada-inv', 'earned', { status: 'valid', flags: ['new_account'] });
+      await referral('ada-inv', 'gone', { status: 'left', flags: ['fast_leave'] });
+      await referral('ada-inv', 'closed', { status: 'invalid', flags: ['self_invite'] });
+      await referral('ada-inv', 'clean', { status: 'retained' });
+      const queue = await listReferrals(kit.as(core), { reviewable: true });
+      expect(queue.total).toBe(2);
+      expect(queue.items.map((i) => i.inviteeName).sort()).toEqual(['earned', 'open']);
+      const everyFlag = await listReferrals(kit.as(core), { flagged: true });
+      expect(everyFlag.total).toBe(4);
     });
 
     it('BREAK: anonymous and profile-less users cannot open a referral view', async () => {

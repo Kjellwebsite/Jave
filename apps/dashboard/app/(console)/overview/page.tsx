@@ -14,6 +14,7 @@ import {
   RoleBadge,
   Stat,
 } from '@jave/ui';
+import { HealthStrip } from '@/components/analytics/health-strip';
 import { AuditResultBadge } from '@/components/audit/audit-result-badge';
 import { NextLink } from '@/components/next-link';
 import { formatRelative, formatTimestamp } from '@/lib/time';
@@ -23,6 +24,7 @@ import {
   loadOverviewMetrics,
   type OverviewMetricKey,
 } from '@/server/data/overview';
+import { loadHealthStrip } from '@/server/data/analytics';
 import { loadViewer } from '@/server/data/viewer';
 
 export const metadata: Metadata = { title: 'Overview' };
@@ -76,8 +78,9 @@ function DomainRow({ domain }: { domain: DomainSummary }) {
 export default async function OverviewPage() {
   const { ctx, actor } = await requireConsoleContext();
   const viewer = await loadViewer(ctx);
-  const [metrics, audit, newest, profile] = await Promise.all([
+  const [metrics, health, audit, newest, profile] = await Promise.all([
     loadOverviewMetrics(ctx),
+    loadHealthStrip(ctx),
     can(ctx, 'canViewAuditLogs') ? listAuditLogs(ctx, { limit: RECENT_AUDIT_LIMIT }) : null,
     can(ctx, 'canViewMembers') ? listMembers(ctx, { limit: NEWEST_MEMBERS_LIMIT }) : null,
     actor.memberId ? getProfile(ctx, { memberId: actor.memberId }) : null,
@@ -123,6 +126,8 @@ export default async function OverviewPage() {
           })}
         </section>
       ) : null}
+
+      {health ? <HealthStrip overview={health} /> : null}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {audit ? (

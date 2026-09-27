@@ -31,20 +31,18 @@ export function ReadoutGrid({
       )}
     >
       {items.map((item) => {
-        const display = typeof item.value === 'number' ? formatCount(item.value) : (item.value ?? '—');
+        const display =
+          typeof item.value === 'number' ? formatCount(item.value) : (item.value ?? '—');
         const quiet = item.value === 0 || item.value === null || item.value === '—';
         return (
           <div key={item.label} className="min-w-0 bg-surface px-3 py-2.5">
             <dt className="type-eyebrow truncate text-[10px] text-fg-subtle">{item.label}</dt>
-            <dd
-              className={cx(
-                'type-data mt-1 text-heading',
-                quiet ? 'text-fg-subtle' : 'text-fg',
-              )}
-            >
+            <dd className={cx('type-data mt-1 text-heading', quiet ? 'text-fg-subtle' : 'text-fg')}>
               {display}
             </dd>
-            {item.hint ? <dd className="mt-0.5 truncate text-[12px] text-fg-subtle">{item.hint}</dd> : null}
+            {item.hint ? (
+              <dd className="mt-0.5 truncate text-[12px] text-fg-subtle">{item.hint}</dd>
+            ) : null}
           </div>
         );
       })}

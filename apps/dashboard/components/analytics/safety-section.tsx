@@ -49,7 +49,7 @@ export function SafetySection({ view }: { view: AnalyticsView }) {
       description="Response times and load. Counts of actions, never of people."
     >
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Panel title="Tickets">
+        <Panel level={3} title="Tickets">
           <div className="space-y-5">
             <ReadoutGrid
               items={[
@@ -70,24 +70,42 @@ export function SafetySection({ view }: { view: AnalyticsView }) {
                   : 'No ticket in range has a known SLA outcome yet.'
               }
             />
-            <DailyColumns view={view} metric="tickets.opened" title="Opened per day" noun="opened" />
+            <DailyColumns
+              view={view}
+              metric="tickets.opened"
+              title="Opened per day"
+              noun="opened"
+            />
           </div>
         </Panel>
 
-        <Panel title="Moderation cases" description={`By action, last ${range} days.`}>
+        <Panel level={3} title="Moderation cases" description={`By action, last ${range} days.`}>
           <div className="space-y-5">
-            <BarList label="Moderation cases by action" items={breakdown(moderation.casesByAction)} />
-            <DailyColumns view={view} metric="moderation.cases" title="Cases per day" noun="cases" />
+            <BarList
+              label="Moderation cases by action"
+              items={breakdown(moderation.casesByAction)}
+            />
+            <DailyColumns
+              view={view}
+              metric="moderation.cases"
+              title="Cases per day"
+              noun="cases"
+            />
           </div>
         </Panel>
 
-        <Panel title="Security events" description={`By trigger, last ${range} days.`}>
+        <Panel level={3} title="Security events" description={`By trigger, last ${range} days.`}>
           <div className="space-y-5">
             <BarList
               label="Security events by trigger"
               items={breakdown(moderation.securityEventsByTrigger)}
             />
-            <DailyColumns view={view} metric="security.events" title="Events per day" noun="events" />
+            <DailyColumns
+              view={view}
+              metric="security.events"
+              title="Events per day"
+              noun="events"
+            />
           </div>
         </Panel>
       </div>

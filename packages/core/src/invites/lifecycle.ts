@@ -18,6 +18,17 @@ export const LIVE_REFERRAL_STATUSES = [
   'retained',
 ] as const satisfies readonly ReferralStatus[];
 
+/**
+ * Statuses a staff reviewer can still act on (clear flags or invalidate).
+ * A flagged referral in one of them is "under review"; LEFT and INVALID are
+ * closed, so their flags are history, not a pending review.
+ */
+export const REVIEWABLE_REFERRAL_STATUSES = [
+  'joined',
+  'retained',
+  'valid',
+] as const satisfies readonly ReferralStatus[];
+
 export const REFERRAL_TRANSITIONS: Readonly<Record<ReferralStatus, readonly ReferralStatus[]>> = {
   joined: ['retained', 'left', 'invalid'],
   retained: ['valid', 'left', 'invalid'],

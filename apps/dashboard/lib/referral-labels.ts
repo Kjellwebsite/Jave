@@ -1,0 +1,102 @@
+/**
+ * Labels, tones and pure helpers for the referrals pages. Client-safe.
+ * Core decides every rule; these only describe its states.
+ */
+import type { BadgeTone } from '@jave/ui';
+
+export type ReferralStatusKey = 'joined' | 'retained' | 'valid' | 'left' | 'invalid';
+
+export const REFERRAL_STATUS_LABELS: Record<ReferralStatusKey, string> = {
+  joined: 'Joined',
+  retained: 'Retained',
+  valid: 'Valid',
+  left: 'Left',
+  invalid: 'Invalid',
+};
+
+export const REFERRAL_STATUS_TONE: Record<ReferralStatusKey, BadgeTone> = {
+  joined: 'neutral',
+  retained: 'info',
+  valid: 'success',
+  left: 'neutral',
+  invalid: 'danger',
+};
+
+const METHOD_LABELS: Record<string, string> = {
+  invite: 'Invite link',
+  vanity: 'Vanity URL',
+  referral_code: 'Referral code',
+  unknown: 'Unknown source',
+};
+
+export function methodLabel(method: string): string {
+  return METHOD_LABELS[method] ?? method;
+}
+
+/** What each anomaly flag means, in one line (staff-facing). */
+const ANOMALY_FLAG_COPY: Record<string, { label: string; detail: string }> = {
+  self_invite: { label: 'Self-invite', detail: 'Inviter and invitee are the same person.' },
+  new_account: { label: 'New account', detail: 'The account was very new at join time.' },
+  join_burst: { label: 'Join burst', detail: '5+ of the inviter’s joins within one hour.' },
+  new_account_share: {
+    label: 'New-account share',
+    detail: 'Half or more of the inviter’s referrals are very new accounts.',
+  },
+  fast_leave: { label: 'Fast leave', detail: 'Left within 24 hours of joining.' },
+  fast_leave_share: {
+    label: 'Fast-leave share',
+    detail: '40% or more of the inviter’s referrals left within 24 hours.',
+  },
+  similar_usernames: {
+    label: 'Similar usernames',
+    detail: 'Other invitees of this inviter share a near-identical name.',
+  },
+  rejoin: { label: 'Rejoin', detail: 'This person had joined before.' },
+};
+
+export function anomalyFlagLabel(flag: string): string {
+  return ANOMALY_FLAG_COPY[flag]?.label ?? flag;
+}
+
+export function anomalyFlagDetail(flag: string): string {
+  return ANOMALY_FLAG_COPY[flag]?.detail ?? 'Unrecognized signal.';
+}
+
+export type CampaignState = 'accepting' | 'scheduled' | 'ended' | 'inactive';
+
+export const CAMPAIGN_STATE_LABELS: Record<CampaignState, string> = {
+  accepting: 'ACCEPTING',
+  scheduled: 'SCHEDULED',
+  ended: 'ENDED',
+  inactive: 'INACTIVE',
+};
+
+export const CAMPAIGN_STATE_TONE: Record<CampaignState, BadgeTone> = {
+  accepting: 'success',
+  scheduled: 'info',
+  ended: 'neutral',
+  inactive: 'neutral',
+};
+
+/** Describes core's `acceptingNow` verdict: why a campaign is or is not crediting joins. */
+export function campaignState(
+  campaign: { active: boolean; acceptingNow: boolean; startsAt: Date | null },
+  now: Date,
+): CampaignState {
+  if (!campaign.active) return 'inactive';
+  if (campaign.acceptingNow) return 'accepting';
+  if (campaign.startsAt && campaign.startsAt.getTime() > now.getTime()) return 'scheduled';
+  return 'ended';
+}
+
+export const REFERRAL_TABS = ['inviters', 'campaigns', 'review', 'invites'] as const;
+export type ReferralTab = (typeof REFERRAL_TABS)[number];
+
+export function parseReferralTab(raw: string | undefined): ReferralTab {
+  return (REFERRAL_TABS as readonly string[]).includes(raw ?? '')
+    ? (raw as ReferralTab)
+    : 'inviters';
+}
+
+/** `?notice=` value set after a campaign is deleted (the page shows fixed copy for it). */
+export const CAMPAIGN_DELETED_NOTICE = 'campaign-deleted';

@@ -6,6 +6,7 @@ import {
   desc,
   eq,
   gte,
+  inArray,
   isNotNull,
   isNull,
   ne,
@@ -28,11 +29,15 @@ import {
   PRIVATE_MEMBER_LABEL,
 } from './constants';
 import { emptyFunnel, loadFunnels, loadGlobalFunnel, type ReferralFunnel } from './funnel';
-import type { ReferralStatus } from './lifecycle';
+import { REVIEWABLE_REFERRAL_STATUSES, type ReferralStatus } from './lifecycle';
 
 const LEADERBOARD_PERIOD_DAYS = [7, 30, 90] as const;
 const periodDays = z.literal(LEADERBOARD_PERIOD_DAYS);
 const REFERRAL_STATUSES = ['joined', 'retained', 'valid', 'left', 'invalid'] as const;
+
+function isReviewable(status: ReferralStatus): boolean {
+  return (REVIEWABLE_REFERRAL_STATUSES as readonly ReferralStatus[]).includes(status);
+}
 
 /** Never flagged, or cleared by staff review. */
 const isClean = sql`cardinality(${referrals.anomalyFlags}) = 0`;
@@ -301,7 +306,7 @@ export async function getMyReferrals(ctx: ServiceContext): Promise<MyReferralsVi
       retainedAt: row.retainedAt,
       validatedAt: row.validatedAt,
       leftAt: row.leftAt,
-      underReview: row.flagged && row.status !== 'invalid',
+      underReview: row.flagged && isReviewable(row.status),
     })),
     showOnLeaderboards: self?.showOnLeaderboards ?? true,
     usedCode: used?.code ?? null,
@@ -312,8 +317,13 @@ export async function getMyReferrals(ctx: ServiceContext): Promise<MyReferralsVi
 
 export const listReferralsSchema = pageSchema.extend({
   status: z.enum(REFERRAL_STATUSES).optional(),
-  /** Only referrals carrying anomaly flags (the review queue). */
+  /** Only referrals carrying anomaly flags (true) or none (false). */
   flagged: z.boolean().optional(),
+  /**
+   * The review queue: flagged referrals a reviewer can still act on
+   * (JOINED, RETAINED or VALID). LEFT and INVALID ones are closed.
+   */
+  reviewable: z.boolean().optional(),
   inviterMemberId: z.uuid().optional(),
   campaignId: z.uuid().optional(),
 });
@@ -351,6 +361,9 @@ export async function listReferrals(
   const filters: SQL[] = [];
   if (q.status) filters.push(eq(referrals.status, q.status));
   if (q.flagged !== undefined) filters.push(q.flagged ? isFlagged : isClean);
+  if (q.reviewable) {
+    filters.push(isFlagged, inArray(referrals.status, [...REVIEWABLE_REFERRAL_STATUSES]));
+  }
   if (q.campaignId) filters.push(eq(referrals.campaignId, q.campaignId));
   if (q.inviterMemberId) {
     filters.push(eq(referrals.inviterUserId, await memberUserId(ctx, q.inviterMemberId)));

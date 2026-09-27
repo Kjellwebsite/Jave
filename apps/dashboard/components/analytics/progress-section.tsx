@@ -23,7 +23,11 @@ function share(value: number, total: number): string {
   return total > 0 ? `${Math.round((value / total) * 100)}%` : '';
 }
 
-function CapabilityRows({ distribution }: { distribution: readonly analytics.JavelinProgress['capabilityDistribution'][number][] }) {
+function CapabilityRows({
+  distribution,
+}: {
+  distribution: readonly analytics.JavelinProgress['capabilityDistribution'][number][];
+}) {
   return (
     <ul className="space-y-3.5">
       {distribution.map((domain) => {
@@ -54,7 +58,11 @@ function CapabilityRows({ distribution }: { distribution: readonly analytics.Jav
   );
 }
 
-function TierTable({ distribution }: { distribution: readonly analytics.JavelinProgress['capabilityDistribution'][number][] }) {
+function TierTable({
+  distribution,
+}: {
+  distribution: readonly analytics.JavelinProgress['capabilityDistribution'][number][];
+}) {
   const tiers = [...(distribution[0]?.tiers ?? [])].reverse();
   const max = distribution.reduce(
     (peak, domain) => domain.tiers.reduce((m, tier) => Math.max(m, tier.count), peak),
@@ -105,7 +113,11 @@ export function ProgressSection({ view }: { view: AnalyticsView }) {
       value: progress.verifiedContributions,
       hint: 'Reviewed and accepted',
     },
-    { label: 'MISSIONS COMPLETED', value: progress.missionsCompleted, hint: 'Verified assignments' },
+    {
+      label: 'MISSIONS COMPLETED',
+      value: progress.missionsCompleted,
+      hint: 'Verified assignments',
+    },
   ];
   return (
     <AnalyticsSection
@@ -113,13 +125,22 @@ export function ProgressSection({ view }: { view: AnalyticsView }) {
       title="JAVELIN progress"
       description="What the organization has proven, all time. Capability stays per domain: there is no total across domains."
     >
-      <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {outcomes.map((outcome) => (
-          <Stat key={outcome.label} label={outcome.label} value={outcome.value} hint={outcome.hint} />
+          <Stat
+            key={outcome.label}
+            label={outcome.label}
+            value={outcome.value}
+            hint={outcome.hint}
+          />
         ))}
-      </dl>
+      </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)]">
-        <Panel title="Progression" description={`${formatCount(progress.presentMembers)} present members.`}>
+        <Panel
+          level={3}
+          title="Progression"
+          description={`${formatCount(progress.presentMembers)} present members.`}
+        >
           <BarList
             label="Present members by progression role"
             items={LADDER.map((role) => ({
@@ -134,6 +155,7 @@ export function ProgressSection({ view }: { view: AnalyticsView }) {
           </p>
         </Panel>
         <Panel
+          level={3}
           title="Verified capability"
           description="Per domain, each present member counted once: peak VERIFIED rank, else CLAIMED, else UNKNOWN. Unknown is not low."
         >

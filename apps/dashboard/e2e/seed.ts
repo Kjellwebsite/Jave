@@ -36,6 +36,7 @@ import {
   trials,
 } from '@jave/database';
 import { DEV_PERSONAS, provisionDevPersona } from '../server/auth/dev-personas';
+import { seedReferralFixtures } from './seed-referrals';
 
 interface MemberFixture {
   discordId: string;
@@ -419,6 +420,7 @@ export async function seedDashboardFixtures(databaseUrl: string): Promise<void> 
       body: 'Recruitment for the autumn trials is open until 10 October.',
       dedupeKey: 'e2e:announcement',
     });
+    await seedReferralFixtures(system);
   } finally {
     await database.close();
   }

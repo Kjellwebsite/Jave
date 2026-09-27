@@ -84,7 +84,9 @@ export function Meter({ label, value, caption, className }: MeterProps) {
     <div className={cx('min-w-0', className)}>
       <div className="flex items-baseline justify-between gap-3">
         <span className="type-eyebrow text-fg-subtle">{label}</span>
-        <span className={cx('type-data text-heading', value === null ? 'text-fg-subtle' : 'text-fg')}>
+        <span
+          className={cx('type-data text-heading', value === null ? 'text-fg-subtle' : 'text-fg')}
+        >
           {formatRate(value)}
         </span>
       </div>
@@ -170,7 +172,13 @@ export interface LegendItem {
 const TONE_FILL = { primary: 'bg-fg-muted', secondary: 'bg-neutral-500' } as const;
 
 /** Always present for two or more series; identity never rests on colour alone. */
-export function ChartLegend({ items, className }: { items: readonly LegendItem[]; className?: string }) {
+export function ChartLegend({
+  items,
+  className,
+}: {
+  items: readonly LegendItem[];
+  className?: string;
+}) {
   return (
     <ul className={cx('flex flex-wrap items-center gap-x-4 gap-y-1.5', className)}>
       {items.map((item) => (
@@ -184,7 +192,9 @@ export function ChartLegend({ items, className }: { items: readonly LegendItem[]
             )}
           />
           <span>{item.label}</span>
-          {item.value !== undefined ? <span className="type-data text-fg">{item.value}</span> : null}
+          {item.value !== undefined ? (
+            <span className="type-data text-fg">{item.value}</span>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -306,5 +316,72 @@ export function ChartFrame({
         </details>
       ) : null}
     </figure>
+  );
+}
+
+// ─── Funnel ──────────────────────────────────────────────────────────────────
+
+export interface FunnelStage {
+  key: string;
+  label: string;
+  value: number;
+  /** Quiet conversion note, e.g. "63% of joined". */
+  note?: ReactNode;
+}
+
+export interface FunnelChartProps {
+  stages: readonly FunnelStage[];
+  /** Accessible name, e.g. "Referral funnel". */
+  label: string;
+  /** The stage the story is about: drawn in full ink, the rest in the context tone. */
+  emphasis?: string;
+  className?: string;
+}
+
+/**
+ * Ordered stages as horizontal bars on one scale, every value labelled.
+ * Emphasis, not a ramp: the stage that counts is drawn in `fg`, the context
+ * stages in `fg-subtle` (ΔE ≥ 28 in both themes, both ≥ 3:1 on the surface).
+ */
+export function FunnelChart({ stages, label, emphasis, className }: FunnelChartProps) {
+  const top = stages.reduce((peak, stage) => Math.max(peak, stage.value), 0);
+  return (
+    <ol aria-label={label} className={cx('space-y-3', className)}>
+      {stages.map((stage) => {
+        const emphasized = stage.key === emphasis;
+        return (
+          <li
+            key={stage.key}
+            className="grid grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1"
+          >
+            <span className={cx('type-eyebrow', emphasized ? 'text-fg' : 'text-fg-subtle')}>
+              {stage.label}
+            </span>
+            <span aria-hidden className="relative h-2.5 min-w-0">
+              {stage.value > 0 ? (
+                <span
+                  className={cx(
+                    'absolute inset-y-0 left-0 min-w-0.5 rounded-r-[4px]',
+                    emphasized ? 'bg-fg' : 'bg-fg-subtle',
+                  )}
+                  style={{ width: `${percentOf(stage.value, top)}%` }}
+                />
+              ) : null}
+            </span>
+            <span
+              className={cx(
+                'type-data min-w-8 text-right text-body',
+                stage.value > 0 ? 'text-fg' : 'text-fg-subtle',
+              )}
+            >
+              {formatCount(stage.value)}
+            </span>
+            {stage.note ? (
+              <span className="col-start-2 col-end-4 text-[12px] text-fg-subtle">{stage.note}</span>
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }

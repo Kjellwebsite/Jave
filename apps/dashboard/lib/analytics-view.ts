@@ -43,6 +43,11 @@ export function signed(value: number): string {
   return '0';
 }
 
+/** "1 ticket" / "3 tickets" (count grouped). */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${count.toLocaleString('en-US')} ${count === 1 ? singular : pluralForm}`;
+}
+
 /** snake_case enum value → "Sentence case" label. */
 export function enumLabel(value: string): string {
   const words = value.replace(/_/g, ' ');

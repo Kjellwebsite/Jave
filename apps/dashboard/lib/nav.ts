@@ -1,10 +1,12 @@
 import {
   Bell,
+  ChartLine,
   ChartNoAxesColumn,
   LayoutGrid,
   type LucideIcon,
   ScrollText,
   Settings2,
+  UserPlus,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -30,13 +32,17 @@ export interface NavGroup {
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: 'OVERVIEW',
-    items: [{ href: '/overview', label: 'Overview', icon: LayoutGrid, capability: null }],
+    items: [
+      { href: '/overview', label: 'Overview', icon: LayoutGrid, capability: null },
+      { href: '/analytics', label: 'Analytics', icon: ChartLine, capability: 'canViewAnalytics' },
+    ],
   },
   {
     label: 'PEOPLE',
     items: [
       { href: '/members', label: 'Members', icon: Users, capability: 'canViewMembers' },
       { href: '/ranking', label: 'Ranking', icon: ChartNoAxesColumn, capability: 'canViewMembers' },
+      { href: '/referrals', label: 'Referrals', icon: UserPlus, capability: 'canViewAnalytics' },
     ],
   },
   { label: 'OPERATIONS', items: [] },

@@ -32,20 +32,23 @@ export type AnalyticsLoad = { status: 'ok'; view: AnalyticsView } | { status: 'd
 /**
  * Everything the analytics page shows, for the actor in `ctx`. Core enforces
  * canViewAnalytics (ForbiddenError → the page renders ACCESS RESTRICTED) and
- * the settings kill switch (reported here as `disabled`).
+ * the settings kill switch (reported here as `disabled`). Access is checked
+ * once up front, so a refused viewer produces one audited denial, not one
+ * per query.
  */
 export async function loadAnalytics(
   ctx: ServiceContext,
   range: AnalyticsRange,
 ): Promise<AnalyticsLoad> {
   try {
+    await analytics.authorizeAnalytics(ctx, 'dashboard');
     const [overview, progress, ...series] = await Promise.all([
       analytics.getServerOverview(ctx, { rangeDays: range }),
       analytics.getJavelinProgress(ctx),
       ...TREND_METRICS.map((metric) => analytics.getTimeSeries(ctx, { metric, rangeDays: range })),
     ]);
     const byMetric = Object.fromEntries(
-      TREND_METRICS.map((metric, index) => [metric, series[index]!]),
+      TREND_METRICS.map((metric, index) => [metric, series[index]]),
     ) as Record<TrendMetric, analytics.TimeSeries>;
     return { status: 'ok', view: { range, overview, progress, series: byMetric } };
   } catch (error) {
@@ -61,7 +64,9 @@ export const HEALTH_STRIP_RANGE: AnalyticsRange = 30;
  * The compact health strip on /overview: analytics staff only. Others get
  * null without asking core, so an ordinary page view never logs a denial.
  */
-export async function loadHealthStrip(ctx: ServiceContext): Promise<analytics.ServerOverview | null> {
+export async function loadHealthStrip(
+  ctx: ServiceContext,
+): Promise<analytics.ServerOverview | null> {
   if (!can(ctx, 'canViewAnalytics')) return null;
   try {
     return await analytics.getServerOverview(ctx, { rangeDays: HEALTH_STRIP_RANGE });

@@ -22,7 +22,7 @@ export function PipelineSection({ view }: { view: AnalyticsView }) {
       description={`Applications, trials, missions and projects. Flows count the last ${range} days; status breakdowns are all-time.`}
     >
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Panel title="Applications">
+        <Panel level={3} title="Applications">
           <div className="space-y-5">
             <ReadoutGrid
               items={[
@@ -44,7 +44,7 @@ export function PipelineSection({ view }: { view: AnalyticsView }) {
           </div>
         </Panel>
 
-        <Panel title="Trials">
+        <Panel level={3} title="Trials">
           <div className="space-y-5">
             <ReadoutGrid
               items={[
@@ -66,7 +66,7 @@ export function PipelineSection({ view }: { view: AnalyticsView }) {
           </div>
         </Panel>
 
-        <Panel title="Missions and projects">
+        <Panel level={3} title="Missions and projects">
           <div className="space-y-5">
             <ReadoutGrid
               columns={2}

@@ -25,7 +25,9 @@ match:  pending ─(both teams known)─► ready ─reportMatch─► completed
 ```
 
 - Only `scheduled` events can be edited. A new start keeps the duration unless a
-  new end is given, re-plans reminders and notifies everyone who responded.
+  new end is given, re-plans reminders and notifies everyone who responded. Only a
+  new or moved start or RSVP close must lie ahead: re-sending the stored values is no
+  change, so an event whose RSVPs already closed can still get a new title.
 - RSVPs are open until `rsvpClosesAt` (exclusive) or the end; declining stays
   open until the end because it frees a spot.
 - Lowering capacity never removes anyone; raising it promotes from the waitlist.
@@ -132,8 +134,12 @@ revision get a `:late:` sync job the same way.
    start/end, voice/stage channel (`location.kind === 'channel'`) or external location
    (`url`/`text`, "JAVELIN" if none). Status ACTIVE when live, COMPLETED when completed
    (`ScheduledEventEdit.status`; the gateway applies only the transitions Discord allows).
-   Create one when it is null (or Unknown Scheduled Event) and the event is scheduled or
-   live — never for a completed event.
+   Discord refuses a scheduled start in the past, so the gateway sends the start only when
+   it moved and still lies ahead, and applies the status even when the field edit is
+   refused. A Discord event that never started is deleted on completion rather than
+   started (starting notifies everyone marked Interested). Create one when it is null (or
+   Unknown Scheduled Event) and the event is scheduled or live — never for a completed
+   event; an event already under way is listed from a minute ahead, then started.
 4. Edit the announcement when `announcementMessageId` is set; otherwise, when
    `announceChannelId` (settings.channels.events) is set and the event is scheduled or live,
    post one (also after Unknown Message). Panel: title, time, location, capacity and spots
@@ -178,8 +184,9 @@ Full reference: [docs/commands/events.md](../commands/events.md).
 - **Dashboard** (`apps/dashboard/app/(console)/events`): `/events` (upcoming · past),
   `/events/new`, `/events/[id]` with Overview (counts, your RSVP, check-in), Attendance (staff:
   check-in code shown once, responses with waitlist positions and check-in times), Teams
-  (draw, remove), Bracket (visual bracket, match reporting) and Edit; go live, complete and
-  cancel for staff.
+  (draw, remove), Bracket (visual bracket, match reporting) and Edit (time fields left as
+  pre-filled are not sent, so stored instants, the duration and a passed RSVP close stay as
+  they are); go live, complete and cancel for staff.
 
 ## Extension points
 

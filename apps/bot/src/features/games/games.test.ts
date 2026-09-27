@@ -193,6 +193,44 @@ describe('games feature', () => {
       expect(board.interaction.lastText()).toContain('No ranked results yet');
     });
 
+    it('BREAK: no board lists a staff-only profile to members, nor a board staff post', async () => {
+      await bot.kit.db
+        .update(members)
+        .set({ profileVisibility: 'staff' })
+        .where(eq(members.id, rival.actor.memberId!));
+      const id = await openTrivia();
+      await press(rival.user, customId('games', 'join', id));
+      await press(host.user, customId('games', 'start', id));
+      for (let round = 1; round <= 5; round++) {
+        const right = await correctIndex(round);
+        await press(host.user, customId('games', 'move', id, round, (right + 1) % 4));
+        await press(rival.user, customId('games', 'move', id, round, right));
+        bot.kit.clock.advance(games.trivia.TRIVIA_REVEAL_MS + SECOND);
+        await bot.drain();
+      }
+      expect((await sessionRow()).status).toBe('completed');
+      const staff = await bot.member({ roles: ['operations'], username: 'vega' });
+      const board = (user: InteractionUser, share: boolean) =>
+        bot.run({
+          kind: 'slash',
+          name: 'challenge',
+          subcommand: 'leaderboard',
+          user,
+          options: share ? { share } : {},
+        });
+
+      const memberView = await board(host.user, false);
+      expect(memberView.interaction.lastText()).toMatch(/`01` \*\*nova\*\*/);
+      expect(memberView.interaction.lastText()).not.toContain('orion');
+      const staffView = await board(staff.user, false);
+      expect(staffView.interaction.lastPayload()!.ephemeral).toBe(true);
+      expect(staffView.interaction.lastText()).toMatch(/`01` \*\*orion\*\* · 1 win/);
+      const posted = await board(staff.user, true);
+      expect(posted.interaction.lastPayload()!.ephemeral).toBe(false);
+      expect(posted.interaction.lastText()).toMatch(/`01` \*\*nova\*\*/);
+      expect(posted.interaction.lastText()).not.toContain('orion');
+    });
+
     it('the host stops a running game from /challenge stop', async () => {
       const id = await openTrivia();
       await press(rival.user, customId('games', 'join', id));

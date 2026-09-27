@@ -79,6 +79,12 @@ export const leaderboardSchema = z.object({
   gameKey: z.string().trim().min(1).max(32),
   metric: z.enum(['wins', 'best_score', 'sessions']).default('wins'),
   limit: z.number().int().min(1).max(LEADERBOARD_MAX).default(LEADERBOARD_DEFAULT),
+  /**
+   * `viewer`: what the viewer may see. `channel`: a board posted where anyone
+   * in the channel reads it, so staff-only profiles never appear on it, even
+   * when a staff member posts it.
+   */
+  audience: z.enum(['viewer', 'channel']).default('viewer'),
 });
 
 export const markGameMessageSchema = z

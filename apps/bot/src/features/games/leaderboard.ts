@@ -98,8 +98,15 @@ export async function showLeaderboard(
 ): Promise<void> {
   if (!gameKey) throw new ValidationError('Choose a game from the list.');
   if (!metric) throw new ValidationError('Choose a leaderboard from the list.');
-  const board = await games.getLeaderboard(h.ctx, { gameKey, metric, limit: LEADERBOARD_ROWS });
-  const payload = leaderboardPanel(board, options.shared ?? false);
+  const shared = options.shared ?? false;
+  const board = await games.getLeaderboard(h.ctx, {
+    gameKey,
+    metric,
+    limit: LEADERBOARD_ROWS,
+    // A posted board is read by everyone in the channel, not only the viewer.
+    audience: shared ? 'channel' : 'viewer',
+  });
+  const payload = leaderboardPanel(board, shared);
   if (options.update) await h.interaction.update(payload);
   else await h.respond(payload);
 }

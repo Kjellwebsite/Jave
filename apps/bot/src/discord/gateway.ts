@@ -66,8 +66,11 @@ export type ScheduledEventStatus = 'scheduled' | 'active' | 'completed' | 'cance
 /**
  * Fields to change on a scheduled event, plus the status it should end up in.
  * The gateway applies only the transitions Discord allows (scheduled → active →
- * completed) and skips edits Discord refuses (the start of an active event,
- * anything on a completed or canceled one).
+ * completed) and skips edits Discord refuses (the start of an active event, a
+ * start less than a minute ahead, anything on a completed or canceled one); an
+ * unchanged start is not re-sent. A refused field edit still applies the status
+ * before it throws. Completing an event that never started deletes it: Discord
+ * completes only active events, and starting one notifies everyone Interested.
  */
 export interface ScheduledEventEdit extends Partial<ScheduledEventSpec> {
   status?: Exclude<ScheduledEventStatus, 'canceled'>;
@@ -166,6 +169,7 @@ export interface DiscordGateway {
   fetchThreadState(threadId: string): Promise<ThreadState>;
 
   // Scheduled events
+  /** Discord refuses a start that is not in the future (Invalid Form Body). */
   createScheduledEvent(spec: ScheduledEventSpec & { reason: string }): Promise<string>;
   editScheduledEvent(eventId: string, spec: ScheduledEventEdit, reason: string): Promise<void>;
   /** Scheduled → canceled; an active event cannot be canceled on Discord and is deleted. */

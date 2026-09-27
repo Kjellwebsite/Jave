@@ -15,10 +15,12 @@ import {
   type ThreadAutoArchiveMinutes,
   type ThreadState,
 } from '../discord/gateway';
-import { planScheduledEventUpdate } from '../discord/scheduled-event-status';
+import { planScheduledEventUpdate, scheduledStartEdit } from '../discord/scheduled-event-status';
 
 /** Discord's "Unknown Guild Scheduled Event" error code. */
 const UNKNOWN_SCHEDULED_EVENT = 10070;
+/** Discord's "Invalid Form Body" (RESTJSONErrorCodes.InvalidFormBodyOrContentType). */
+const INVALID_FORM_BODY = 50035;
 
 const FULL_ACCESS: ChannelAccess = {
   textBased: true,
@@ -83,9 +85,12 @@ export class FakeDiscordGateway implements DiscordGateway {
   /** method name → error to throw once. */
   readonly failures = new Map<string, DiscordActionError>();
   ready = true;
+  /** The clock Discord's own checks read (a scheduled start must lie ahead). */
+  private readonly now: () => Date;
 
-  constructor(guildId = '100000000000000999') {
+  constructor(guildId = '100000000000000999', options: { now?: () => Date } = {}) {
     this.guildId = guildId;
+    this.now = options.now ?? (() => new Date());
   }
 
   addMember(
@@ -283,8 +288,19 @@ export class FakeDiscordGateway implements DiscordGateway {
     if (!thread?.thread) throw new DiscordActionError('unknown channel', 10003, true);
     return { archived: thread.archived ?? false, locked: thread.locked ?? false };
   }
+  /** Like Discord: a scheduled start that is not in the future refuses the request. */
+  private assertFutureStart(startAt: Date) {
+    if (startAt.getTime() <= this.now().getTime()) {
+      throw new DiscordActionError(
+        'Invalid Form Body: cannot schedule event in the past',
+        INVALID_FORM_BODY,
+        true,
+      );
+    }
+  }
   async createScheduledEvent(spec: ScheduledEventSpec & { reason: string }) {
     this.record('createScheduledEvent', spec);
+    this.assertFutureStart(spec.startAt);
     const id = nextId();
     this.scheduledEvents.set(id, { ...spec, status: 'scheduled' });
     return id;
@@ -301,8 +317,14 @@ export class FakeDiscordGateway implements DiscordGateway {
     const existing = this.knownScheduledEvent(eventId);
     const { status, startAt, ...fields } = spec;
     const plan = planScheduledEventUpdate(existing.status, status ?? existing.status);
+    if (plan.remove) {
+      this.scheduledEvents.delete(eventId);
+      return;
+    }
     if (plan.editable) {
-      Object.assign(existing, fields, plan.startEditable && startAt ? { startAt } : {});
+      const start = scheduledStartEdit(plan, existing.startAt, startAt, this.now());
+      if (start) this.assertFutureStart(start);
+      Object.assign(existing, fields, start ? { startAt: start } : {});
     }
     for (const next of plan.transitions) existing.status = next;
   }

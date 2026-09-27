@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { type calendar } from '@jave/core';
 import { KeyedLock } from '../../discord/keyed-lock';
-import { planScheduledEventUpdate } from '../../discord/scheduled-event-status';
+import {
+  planScheduledEventUpdate,
+  SCHEDULED_START_LEAD_MS,
+  scheduledStartEdit,
+} from '../../discord/scheduled-event-status';
 import { bracketBlock, codeSafe } from './render-tournament';
 import { announcementMessage, capacityValue, whereValue } from './render-event';
-import { scheduledEventSpec } from './sync-jobs';
+import { creatableScheduledEventSpec, scheduledEventSpec } from './sync-jobs';
 import { parseStartInput, wallTimeToInstant } from './time-input';
 
 describe('start time input', () => {
@@ -76,10 +80,20 @@ describe('start time input', () => {
 
 describe('scheduled event status plan', () => {
   it('reaches every target through transitions Discord allows', () => {
-    expect(planScheduledEventUpdate('scheduled', 'completed').transitions).toEqual([
-      'active',
-      'completed',
-    ]);
+    // Never started on Discord: removed rather than started (which notifies Interested) and ended.
+    expect(planScheduledEventUpdate('scheduled', 'completed')).toEqual({
+      editable: false,
+      startEditable: false,
+      transitions: [],
+      remove: true,
+    });
+    // Completing sends the status only: a completed event leaves Discord's list.
+    expect(planScheduledEventUpdate('active', 'completed')).toEqual({
+      editable: false,
+      startEditable: false,
+      transitions: ['completed'],
+      remove: false,
+    });
     expect(planScheduledEventUpdate('scheduled', 'active')).toMatchObject({
       editable: true,
       startEditable: true,
@@ -100,6 +114,45 @@ describe('scheduled event status plan', () => {
         remove: false,
       });
     }
+  });
+});
+
+describe('scheduled event start', () => {
+  const now = new Date('2026-03-05T18:05:00Z');
+  const scheduled = planScheduledEventUpdate('scheduled', 'active');
+  const past = new Date('2026-03-05T18:00:00Z');
+  const ahead = new Date('2026-03-06T18:00:00Z');
+
+  it('BREAK: never re-sends an unchanged start, nor one Discord would refuse as past', () => {
+    // Going live five minutes after the start: the start is left alone.
+    expect(scheduledStartEdit(scheduled, past, past, now)).toBeUndefined();
+    expect(scheduledStartEdit(scheduled, ahead, ahead, now)).toBeUndefined();
+    expect(scheduledStartEdit(scheduled, ahead, past, now)).toBeUndefined();
+    const tooSoon = new Date(now.getTime() + SCHEDULED_START_LEAD_MS - 1);
+    expect(scheduledStartEdit(scheduled, past, tooSoon, now)).toBeUndefined();
+    expect(
+      scheduledStartEdit(planScheduledEventUpdate('active', 'active'), past, ahead, now),
+    ).toBeUndefined();
+  });
+
+  it('sends a start that moved and still lies ahead', () => {
+    expect(scheduledStartEdit(scheduled, past, ahead, now)).toEqual(ahead);
+    expect(scheduledStartEdit(scheduled, null, ahead, now)).toEqual(ahead);
+  });
+
+  it('lists an event under way from shortly ahead, and nothing once it is over', () => {
+    const upcoming = publication({ startsAt: ahead, endsAt: new Date(ahead.getTime() + 1) });
+    expect(creatableScheduledEventSpec(upcoming, now)?.startAt).toEqual(ahead);
+    const live = publication({ status: 'live' });
+    expect(creatableScheduledEventSpec(live, now)).toMatchObject({
+      startAt: new Date(now.getTime() + SCHEDULED_START_LEAD_MS),
+      endAt: live.endsAt,
+    });
+    const ending = publication({
+      status: 'live',
+      endsAt: new Date(now.getTime() + SCHEDULED_START_LEAD_MS),
+    });
+    expect(creatableScheduledEventSpec(ending, now)).toBeNull();
   });
 });
 

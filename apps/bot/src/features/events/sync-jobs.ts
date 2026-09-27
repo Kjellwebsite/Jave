@@ -18,6 +18,7 @@ import type {
   ScheduledEventSpec,
 } from '../../discord/gateway';
 import { KeyedLock } from '../../discord/keyed-lock';
+import { earliestScheduledStart } from '../../discord/scheduled-event-status';
 import type { BotServices } from '../../runtime';
 import { announcementMessage, cancelledAnnouncement } from './render-event';
 
@@ -42,6 +43,22 @@ export function scheduledEventSpec(publication: Publication): ScheduledEventSpec
   return { ...base, location: location?.value ?? DEFAULT_LOCATION };
 }
 
+/**
+ * Fields for a new Scheduled Event. Discord refuses a start that has passed,
+ * so an event already under way (or synced late) is listed from shortly
+ * ahead; null when it ends before then — nothing is left to list.
+ */
+export function creatableScheduledEventSpec(
+  publication: Publication,
+  now: Date,
+): ScheduledEventSpec | null {
+  const spec = scheduledEventSpec(publication);
+  const earliest = earliestScheduledStart(now);
+  if (spec.startAt.getTime() >= earliest.getTime()) return spec;
+  if (publication.endsAt.getTime() <= earliest.getTime()) return null;
+  return { ...spec, startAt: earliest };
+}
+
 function targetStatus(publication: Publication): ScheduledEventEdit['status'] {
   if (publication.status === 'live') return 'active';
   if (publication.status === 'completed') return 'completed';
@@ -61,6 +78,7 @@ async function syncScheduledEvent(
   gateway: DiscordGateway,
   publication: Publication,
   created: Created,
+  now: Date,
 ): Promise<void> {
   const edit: ScheduledEventEdit = {
     ...scheduledEventSpec(publication),
@@ -77,10 +95,9 @@ async function syncScheduledEvent(
   }
   // Never create one for a completed event: it would only announce the past.
   if (!isOpen(publication)) return;
-  const id = await gateway.createScheduledEvent({
-    ...scheduledEventSpec(publication),
-    reason: SYNC_REASON,
-  });
+  const spec = creatableScheduledEventSpec(publication, now);
+  if (!spec) return;
+  const id = await gateway.createScheduledEvent({ ...spec, reason: SYNC_REASON });
   created.scheduledEvent = { id, replaces: existing };
   if (publication.status === 'live') {
     await gateway.editScheduledEvent(id, { status: 'active' }, SYNC_REASON);
@@ -234,9 +251,11 @@ function publishHandler(services: BotServices, lock: KeyedLock): JobHandler {
       const message = announcementMessage(publication);
       const created: Created = {};
       const failures: unknown[] = [];
-      await syncScheduledEvent(services.gateway, publication, created).catch((error: unknown) => {
-        failures.push(error);
-      });
+      await syncScheduledEvent(services.gateway, publication, created, ctx.clock.now()).catch(
+        (error: unknown) => {
+          failures.push(error);
+        },
+      );
       await syncAnnouncement(services.gateway, publication, message, created).catch(
         (error: unknown) => {
           failures.push(error);

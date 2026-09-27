@@ -31,7 +31,8 @@ import {
   type ThreadAutoArchiveMinutes,
   type ThreadState,
 } from './gateway';
-import { planScheduledEventUpdate } from './scheduled-event-status';
+import { isDiscordError, UNKNOWN_OBJECT } from './discord-errors';
+import { planScheduledEventUpdate, scheduledStartEdit } from './scheduled-event-status';
 
 const AUTO_ARCHIVE_DURATION: Record<ThreadAutoArchiveMinutes, ThreadAutoArchiveDuration> = {
   60: ThreadAutoArchiveDuration.OneHour,
@@ -472,11 +473,11 @@ export class DiscordJsGateway implements DiscordGateway {
     return event.id;
   }
 
-  private async scheduledEventStatus(guild: Guild, eventId: string) {
+  private async currentScheduledEvent(guild: Guild, eventId: string) {
     const event = await attempt('fetch scheduled event', () =>
       guild.scheduledEvents.fetch(eventId),
     );
-    return SCHEDULED_EVENT_STATUS[event.status];
+    return { status: SCHEDULED_EVENT_STATUS[event.status], startAt: event.scheduledStartAt };
   }
 
   private async setScheduledEventStatus(
@@ -509,36 +510,56 @@ export class DiscordJsGateway implements DiscordGateway {
     });
   }
 
+  private async editScheduledEventFields(
+    guild: Guild,
+    eventId: string,
+    spec: ScheduledEventEdit,
+    startAt: Date | undefined,
+    reason: string,
+  ) {
+    const relocated = spec.channelId !== undefined || spec.location !== undefined;
+    const entity = relocated ? await this.scheduledEventEntity(guild, spec) : null;
+    await attempt('edit scheduled event', async () => {
+      await guild.scheduledEvents.edit(eventId, {
+        name: spec.name,
+        description: spec.description,
+        scheduledStartTime: startAt,
+        scheduledEndTime: spec.endAt,
+        ...(entity && {
+          entityType: entity.entityType,
+          channel: entity.channel,
+          entityMetadata: 'entityMetadata' in entity ? entity.entityMetadata : undefined,
+        }),
+        reason,
+      });
+    });
+  }
+
   async editScheduledEvent(eventId: string, spec: ScheduledEventEdit, reason: string) {
     const guild = await this.guild();
-    const current = await this.scheduledEventStatus(guild, eventId);
-    const plan = planScheduledEventUpdate(current, spec.status ?? current);
+    const current = await this.currentScheduledEvent(guild, eventId);
+    const plan = planScheduledEventUpdate(current.status, spec.status ?? current.status);
+    if (plan.remove) return this.deleteScheduledEvent(eventId, reason);
+    // A refused field edit must not hold back the status: going live matters more.
+    let fieldFailure: { error: unknown } | null = null;
     if (plan.editable) {
-      const relocated = spec.channelId !== undefined || spec.location !== undefined;
-      const entity = relocated ? await this.scheduledEventEntity(guild, spec) : null;
-      await attempt('edit scheduled event', async () => {
-        await guild.scheduledEvents.edit(eventId, {
-          name: spec.name,
-          description: spec.description,
-          scheduledStartTime: plan.startEditable ? spec.startAt : undefined,
-          scheduledEndTime: spec.endAt,
-          ...(entity && {
-            entityType: entity.entityType,
-            channel: entity.channel,
-            entityMetadata: 'entityMetadata' in entity ? entity.entityMetadata : undefined,
-          }),
-          reason,
-        });
-      });
+      const startAt = scheduledStartEdit(plan, current.startAt, spec.startAt, new Date());
+      try {
+        await this.editScheduledEventFields(guild, eventId, spec, startAt, reason);
+      } catch (error) {
+        if (isDiscordError(error, UNKNOWN_OBJECT.scheduledEvent)) throw error;
+        fieldFailure = { error };
+      }
     }
     for (const status of plan.transitions) {
       await this.setScheduledEventStatus(guild, eventId, status, reason);
     }
+    if (fieldFailure) throw fieldFailure.error;
   }
 
   async cancelScheduledEvent(eventId: string, reason: string) {
     const guild = await this.guild();
-    const current = await this.scheduledEventStatus(guild, eventId);
+    const { status: current } = await this.currentScheduledEvent(guild, eventId);
     const plan = planScheduledEventUpdate(current, 'canceled');
     if (plan.remove) return this.deleteScheduledEvent(eventId, reason);
     for (const status of plan.transitions) {

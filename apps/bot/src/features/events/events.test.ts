@@ -229,6 +229,73 @@ describe('events feature', () => {
       expect(panel.embeds![0]!.fields!.find((f) => f.name === 'STATUS')!.value).toBe('COMPLETED');
     });
 
+    it('BREAK: going live after the start never re-sends the passed start; Discord starts it', async () => {
+      const id = await createEvent();
+      const seId = (await eventRow(id)).discordScheduledEventId!;
+      bot.kit.clock.set(new Date(START.getTime() + 5 * MINUTE));
+      const live = await bot.run({
+        kind: 'slash',
+        name: 'events',
+        subcommand: 'live',
+        user: staff.user,
+        options: { event: id },
+      });
+      expect(live.interaction.lastText()).toContain('EVENT LIVE');
+      await bot.drain();
+      const scheduled = bot.gateway.scheduledEvents.get(seId)!;
+      expect(scheduled.status).toBe('active');
+      expect(scheduled.startAt).toEqual(START);
+      const dead = await bot.kit.db.select().from(jobs).where(eq(jobs.status, 'dead'));
+      expect(dead).toHaveLength(0);
+    });
+
+    it('completing an event that never went live removes it from Discord instead of starting it', async () => {
+      const id = await createEvent();
+      const seId = (await eventRow(id)).discordScheduledEventId!;
+      bot.kit.clock.set(new Date(START.getTime() + HOUR));
+      await bot.run({
+        kind: 'slash',
+        name: 'events',
+        subcommand: 'complete',
+        user: staff.user,
+        options: { event: id },
+      });
+      await bot.drain();
+      expect(bot.gateway.scheduledEvents.has(seId)).toBe(false);
+      const statuses = bot.gateway
+        .callsTo('editScheduledEvent')
+        .map((call) => (call.args[1] as { status?: string }).status);
+      expect(statuses).not.toContain('active');
+      // The completed event is never listed again.
+      expect(bot.gateway.callsTo('createScheduledEvent')).toHaveLength(1);
+      const dead = await bot.kit.db.select().from(jobs).where(eq(jobs.status, 'dead'));
+      expect(dead).toHaveLength(0);
+    });
+
+    it('BREAK: a live event whose Discord event is gone is listed again from shortly ahead, then started', async () => {
+      const id = await createEvent();
+      const before = await eventRow(id);
+      bot.gateway.scheduledEvents.delete(before.discordScheduledEventId!);
+      const now = new Date(START.getTime() + 10 * MINUTE);
+      bot.kit.clock.set(now);
+      await bot.run({
+        kind: 'slash',
+        name: 'events',
+        subcommand: 'live',
+        user: staff.user,
+        options: { event: id },
+      });
+      await bot.drain();
+      const after = await eventRow(id);
+      expect(after.discordScheduledEventId).not.toBe(before.discordScheduledEventId);
+      const recreated = bot.gateway.scheduledEvents.get(after.discordScheduledEventId!)!;
+      expect(recreated.status).toBe('active');
+      expect(recreated.startAt.getTime()).toBeGreaterThan(now.getTime());
+      expect(recreated.endAt).toEqual(after.endsAt);
+      const dead = await bot.kit.db.select().from(jobs).where(eq(jobs.status, 'dead'));
+      expect(dead).toHaveLength(0);
+    });
+
     it('re-creates an unknown scheduled event and reports it as a replacement', async () => {
       const id = await createEvent();
       const before = await eventRow(id);

@@ -28,6 +28,12 @@ function daysFromNow(days: number): string {
   return `${date.toISOString().slice(0, 10)}T18:00`;
 }
 
+/** A datetime-local value moved by whole days (the persona time zone is UTC). */
+function shiftDays(value: string, days: number): string {
+  const moved = new Date(new Date(`${value}Z`).getTime() + days * 24 * 60 * 60 * 1000);
+  return moved.toISOString().slice(0, 16);
+}
+
 test.describe('events — staff', () => {
   test.beforeEach(async ({ page }) => {
     await signInAs(page, 'operations');
@@ -63,6 +69,35 @@ test.describe('events — staff', () => {
     await dialog.getByRole('button', { name: 'Cancel event' }).click();
     await expect(page.getByText(/EVENT CANCELLED — Signal Processing Clinic/)).toBeVisible();
     await expect(page.getByText('Speaker unavailable.')).toBeVisible();
+  });
+
+  test('BREAK: an event whose RSVPs closed is still editable; untouched times stay', async ({
+    page,
+  }) => {
+    await openEvent(page, EVENT_FIXTURES.rsvpClosed);
+    await openTab(page, 'Edit');
+    const edit = page.getByRole('form', { name: 'Event' });
+    const closes = await edit.getByLabel('RSVP closes').inputValue();
+    const start = await edit.getByLabel('Start').inputValue();
+    const end = await edit.getByLabel('End').inputValue();
+    await edit
+      .getByLabel('Description')
+      .fill('Staged combustion from first principles. Slides after.');
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.getByText(`EVENT UPDATED — ${EVENT_FIXTURES.rsvpClosed}.`)).toBeVisible();
+
+    // A new start with the end left as is: the event keeps its two hours.
+    await edit.getByLabel('Start').fill(shiftDays(start, 1));
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expect(edit.getByLabel('End')).toHaveValue(shiftDays(end, 1));
+    await expect(edit.getByLabel('RSVP closes')).toHaveValue(closes);
+
+    // The form shows what is stored again: a further save re-sends nothing stale.
+    await edit.getByLabel('Capacity').fill('30');
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.getByText('1 / 30 going · 29 left')).toBeVisible();
+    await expect(edit.getByLabel('Start')).toHaveValue(shiftDays(start, 1));
+    await expect(edit.getByLabel('End')).toHaveValue(shiftDays(end, 1));
   });
 
   test('BREAK: an impossible schedule is refused on its field', async ({ page }) => {
@@ -171,6 +206,8 @@ test.describe('games', () => {
     await expect(board.locator('tbody tr').first()).toContainText('Mara Voss');
     // The member's solo run is practice: never on the board.
     await expect(board.getByText('Dev Member')).toHaveCount(0);
+    // BREAK: a staff-only profile is never listed to a member (Sol Arden played a ranked game).
+    await expect(board.getByText('Sol Arden')).toHaveCount(0);
     await page
       .getByRole('navigation', { name: 'Order by' })
       .getByRole('link', { name: 'Best score' })
@@ -189,6 +226,14 @@ test.describe('games', () => {
     await page.waitForURL(/game=reaction/);
     await expect(page.getByRole('table', { name: /Reaction leaderboard/ })).toContainText(
       'Jun Park',
+    );
+  });
+
+  test('staff see staff-only profiles on the board', async ({ page }) => {
+    await signInAs(page, 'operations');
+    await page.goto('/games?metric=best_score');
+    await expect(page.getByRole('table', { name: /Trivia leaderboard/ })).toContainText(
+      'Sol Arden',
     );
   });
 });

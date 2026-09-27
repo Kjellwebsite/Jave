@@ -1,6 +1,7 @@
 'use client';
 
 import { Input, NativeSelect, Textarea } from '@jave/ui';
+import { EVENT_TIME_FIELDS, initialFieldName } from '@/lib/event-form';
 import { EVENT_KIND_LABELS, EVENT_KINDS } from '@/lib/event-labels';
 import { ActionForm, type FormAction } from '../forms/action-form';
 import { FormField } from '../forms/form-field';
@@ -62,8 +63,21 @@ export function EventForm({
 }: EventFormProps) {
   const editing = eventId !== undefined;
   return (
-    <ActionForm action={action} submitLabel={submitLabel} aria-label="Event">
+    // Edit mode: a save resets every field to the refreshed stored values, so what the
+    // inputs show and their hidden twins agree again (a moved start also moves the end).
+    <ActionForm
+      action={action}
+      submitLabel={submitLabel}
+      aria-label="Event"
+      resetOnSuccess={editing}
+    >
       {eventId ? <input type="hidden" name="eventId" value={eventId} /> : null}
+      {/* Edit mode: what each time field showed, so untouched ones keep their stored instant. */}
+      {editing
+        ? EVENT_TIME_FIELDS.map((field) => (
+            <input key={field} type="hidden" name={initialFieldName(field)} value={values[field]} />
+          ))
+        : null}
       <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_200px]">
         <FormField name="title" label="Title" required>
           <Input
@@ -114,7 +128,9 @@ export function EventForm({
         <FormField
           name="endsAt"
           label="End"
-          description={editing ? 'Leave blank to keep the duration.' : 'Leave blank for two hours.'}
+          description={
+            editing ? 'Leave as is, or blank, to keep the duration.' : 'Leave blank for two hours.'
+          }
         >
           <Input name="endsAt" type="datetime-local" defaultValue={values.endsAt} />
         </FormField>

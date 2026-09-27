@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { hasIssuedCode } from './check-in-code-state';
-import { EventFormError, readEventForm, scheduleInput, updateInput } from './event-form';
+import {
+  EventFormError,
+  initialFieldName,
+  readEventForm,
+  scheduleInput,
+  untouchedTimeFields,
+  updateInput,
+} from './event-form';
 import { capacityLabel, locationDisplay } from './event-labels';
 
 const COUNTS = { going: 12, maybe: 3, declined: 1, waitlist: 0, checkedIn: 0 };
@@ -46,6 +53,38 @@ describe('event form', () => {
       rsvpClosesAt: null,
       endsAt: undefined,
     });
+  });
+
+  it('an edit leaves out the time fields still showing their pre-filled value', () => {
+    const edit = form({
+      ...base,
+      endsAt: '2026-10-02T20:00',
+      rsvpClosesAt: '2026-10-01T12:00',
+      [initialFieldName('startsAt')]: '2026-10-01T18:00',
+      [initialFieldName('endsAt')]: '2026-10-02T20:00',
+      [initialFieldName('rsvpClosesAt')]: '2026-10-01T12:00',
+    });
+    const untouched = untouchedTimeFields(edit);
+    expect([...untouched].sort()).toEqual(['endsAt', 'rsvpClosesAt']);
+    const input = updateInput('e1', readEventForm(edit, 'UTC'), untouched);
+    // The moved start is sent; the untouched end and RSVP close stay as stored.
+    expect(input.startsAt?.toISOString()).toBe('2026-10-02T18:00:00.000Z');
+    expect(input).toMatchObject({ endsAt: undefined, rsvpClosesAt: undefined });
+  });
+
+  it('an edit clears a pre-filled RSVP close the viewer blanked; no twin means changed', () => {
+    const cleared = form({
+      ...base,
+      rsvpClosesAt: '',
+      [initialFieldName('rsvpClosesAt')]: '2026-10-01T12:00',
+    });
+    expect(
+      updateInput('e1', readEventForm(cleared, 'UTC'), untouchedTimeFields(cleared)),
+    ).toMatchObject({
+      rsvpClosesAt: null,
+    });
+    const bare = form({ ...base, rsvpClosesAt: '2026-10-01T12:00' });
+    expect(untouchedTimeFields(bare).size).toBe(0);
   });
 
   it('BREAK: refuses forged kinds, non-numeric capacity and unreadable times by field', () => {

@@ -10,6 +10,7 @@ import {
   EventFormError,
   readEventForm,
   scheduleInput,
+  untouchedTimeFields,
   updateInput,
 } from '@/lib/event-form';
 import { RSVP_CHOICES, RSVP_LABELS } from '@/lib/event-labels';
@@ -81,7 +82,7 @@ export async function updateEventAction(_: ActionState, data: FormData): Promise
       const eventId = eventIdFrom(data);
       const event = await calendar.updateEvent(
         ctx,
-        updateInput(eventId, await readForm(ctx, data)),
+        updateInput(eventId, await readForm(ctx, data), untouchedTimeFields(data)),
       );
       refresh(eventId);
       return `EVENT UPDATED — ${event.title}.`;

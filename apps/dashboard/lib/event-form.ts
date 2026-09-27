@@ -1,7 +1,7 @@
 import type { calendar } from '@jave/core';
 import { EVENT_KINDS } from './event-labels';
 import { formEnum, formOptional, formString } from './form-data';
-import { fromDatetimeLocal } from './datetime-local';
+import { fromDatetimeLocal, toDatetimeLocal } from './datetime-local';
 
 /** Field names of the event form (also the paths core reports validation issues on). */
 export const EVENT_FORM_FIELDS = [
@@ -15,6 +15,15 @@ export const EVENT_FORM_FIELDS = [
   'rsvpClosesAt',
 ] as const;
 export type EventFormField = (typeof EVENT_FORM_FIELDS)[number];
+
+/** The form's time fields. In edit mode each has a hidden twin holding its pre-filled value. */
+export const EVENT_TIME_FIELDS = ['startsAt', 'endsAt', 'rsvpClosesAt'] as const;
+export type EventTimeField = (typeof EVENT_TIME_FIELDS)[number];
+
+/** Name of the hidden field that carries the value `field` was pre-filled with. */
+export function initialFieldName(field: EventTimeField): `${EventTimeField}Initial` {
+  return `${field}Initial`;
+}
 
 const WHOLE_NUMBER = /^\d{1,9}$/;
 
@@ -91,21 +100,72 @@ export function scheduleInput(values: EventFormValues) {
   };
 }
 
+/** What the Edit tab pre-fills: the stored event, times in the viewer's zone (minutes only). */
+export function editFormDefaults(
+  event: Pick<
+    calendar.EventView,
+    | 'title'
+    | 'kind'
+    | 'description'
+    | 'startsAt'
+    | 'endsAt'
+    | 'location'
+    | 'capacity'
+    | 'rsvpClosesAt'
+  >,
+  timeZone: string,
+): Record<EventFormField, string> {
+  return {
+    title: event.title,
+    kind: event.kind,
+    description: event.description ?? '',
+    startsAt: toDatetimeLocal(event.startsAt, timeZone),
+    endsAt: toDatetimeLocal(event.endsAt, timeZone),
+    location: event.location?.value ?? '',
+    capacity: event.capacity === null ? '' : String(event.capacity),
+    rsvpClosesAt: event.rsvpClosesAt ? toDatetimeLocal(event.rsvpClosesAt, timeZone) : '',
+  };
+}
+
 /**
- * Input for `calendar.updateEvent`: a blank optional field clears it (null),
- * except the end, which keeps the event's duration when left blank. Core
- * diffs against the stored event, so unchanged fields change nothing.
+ * Time fields the viewer left exactly as the edit form pre-filled them. The
+ * inputs show minutes only, so re-sending an untouched value could move a
+ * stored instant (its seconds dropped), turn an unchanged end into a new
+ * duration, or re-check a past RSVP close. Untouched fields are left out and
+ * core keeps what is stored. A field without its hidden twin counts as changed.
  */
-export function updateInput(eventId: string, values: EventFormValues) {
+export function untouchedTimeFields(data: FormData): ReadonlySet<EventTimeField> {
+  const untouched = new Set<EventTimeField>();
+  for (const field of EVENT_TIME_FIELDS) {
+    const initial = data.get(initialFieldName(field));
+    if (typeof initial === 'string' && initial.trim() === formString(data, field).trim()) {
+      untouched.add(field);
+    }
+  }
+  return untouched;
+}
+
+/**
+ * Input for `calendar.updateEvent`: a blank optional field clears it (null).
+ * Untouched time fields are omitted; the end also when blank, so the event
+ * keeps its duration (from the new start, if the start moved). Core diffs
+ * against the stored event, so unchanged fields change nothing.
+ */
+export function updateInput(
+  eventId: string,
+  values: EventFormValues,
+  untouched: ReadonlySet<EventTimeField> = new Set(),
+) {
+  const changed = (field: EventTimeField) => !untouched.has(field);
   return {
     eventId,
     title: values.title,
     kind: values.kind,
     description: values.description ?? null,
-    startsAt: values.startsAt,
-    endsAt: values.endsAt,
+    startsAt: changed('startsAt') ? values.startsAt : undefined,
+    endsAt: changed('endsAt') ? values.endsAt : undefined,
     location: values.location ?? null,
     capacity: values.capacity ?? null,
-    rsvpClosesAt: values.rsvpClosesAt ?? null,
+    rsvpClosesAt: changed('rsvpClosesAt') ? (values.rsvpClosesAt ?? null) : undefined,
   };
 }

@@ -28,6 +28,7 @@ export const EVENT_FIXTURES = {
   live: 'Office Hours',
   past: 'Rocketry Workshop',
   cancelled: 'Summer Social',
+  rsvpClosed: 'Propulsion Review',
 } as const;
 
 const GAME_SEED_BYTES = 24;
@@ -99,6 +100,22 @@ async function seedMeetup(cast: Actors, now: Date) {
     dev_verified: 'going',
     theo: 'going',
   });
+}
+
+/** RSVPs closed yesterday, the talk is still ahead: staff may still edit it. */
+async function seedRsvpClosed(cast: Actors, now: Date) {
+  const clock = new ManualClock(new Date(now.getTime() - 2 * DAY));
+  const ops = await cast.as('dev_operations', clock);
+  const event = await calendar.scheduleEvent(ops, {
+    title: EVENT_FIXTURES.rsvpClosed,
+    kind: 'talk',
+    description: 'Staged combustion from first principles.',
+    startsAt: daysAhead(now, 4, 18),
+    endsAt: daysAhead(now, 4, 20),
+    rsvpClosesAt: new Date(now.getTime() - DAY),
+    location: 'Lab 3, north wing',
+  });
+  await respond(cast, event.id, { mara: 'going', sana: 'maybe' }, clock);
 }
 
 const TEAMS = [
@@ -290,6 +307,7 @@ export async function seedEventsAndGames(databaseUrl: string): Promise<void> {
     const handles = [...new Set([...PLAYERS, 'noor', 'sol', 'dev_operations', 'dev_member'])];
     const cast = await actors(system, handles);
     await seedMeetup(cast, now);
+    await seedRsvpClosed(cast, now);
     await seedTournament(cast, now);
     await seedLive(cast, now);
     await seedPast(cast, now);

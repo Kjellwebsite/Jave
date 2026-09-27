@@ -11,7 +11,7 @@ import { BracketTab, TeamsTab } from '@/components/events/tournament-tabs';
 import { MemberOnlyPage } from '@/components/events/member-only-page';
 import { NextLink } from '@/components/next-link';
 import { firstParam, offsetParam, type SearchParams, toQueryString } from '@/lib/search-params';
-import { toDatetimeLocal } from '@/lib/datetime-local';
+import { editFormDefaults } from '@/lib/event-form';
 import { requireConsoleContext } from '@/server/context';
 import { EVENT_FORM_LIMITS } from '@/server/data/event-form';
 import { loadViewer } from '@/server/data/viewer';
@@ -61,19 +61,6 @@ function lifecycle(event: calendar.EventView, now: Date) {
     canGoLive: event.status === 'scheduled' && now.getTime() >= liveFrom && now <= event.endsAt,
     canComplete: event.status === 'live' || (event.status === 'scheduled' && now >= event.startsAt),
     canCancel: open,
-  };
-}
-
-function editValues(event: calendar.EventView, timeZone: string) {
-  return {
-    title: event.title,
-    kind: event.kind,
-    description: event.description ?? '',
-    startsAt: toDatetimeLocal(event.startsAt, timeZone),
-    endsAt: toDatetimeLocal(event.endsAt, timeZone),
-    location: event.location?.value ?? '',
-    capacity: event.capacity === null ? '' : String(event.capacity),
-    rsvpClosesAt: event.rsvpClosesAt ? toDatetimeLocal(event.rsvpClosesAt, timeZone) : '',
   };
 }
 
@@ -183,7 +170,7 @@ export default async function EventPage({
             <EventForm
               action={updateEventAction}
               limits={EVENT_FORM_LIMITS}
-              values={editValues(event, tz)}
+              values={editFormDefaults(event, tz)}
               submitLabel="Save changes"
               timeZone={tz}
               eventId={event.id}

@@ -44,7 +44,7 @@ export interface BotHarnessOptions {
 
 export async function createBotHarness(options: BotHarnessOptions = {}): Promise<BotHarness> {
   const kit = await createTestKit(options.config);
-  const gateway = new FakeDiscordGateway(TEST_GUILD_ID);
+  const gateway = new FakeDiscordGateway(TEST_GUILD_ID, { now: () => kit.clock.now() });
   const app = createBotApp({
     db: kit.db,
     clock: kit.clock,

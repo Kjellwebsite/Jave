@@ -198,7 +198,8 @@ Quarantine itself (adding the quarantine role, or the timeout fallback) belongs 
 - **The bot, server-wide:** exactly `REQUIRED_PERMISSIONS` — View Channel, Send Messages, Send
   Messages in Threads, Embed Links, Attach Files, Read Message History, Manage Roles, Manage
   Channels, Create Private Threads, Manage Threads, Manage Messages, Moderate Members, Kick
-  Members, Ban Members, Manage Server (invites), Manage Events. Never Administrator.
+  Members, Ban Members, Manage Server (invites), Manage Events, Add Reactions (trial team
+  channels). Never Administrator.
 - **Per channel:** the table above; `/jave setup` checks it with permission overwrites applied.
 - **Role hierarchy:** JAVE's highest role above every mapped role and the quarantine role.
 - **Introspection** (read-only `DiscordGateway` additions): `botMember()`,

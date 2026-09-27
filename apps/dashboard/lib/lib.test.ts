@@ -164,6 +164,7 @@ describe('navigation', () => {
     expect(member.map((group) => group.label)).toEqual([
       'OVERVIEW',
       'PEOPLE',
+      'OPERATIONS',
       'SUPPORT & SAFETY',
       'INTELLIGENCE',
     ]);
@@ -176,6 +177,8 @@ describe('navigation', () => {
       '/overview',
       '/members',
       '/ranking',
+      '/events',
+      '/games',
       '/tickets',
       '/research',
       '/audit',
@@ -183,7 +186,7 @@ describe('navigation', () => {
     ]);
     expect(
       visibleNav(NAV_GROUPS, []).flatMap((group) => group.items.map((item) => item.href)),
-    ).toEqual(['/overview', '/tickets']);
+    ).toEqual(['/overview', '/events', '/games', '/tickets']);
   });
 
   it('resolves page context from nested paths', () => {

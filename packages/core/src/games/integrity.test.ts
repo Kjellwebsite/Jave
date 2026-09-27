@@ -1,7 +1,14 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { auditLogs, type Database, domainEvents, gameSessions, jobs } from '@jave/database';
+import {
+  auditLogs,
+  type Database,
+  domainEvents,
+  gameSessions,
+  jobs,
+  members,
+} from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import type { ServiceContext } from '../kernel/context';
 import { ConflictError, ForbiddenError, ValidationError } from '../kernel/errors';
@@ -272,6 +279,63 @@ describe('game session integrity', () => {
         [host.memberId, 2, 3],
         [guest.memberId, 1, 3],
       ]);
+    });
+  });
+
+  describe('leaderboard visibility', () => {
+    it('BREAK: a board never lists a profile the viewer could not open; a posted one never lists staff-only profiles', async () => {
+      const guest = await kit.member();
+      const hidden = await kit.member();
+      await kit.db
+        .update(members)
+        .set({ profileVisibility: 'staff' })
+        .where(eq(members.id, hidden.memberId!));
+      const session = await lobby({
+        gameKey: 'test-tally',
+        config: {},
+        surface: 'dashboard',
+        discordChannelId: undefined,
+      });
+      for (const player of [guest, hidden]) {
+        await joinSession(kit.as(player), { sessionId: session.id });
+      }
+      await startSession(kit.as(host), { sessionId: session.id });
+      const points = new Map([
+        [host, 1],
+        [guest, 2],
+        [hidden, 3],
+      ]);
+      for (const [player, value] of points) {
+        await submitMove(kit.as(player), { sessionId: session.id, move: { points: value } });
+      }
+      const board = async (viewer: UserActor, audience?: 'viewer' | 'channel') =>
+        (
+          await getLeaderboard(kit.as(viewer), {
+            gameKey: 'test-tally',
+            metric: 'best_score',
+            audience,
+          })
+        ).entries.map((entry) => [entry.memberId, entry.rank]);
+
+      // A member never sees the staff-only player, and the ranks leave no gap for them.
+      expect(await board(host)).toEqual([
+        [guest.memberId, 1],
+        [host.memberId, 2],
+      ]);
+      // Staff see every profile on their own screen...
+      expect(await board(staff)).toEqual([
+        [hidden.memberId, 1],
+        [guest.memberId, 2],
+        [host.memberId, 3],
+      ]);
+      // ...but a board posted to a channel is read by everyone there.
+      expect(await board(staff, 'channel')).toEqual([
+        [guest.memberId, 1],
+        [host.memberId, 2],
+      ]);
+      // The hidden player sees their own row privately, never on a posted board.
+      expect(await board(hidden)).toContainEqual([hidden.memberId, 1]);
+      expect((await board(hidden, 'channel')).map(([id]) => id)).not.toContain(hidden.memberId);
     });
   });
 

@@ -192,6 +192,28 @@ describe('calendar', () => {
       ]);
     });
 
+    it('an event whose RSVPs closed can still be edited; only a moved RSVP close must lie ahead', async () => {
+      const closes = fromNow(DAY);
+      const event = await schedule({ startsAt: fromNow(3 * DAY), rsvpClosesAt: closes });
+      kit.clock.advance(2 * DAY);
+      // Forms re-send every field: the stored, now past, RSVP close is no change.
+      const renamed = await updateEvent(kit.as(staff), {
+        eventId: event.id,
+        title: 'Build Night II',
+        rsvpClosesAt: closes,
+      });
+      expect(renamed).toMatchObject({ title: 'Build Night II' });
+      expect(renamed.rsvpClosesAt).toEqual(closes);
+      await expect(
+        updateEvent(kit.as(staff), { eventId: event.id, rsvpClosesAt: fromNow(-HOUR) }),
+      ).rejects.toThrow(/rsvpClosesAt: must be in the future/);
+      const reopened = await updateEvent(kit.as(staff), {
+        eventId: event.id,
+        rsvpClosesAt: fromNow(HOUR),
+      });
+      expect(reopened.rsvpClosesAt).toEqual(fromNow(HOUR));
+    });
+
     it('no-op updates change nothing', async () => {
       const event = await schedule();
       await updateEvent(kit.as(staff), { eventId: event.id, title: 'Build Night' });

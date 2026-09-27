@@ -44,3 +44,8 @@ export function canTransition(from: ReferralStatus, to: ReferralStatus): boolean
 export function isLiveReferral(status: ReferralStatus): boolean {
   return (LIVE_REFERRAL_STATUSES as readonly ReferralStatus[]).includes(status);
 }
+
+/** Can a reviewer still act on (clear the flags of, or invalidate) a referral in this status? */
+export function isReviewableReferral(status: ReferralStatus): boolean {
+  return (REVIEWABLE_REFERRAL_STATUSES as readonly ReferralStatus[]).includes(status);
+}

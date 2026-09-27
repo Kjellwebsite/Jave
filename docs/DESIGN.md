@@ -113,6 +113,17 @@ client pickers. Settings rows are two-column (label left, control right) on desk
 reads in `fg-subtle` so the non-zero facts carry the eye. Grids of tiles never end on a lone tile —
 choose the column count from the tile count (the overview and the member stat strip show how).
 
+**Charts.** `ColumnChart` (daily flows; with a second series it diverges on one shared scale, e.g.
+joins above the baseline and leaves below), `LineChart` (levels: 2px line, 10% wash, end dot),
+`BarList` (nominal categories, one hue, zeros kept and dimmed), `Meter` (one rate against its whole),
+`StackedBar` (VERIFIED › CLAIMED › UNKNOWN in the ordinal `fg` › `fg-subtle` › `fg-faint` steps),
+`FunnelChart` (ordered stages; the stage that counts in `fg`, context in `fg-subtle`), `HeatCell`
+(one hue mixed into the surface, count always printed) and `ChartFrame` (title, headline value,
+legend, and a **table twin** for every chart). Marks use semantic tokens only, so the light theme
+inverts them; text never wears a mark colour. Every plot has a pointer and keyboard (←/→) readout
+that enhances and never gates. A day without data is shaded and reads "no data", never 0. Filters
+(the date range first) sit in one row above everything they scope, never inside a chart card.
+
 **Navigation.** Sidebar groups: OVERVIEW · PEOPLE · OPERATIONS · SUPPORT & SAFETY · INTELLIGENCE ·
 SYSTEM. The active item has a raised surface and a 2px chrome rail. `LinkTabs` for URL-driven tabs;
 below `md` they become a swipeable rail with `scroll-fade-x`, as do the settings and ranking section

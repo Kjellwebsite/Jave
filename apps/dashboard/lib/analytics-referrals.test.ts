@@ -9,6 +9,7 @@ import {
   parseRange,
   seriesTotal,
   signed,
+  tierColumns,
 } from './analytics-view';
 import { campaignDayValue, parseCampaignDay } from './campaign-form';
 import {
@@ -64,6 +65,37 @@ describe('analytics view helpers', () => {
     expect(latestValue(joins)).toBe(0);
     expect(latestValue([])).toBeNull();
     expect(coveredDays(joins)).toBe(2);
+  });
+});
+
+describe('capability heat table', () => {
+  const tier = (code: string, count = 0) => ({ code, label: code, count });
+  const domain = (key: string, tiers: ReturnType<typeof tier>[]) => ({
+    domainKey: key,
+    label: key.toUpperCase(),
+    tiers,
+    verified: 0,
+    claimedOnly: 0,
+    unknown: 0,
+  });
+  const catalog = () => [tier('F'), tier('E'), tier('A'), tier('S')];
+
+  it('lists the catalog highest first', () => {
+    expect(tierColumns([domain('mind', catalog()), domain('body', catalog())])).toEqual([
+      'S',
+      'A',
+      'E',
+      'F',
+    ]);
+    expect(tierColumns([])).toEqual([]);
+  });
+
+  it('BREAK: keeps a verified count on a since-disabled tier in any domain', () => {
+    const columns = tierColumns([
+      domain('mind', catalog()),
+      domain('body', [...catalog(), tier('SS', 2)]),
+    ]);
+    expect(columns).toEqual(['S', 'A', 'E', 'F', 'SS']);
   });
 });
 

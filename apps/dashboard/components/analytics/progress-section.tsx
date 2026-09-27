@@ -3,6 +3,7 @@ import {
   ChartLegend,
   cx,
   formatCount,
+  formatRate,
   HeatCell,
   Panel,
   RoleBadge,
@@ -13,6 +14,7 @@ import {
   TableHeaderCell,
 } from '@jave/ui';
 import type { analytics } from '@jave/core';
+import { type DomainDistribution, tierColumns } from '@/lib/analytics-view';
 import type { AnalyticsView } from '@/server/data/analytics';
 import { AnalyticsSection } from './readouts';
 
@@ -20,14 +22,10 @@ import { AnalyticsSection } from './readouts';
 const LADDER: readonly analytics.ProgressionRole[] = ['verified', 'trial', 'applicant', 'member'];
 
 function share(value: number, total: number): string {
-  return total > 0 ? `${Math.round((value / total) * 100)}%` : '';
+  return total > 0 ? formatRate(value / total) : '';
 }
 
-function CapabilityRows({
-  distribution,
-}: {
-  distribution: readonly analytics.JavelinProgress['capabilityDistribution'][number][];
-}) {
+function CapabilityRows({ distribution }: { distribution: readonly DomainDistribution[] }) {
   return (
     <ul className="space-y-3.5">
       {distribution.map((domain) => {
@@ -58,12 +56,8 @@ function CapabilityRows({
   );
 }
 
-function TierTable({
-  distribution,
-}: {
-  distribution: readonly analytics.JavelinProgress['capabilityDistribution'][number][];
-}) {
-  const tiers = [...(distribution[0]?.tiers ?? [])].reverse();
+function TierTable({ distribution }: { distribution: readonly DomainDistribution[] }) {
+  const tiers = tierColumns(distribution);
   const max = distribution.reduce(
     (peak, domain) => domain.tiers.reduce((m, tier) => Math.max(m, tier.count), peak),
     0,
@@ -73,9 +67,9 @@ function TierTable({
       <TableHead>
         <tr>
           <TableHeaderCell>Domain</TableHeaderCell>
-          {tiers.map((tier) => (
-            <TableHeaderCell key={tier.code} className="text-center">
-              {tier.code}
+          {tiers.map((code) => (
+            <TableHeaderCell key={code} className="text-center">
+              {code}
             </TableHeaderCell>
           ))}
         </tr>
@@ -91,8 +85,8 @@ function TierTable({
               >
                 {domain.label}
               </th>
-              {tiers.map((tier) => (
-                <HeatCell key={tier.code} value={counts.get(tier.code) ?? 0} max={max} />
+              {tiers.map((code) => (
+                <HeatCell key={code} value={counts.get(code) ?? 0} max={max} />
               ))}
             </tr>
           );
@@ -109,12 +103,12 @@ export function ProgressSection({ view }: { view: AnalyticsView }) {
     { label: 'TRIALS PASSED', value: progress.trialsPassed, hint: 'Published pass or distinction' },
     { label: 'PROJECTS SHIPPED', value: progress.projectsShipped, hint: 'Marked shipped' },
     {
-      label: 'VERIFIED CONTRIBUTIONS',
+      label: 'CONTRIBUTIONS',
       value: progress.verifiedContributions,
-      hint: 'Reviewed and accepted',
+      hint: 'Verified: reviewed and accepted',
     },
     {
-      label: 'MISSIONS COMPLETED',
+      label: 'MISSIONS DONE',
       value: progress.missionsCompleted,
       hint: 'Verified assignments',
     },
@@ -135,7 +129,7 @@ export function ProgressSection({ view }: { view: AnalyticsView }) {
           />
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)]">
         <Panel
           level={3}
           title="Progression"

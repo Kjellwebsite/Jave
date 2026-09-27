@@ -185,6 +185,8 @@ describe('invites feature: commands, components, modals', () => {
         modalText: { code: code!.code.toLowerCase() },
       });
       expect(claimed.interaction.lastText()).toContain('REFERRAL RECORDED');
+      // The promise matches the live rule (settings.analytics.validRequiresOnboarding).
+      expect(claimed.interaction.lastText()).toContain('once you stay and complete onboarding');
       const [row] = await bot.kit.db
         .select()
         .from(referrals)
@@ -599,6 +601,28 @@ describe('invites feature: commands, components, modals', () => {
       });
       expect(denied.interaction.lastText()).toContain('ACCESS RESTRICTED');
       expect(denied.interaction.lastPayload()!.ephemeral).toBe(true);
+    });
+
+    it('BREAK: the menu never reveals whether a user has a JVLN profile', async () => {
+      const stranger = discordUser('270000000000000001', 'stranger');
+      const member = await bot.member();
+      const probe = await bot.run({
+        kind: 'user_context',
+        name: 'Referral Funnel',
+        user: member.user,
+        targetUser: stranger,
+      });
+      // Same answer as for someone who has a profile: the lookup never runs.
+      expect(probe.interaction.lastText()).toContain('ACCESS RESTRICTED');
+      expect(probe.interaction.lastText()).not.toContain('NOT FOUND');
+      const ops = await bot.member({ roles: ['operations'] });
+      const staff = await bot.run({
+        kind: 'user_context',
+        name: 'Referral Funnel',
+        user: ops.user,
+        targetUser: stranger,
+      });
+      expect(staff.interaction.lastText()).toContain('NOT FOUND');
     });
   });
 });

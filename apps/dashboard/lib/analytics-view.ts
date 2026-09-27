@@ -2,6 +2,7 @@
  * Pure view helpers for the analytics and referrals pages: ranges, labels,
  * chart points and number formatting. Client-safe (no server imports).
  */
+import type { analytics } from '@jave/core';
 
 /** Ranges offered by the analytics filter (days). Mirrors core's overview ranges. */
 export const ANALYTICS_RANGES = [7, 30, 90] as const;
@@ -113,4 +114,23 @@ export function latestValue(points: readonly SeriesPoint[]): number | null {
 /** Days in the range that have a snapshot. */
 export function coveredDays(points: readonly SeriesPoint[]): number {
   return points.filter((point) => point.value !== null).length;
+}
+
+export type DomainDistribution = analytics.JavelinProgress['capabilityDistribution'][number];
+
+/**
+ * Heat-table columns, highest tier first. Every domain lists the catalog's
+ * tiers; a tier disabled since appears only in the domains still holding a
+ * verified rank on it, and follows the catalog so no count is dropped.
+ */
+export function tierColumns(distribution: readonly DomainDistribution[]): string[] {
+  const [first, ...rest] = distribution;
+  if (!first) return [];
+  const catalog = first.tiers
+    .map((tier) => tier.code)
+    .filter((code) => rest.every((domain) => domain.tiers.some((tier) => tier.code === code)));
+  const extras = [
+    ...new Set(distribution.flatMap((domain) => domain.tiers.map((tier) => tier.code))),
+  ].filter((code) => !catalog.includes(code));
+  return [...catalog.reverse(), ...extras];
 }

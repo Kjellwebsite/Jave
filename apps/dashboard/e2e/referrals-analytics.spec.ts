@@ -33,8 +33,13 @@ const SHOTS: readonly {
   name: string;
   persona: Persona;
   path: string | ((page: Page) => Promise<string>);
+  /** The light theme (opt-in via data-theme): charts must hold up in both. */
+  light?: boolean;
+  /** Capture the whole page, however tall (the analytics page is long by design). */
+  full?: boolean;
 }[] = [
-  { name: 'analytics', persona: 'operations', path: '/analytics' },
+  { name: 'analytics', persona: 'operations', path: '/analytics', full: true },
+  { name: 'analytics-light', persona: 'operations', path: '/analytics', light: true, full: true },
   { name: 'analytics-7d', persona: 'operations', path: '/analytics?range=7' },
   { name: 'referrals', persona: 'core', path: '/referrals' },
   { name: 'referrals-campaigns', persona: 'core', path: '/referrals?tab=campaigns' },
@@ -64,6 +69,11 @@ test.describe('visual gauntlet', () => {
         const path = typeof shot.path === 'string' ? shot.path : await shot.path(page);
         await page.goto(path);
         await page.waitForLoadState('networkidle');
+        if (shot.light) {
+          await page.evaluate(() => {
+            document.documentElement.dataset.theme = 'light';
+          });
+        }
         const overflow = await page.evaluate(
           () => document.documentElement.scrollWidth - window.innerWidth,
         );
@@ -79,7 +89,7 @@ test.describe('visual gauntlet', () => {
               x: 0,
               y: 0,
               width: viewport.width,
-              height: Math.min(height, MAX_CAPTURE_HEIGHT),
+              height: shot.full ? height : Math.min(height, MAX_CAPTURE_HEIGHT),
             },
             fullPage: true,
             animations: 'disabled',
@@ -124,7 +134,7 @@ test.describe('analytics', () => {
       'aria-current',
       'page',
     );
-    await expect(page.getByText('NET MEMBERS · 7D')).toBeVisible();
+    await expect(page.getByText(/\d+ of 7 days captured/)).toBeVisible();
   });
 
   test('charts carry a keyboard readout and a table twin', async ({ page }) => {
@@ -288,12 +298,16 @@ test.describe('referrals', () => {
     await expect(page.getByText('QUEUE CLEAR')).toBeVisible();
   });
 
-  test('BREAK: a forged campaign id is a 404, never an error page', async ({ page }) => {
+  // Console pages stream behind a loading boundary, so notFound() renders the
+  // NOT FOUND view (noindex) under the already-sent 200: assert the view.
+  test('BREAK: a forged campaign id reads NOT FOUND, never an error page', async ({ page }) => {
     await signInAs(page, 'core');
-    const unknown = await page.goto('/referrals/campaigns/00000000-0000-4000-8000-000000000000');
-    expect(unknown?.status()).toBe(404);
-    const malformed = await page.goto('/referrals/campaigns/not-a-uuid');
-    expect(malformed?.status()).toBe(404);
+    for (const id of ['00000000-0000-4000-8000-000000000000', 'not-a-uuid', '%27%3B--']) {
+      await page.goto(`/referrals/campaigns/${id}`);
+      await expect(page.getByText('NOT FOUND')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+      await expect(page.getByTestId('campaign-active-toggle')).toHaveCount(0);
+    }
     await page.goto('/referrals?tab=../../settings&offset=-5&campaign=zzz');
     await expect(page.getByRole('table', { name: 'Inviters' })).toBeVisible();
   });

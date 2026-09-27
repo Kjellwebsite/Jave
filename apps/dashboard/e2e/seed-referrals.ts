@@ -9,20 +9,36 @@
  * flags), and the members.present gauge for past days (the snapshot job only
  * records gauges for yesterday; history is reconstructed from the fixtures'
  * own join/leave times).
+ *
+ * The invitees keep staff-only profiles. The seed is shared by every spec,
+ * and the member directory lists the newest joiners first: visible to members,
+ * these recent joins would push the base fixtures other specs page through as
+ * a member off the first page. Staff, the only audience of the referral and
+ * analytics pages, see them all. No invitee name contains a token other specs
+ * search for (Sol, Mara, Voss, Jun).
  */
 import { eq, inArray } from 'drizzle-orm';
 import {
   analytics,
+  createContext,
   DAY,
   ensureMember,
   HOUR,
   invites,
   resolveUserActor,
   type ServiceContext,
+  systemActor,
   upsertDiscordUser,
   withActor,
 } from '@jave/core';
-import { analyticsSnapshots, guildMemberEvents, members, referrals, users } from '@jave/database';
+import {
+  analyticsSnapshots,
+  createDatabase,
+  guildMemberEvents,
+  members,
+  referrals,
+  users,
+} from '@jave/database';
 
 type Status = 'joined' | 'retained' | 'valid' | 'left' | 'invalid';
 
@@ -122,8 +138,8 @@ const REFERRALS: readonly ReferralFixture[] = [
     status: 'valid',
   },
   {
-    username: 'arjun_m',
-    displayName: 'Arjun Mehta',
+    username: 'aarav_m',
+    displayName: 'Aarav Mehta',
     code: 'sanalab',
     joinedDaysAgo: 22,
     status: 'valid',
@@ -226,8 +242,8 @@ const REFERRALS: readonly ReferralFixture[] = [
     status: 'joined',
   },
   {
-    username: 'sol_a',
-    displayName: 'Sol Amari',
+    username: 'suri_a',
+    displayName: 'Suri Amani',
     code: VANITY_CODE,
     vanity: true,
     joinedDaysAgo: 1,
@@ -278,9 +294,10 @@ async function joinInvitee(
     displayName: fixture.displayName,
   });
   const member = await ensureMember(system, user, { inGuild: true, joinedAt });
+  // Staff-only profiles: see the file header.
   await system.db
     .update(members)
-    .set({ onboardingState: 'completed' })
+    .set({ onboardingState: 'completed', profileVisibility: 'staff' })
     .where(eq(members.id, member.id));
   await system.db
     .insert(guildMemberEvents)
@@ -378,7 +395,20 @@ async function seedSnapshots(system: ServiceContext, now: Date) {
   if (history.length > 0) await system.db.insert(analyticsSnapshots).values(history);
 }
 
-export async function seedReferralFixtures(system: ServiceContext): Promise<void> {
+/**
+ * Runs last (after the dashboard, moderation and ticket fixtures), so the
+ * daily snapshots it records cover every fixture.
+ */
+export async function seedReferralFixtures(databaseUrl: string): Promise<void> {
+  const database = createDatabase(databaseUrl, { max: 2, applicationName: 'jave-e2e-referrals' });
+  try {
+    await seed(createContext({ db: database.db, actor: systemActor('e2e-referrals-seed') }));
+  } finally {
+    await database.close();
+  }
+}
+
+async function seed(system: ServiceContext): Promise<void> {
   const now = system.clock.now();
   await invites.syncInvites(system, [
     ...INVITES.map((invite) => ({

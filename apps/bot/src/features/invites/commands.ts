@@ -1,5 +1,5 @@
 import { ApplicationCommandType, ContextMenuCommandBuilder, SlashCommandBuilder } from 'discord.js';
-import { can, findMemberByDiscordId, invites, isSelf, NotFoundError } from '@jave/core';
+import { authorize, can, findMemberByDiscordId, invites, isSelf, NotFoundError } from '@jave/core';
 import type {
   CommandDefinition,
   ComponentHandler,
@@ -122,6 +122,11 @@ export const referralFunnelContextCommand: CommandDefinition = {
   async execute(h) {
     const target = h.interaction.targetUser;
     if (!target) throw new NotFoundError('Member');
+    // Someone else's funnel is staff data: refuse before the lookup, so the
+    // answer never reveals whether that user has a JVLN profile.
+    if (target.id !== h.interaction.user.id) {
+      await authorize(h.ctx, 'canViewAnalytics', { type: 'member', id: target.id });
+    }
     const member = await findMemberByDiscordId(h.ctx, target.id);
     if (!member) throw new NotFoundError('JVLN profile');
     const funnel = await invites.getReferralFunnel(h.ctx, { inviterMemberId: member.id });

@@ -3,6 +3,7 @@ import {
   areaPaths,
   divergingLayout,
   formatRate,
+  gapBand,
   heatIntensity,
   linePaths,
   MIN_HEAT,
@@ -68,6 +69,25 @@ describe('line geometry', () => {
       'M0 100 L0 75 L1 50 L1 100 Z',
       'M5 100 L5 25 L6 25 L6 100 Z',
     ]);
+  });
+});
+
+describe('gapBand', () => {
+  it('shades half a step either side of a missing point, clipped to the plot', () => {
+    // 5 points: 25% apart.
+    expect(gapBand(2, 5)).toEqual({ left: 37.5, width: 25 });
+    expect(gapBand(0, 5)).toEqual({ left: 0, width: 12.5 });
+    expect(gapBand(4, 5)).toEqual({ left: 87.5, width: 12.5 });
+  });
+
+  it('lets a run of missing points read as one band', () => {
+    const first = gapBand(1, 5);
+    const second = gapBand(2, 5);
+    expect(first.left + first.width).toBe(second.left);
+  });
+
+  it('BREAK: a single point covers the whole plot', () => {
+    expect(gapBand(0, 1)).toEqual({ left: 0, width: 100 });
   });
 });
 

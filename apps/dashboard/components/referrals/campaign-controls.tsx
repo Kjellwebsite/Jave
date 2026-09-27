@@ -1,3 +1,5 @@
+'use client';
+
 import { Link2, Trash2, Unlink } from 'lucide-react';
 import { Button, NativeSelect } from '@jave/ui';
 import type { invites } from '@jave/core';

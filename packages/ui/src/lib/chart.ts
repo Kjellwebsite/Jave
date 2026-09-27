@@ -16,6 +16,8 @@
 const NICE_FACTORS = [1, 2, 2.5, 5, 10] as const;
 const DEFAULT_TICK_COUNT = 3;
 const PERCENT = 100;
+/** A missing point's band reaches half a step to each side. */
+const HALF_STEP = 0.5;
 
 export interface NiceScale {
   /** Top of the axis (≥ the data maximum). */
@@ -79,6 +81,19 @@ export function pointIndex(offset: number, width: number, count: number): number
 export function pointX(index: number, count: number): number {
   if (count <= 1) return PERCENT / 2;
   return (index / (count - 1)) * PERCENT;
+}
+
+/**
+ * The band (left and width, 0–100) a missing point shades on a line chart:
+ * half a step either side of it, clipped to the plot. Neighbouring gaps meet
+ * edge to edge, so a run of missing days reads as one band.
+ */
+export function gapBand(index: number, count: number): { left: number; width: number } {
+  if (count <= 1) return { left: 0, width: PERCENT };
+  const step = PERCENT / (count - 1);
+  const left = Math.max(0, (index - HALF_STEP) * step);
+  const right = Math.min(PERCENT, (index + HALF_STEP) * step);
+  return { left, width: Math.max(0, right - left) };
 }
 
 /**

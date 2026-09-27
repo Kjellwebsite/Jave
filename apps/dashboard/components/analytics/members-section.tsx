@@ -39,7 +39,7 @@ export function MembersSection({ view, timeZone }: { view: AnalyticsView; timeZo
         <Panel
           level={3}
           title="Joins and leaves"
-          description={`Daily snapshots, last ${range} days (UTC).`}
+          description={`Completed UTC days from daily snapshots, last ${range} days.`}
         >
           <ChartFrame
             title="Daily flow"
@@ -112,6 +112,7 @@ export function MembersSection({ view, timeZone }: { view: AnalyticsView; timeZo
         >
           <ChartFrame
             title="Present in the guild"
+            description="Shaded days have no snapshot."
             value={formatCount(latestValue(present.points))}
             table={{
               caption: 'Members present per day',
@@ -130,19 +131,17 @@ export function MembersSection({ view, timeZone }: { view: AnalyticsView; timeZo
         <Panel
           level={3}
           title="Referrals"
-          description="Joins attributed to a source, and referrals that became VALID."
+          description="Every join the bot records gets a referral, even when its source is unknown."
         >
           <ReadoutGrid
             columns={2}
             items={[
-              { label: `Attributed · ${range}D`, value: overview.referrals.attributed },
-              { label: `Validated · ${range}D`, value: overview.referrals.validated },
-              { label: `Joins · ${range}D`, value: members.joins },
-              { label: `Leaves · ${range}D`, value: members.leaves },
+              { label: 'Joins tracked', value: overview.referrals.attributed, hint: `${range}D` },
+              { label: 'Became valid', value: overview.referrals.validated, hint: `${range}D` },
             ]}
           />
           <p className="mt-4 text-small text-fg-subtle">
-            Referrals become VALID only after the member stays; raw invite volume never counts.
+            Credit is earned at VALID, after the member stays. Raw invite volume never counts.
           </p>
           <Link
             href="/referrals"

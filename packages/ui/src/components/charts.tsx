@@ -12,6 +12,7 @@ import { cx } from '../lib/cx';
 import {
   areaPaths,
   divergingLayout,
+  gapBand,
   linePaths,
   niceScale,
   percentOf,
@@ -410,7 +411,10 @@ export interface LineChartProps {
   className?: string;
 }
 
-/** A level over time (gauges): 2px line, 10% wash, end dot, crosshair readout. */
+/**
+ * A level over time (gauges): 2px line, 10% wash, end dot, crosshair readout.
+ * Missing days break the line and are shaded, like the column charts' slots.
+ */
 export function LineChart({
   points,
   seriesLabel,
@@ -501,6 +505,18 @@ export function LineChart({
           ) : null
         }
       >
+        {points.map((p, index) => {
+          if (p.value !== null) return null;
+          const band = gapBand(index, points.length);
+          return (
+            <span
+              key={`gap-${p.key}`}
+              aria-hidden
+              className="absolute inset-y-0 bg-line-subtle/40"
+              style={{ left: `${band.left}%`, width: `${band.width}%` }}
+            />
+          );
+        })}
         <svg
           aria-hidden
           className="absolute inset-0 h-full w-full overflow-visible"

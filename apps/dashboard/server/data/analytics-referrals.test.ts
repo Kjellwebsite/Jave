@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { DAY, ForbiddenError, invites, updateSettings, type UserActor } from '@jave/core';
 import { createTestKit, type TestKit } from '@jave/core/testing';
 import { auditLogs, referrals } from '@jave/database';
+import { KPI_LABEL_MAX_LENGTH, overviewKpis } from '@/lib/analytics-kpis';
 import { loadAnalytics, loadHealthStrip, TREND_METRICS } from './analytics';
 import { loadCampaignPage, loadReferralsPage } from './referrals';
 
@@ -36,6 +37,18 @@ describe('analytics page data', () => {
     expect(Object.keys(result.view.series).sort()).toEqual([...TREND_METRICS].sort());
     for (const series of Object.values(result.view.series)) expect(series.points).toHaveLength(7);
     expect(result.view.progress.capabilityDistribution.length).toBeGreaterThan(0);
+  });
+
+  it('derives eight headline readouts whose labels never wrap on a phone', async () => {
+    const result = await loadAnalytics(kit.as(operations), 30);
+    if (result.status !== 'ok') throw new Error('analytics disabled');
+    const kpis = overviewKpis(result.view.overview);
+    expect(kpis).toHaveLength(8);
+    for (const kpi of kpis) expect(kpi.label.length).toBeLessThanOrEqual(KPI_LABEL_MAX_LENGTH);
+    // An empty organization reads as unknown, never as a fabricated rate.
+    const byKey = new Map(kpis.map((kpi) => [kpi.key, kpi]));
+    expect(byKey.get('retention')).toMatchObject({ value: '—', hint: 'No cohort yet' });
+    expect(byKey.get('sla')).toMatchObject({ value: '—', hint: 'No tracked tickets' });
   });
 
   it('BREAK: a member is refused once — one audited denial, not one per query', async () => {

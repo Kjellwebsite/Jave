@@ -18,7 +18,7 @@ import { recordGuildLeave, resolveUserActor } from '../identity/users.service';
 import { updateSettings } from '../settings/settings.service';
 import type { UserActor } from '../permissions/actor';
 import { attributeJoin } from './attribution.service';
-import { canTransition, REFERRAL_TRANSITIONS } from './lifecycle';
+import { canTransition, isReviewableReferral, REFERRAL_TRANSITIONS } from './lifecycle';
 import { markInviteeLeft, runReferralSweep } from './lifecycle.service';
 import { reviewReferral } from './review.service';
 import { syncInvites } from './sync.service';
@@ -35,6 +35,14 @@ describe('referral state machine', () => {
     expect(canTransition('valid', 'left')).toBe(false);
     expect(canTransition('joined', 'valid')).toBe(false);
     expect(canTransition('retained', 'valid')).toBe(true);
+  });
+
+  it('only open or valid referrals await review; closed ones keep their flags as history', () => {
+    expect(isReviewableReferral('joined')).toBe(true);
+    expect(isReviewableReferral('retained')).toBe(true);
+    expect(isReviewableReferral('valid')).toBe(true);
+    expect(isReviewableReferral('left')).toBe(false);
+    expect(isReviewableReferral('invalid')).toBe(false);
   });
 });
 

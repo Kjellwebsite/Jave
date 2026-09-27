@@ -13,6 +13,7 @@ import {
   TableRow,
 } from '@jave/ui';
 import type { invites } from '@jave/core';
+import { plural } from '@/lib/analytics-view';
 
 const COLUMNS = 7;
 
@@ -111,7 +112,9 @@ export function InvitersTable({
                     {funnel.flagged > 0 ? (
                       <Badge tone="warning">{funnel.flagged} under review</Badge>
                     ) : null}
-                    {funnel.fastLeaves > 0 ? <Badge>{funnel.fastLeaves} fast leaves</Badge> : null}
+                    {funnel.fastLeaves > 0 ? (
+                      <Badge>{plural(funnel.fastLeaves, 'fast leave')}</Badge>
+                    ) : null}
                     {funnel.flagged === 0 && funnel.fastLeaves === 0 ? (
                       <Mono dim aria-label="none">
                         —

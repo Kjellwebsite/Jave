@@ -121,11 +121,15 @@ export function claimModal(): ModalPayload {
 /** Credit the clicking member's join to a referral code (core: once, in window, rate-limited). */
 export async function claimCode(h: HandlerContext): Promise<void> {
   const result = await invites.claimReferralCode(h.ctx, { code: h.interaction.modal.text('code') });
+  const rules = await getSettings(h.ctx, 'analytics');
+  const condition = rules.validRequiresOnboarding
+    ? 'once you stay and complete onboarding'
+    : 'once you stay';
   await h.respond({
     embeds: [
       success(
         'REFERRAL RECORDED',
-        `Your join is credited to ${userText(result.referrerName, 64)}. It counts once you stay and onboard.`,
+        `Your join is credited to ${userText(result.referrerName, 64)}. It counts ${condition}.`,
       ),
     ],
     ephemeral: true,

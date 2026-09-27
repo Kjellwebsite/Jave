@@ -8,7 +8,7 @@ import { ForbiddenError, InvalidStateError, NotFoundError } from '../kernel/erro
 import { parseInput } from '../kernel/validation';
 import { actorUserId } from '../permissions/actor';
 import { authorize } from '../permissions/authorize';
-import { canTransition } from './lifecycle';
+import { canTransition, isReviewableReferral } from './lifecycle';
 import { inviterMemberId } from './lifecycle.service';
 import type { ReferralRecord } from './scoring';
 
@@ -47,10 +47,7 @@ export async function reviewReferral(
     );
     throw new ForbiddenError('You cannot review a referral you are part of.');
   }
-  if (
-    data.decision === 'clear_flags' &&
-    !['joined', 'retained', 'valid'].includes(referral.status)
-  ) {
+  if (data.decision === 'clear_flags' && !isReviewableReferral(referral.status)) {
     throw new InvalidStateError('Only active or valid referrals can be cleared.');
   }
   if (data.decision === 'invalidate' && !canTransition(referral.status, 'invalid')) {

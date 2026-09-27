@@ -199,9 +199,10 @@ export async function seedTicketFixtures(databaseUrl: string): Promise<void> {
     });
     await post(s, waitingThread, 'theo', 'Thanks. Dates and team count, then we can plan.', MINUTE);
 
-    // Closed after an answer.
+    // Closed after an answer. (Not Priya: the moderation fixtures quarantine her,
+    // and quarantined members cannot open tickets.)
     s.clock.set(new Date(now.getTime() - 3 * 24 * HOUR));
-    const closed = await tickets.openTicket(await s.as('priya'), {
+    const closed = await tickets.openTicket(await s.as('sana'), {
       category: 'general',
       priority: 'normal',
       subject: TICKET_FIXTURES.closed,

@@ -29,15 +29,15 @@ import {
   PRIVATE_MEMBER_LABEL,
 } from './constants';
 import { emptyFunnel, loadFunnels, loadGlobalFunnel, type ReferralFunnel } from './funnel';
-import { REVIEWABLE_REFERRAL_STATUSES, type ReferralStatus } from './lifecycle';
+import {
+  isReviewableReferral,
+  REVIEWABLE_REFERRAL_STATUSES,
+  type ReferralStatus,
+} from './lifecycle';
 
 const LEADERBOARD_PERIOD_DAYS = [7, 30, 90] as const;
 const periodDays = z.literal(LEADERBOARD_PERIOD_DAYS);
 const REFERRAL_STATUSES = ['joined', 'retained', 'valid', 'left', 'invalid'] as const;
-
-function isReviewable(status: ReferralStatus): boolean {
-  return (REVIEWABLE_REFERRAL_STATUSES as readonly ReferralStatus[]).includes(status);
-}
 
 /** Never flagged, or cleared by staff review. */
 const isClean = sql`cardinality(${referrals.anomalyFlags}) = 0`;
@@ -306,7 +306,7 @@ export async function getMyReferrals(ctx: ServiceContext): Promise<MyReferralsVi
       retainedAt: row.retainedAt,
       validatedAt: row.validatedAt,
       leftAt: row.leftAt,
-      underReview: row.flagged && isReviewable(row.status),
+      underReview: row.flagged && isReviewableReferral(row.status),
     })),
     showOnLeaderboards: self?.showOnLeaderboards ?? true,
     usedCode: used?.code ?? null,

@@ -19,7 +19,7 @@ export function TrendsSection({ view }: { view: AnalyticsView }) {
     <AnalyticsSection
       id="trends"
       title="Outcomes over time"
-      description={`What was demonstrated each day, from daily snapshots. ${covered} of ${view.range} days captured.`}
+      description={`What was demonstrated each completed UTC day, from daily snapshots; today is added after midnight UTC. ${covered} of ${view.range} days captured.`}
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {OUTCOME_TRENDS.map(({ metric, title, noun }) => {

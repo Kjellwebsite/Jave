@@ -63,7 +63,7 @@ Database invariants (`packages/database/src/schema/invites.ts`):
 | `getReferralFunnel(ctx, {…})`         | self, or `canViewAnalytics`                     | Per inviter, per campaign, or server-wide                                 |
 | `listInviterFunnels(ctx, {…})`        | `canViewAnalytics`                              | Staff table of inviters                                                   |
 | `getMyReferrals(ctx)`                 | member                                          | Own codes, funnel, recent referrals                                       |
-| `listReferrals(ctx, {…})`             | `canViewAnalytics`                              | Staff listing with flags; `flagged: true` is the review queue             |
+| `listReferrals(ctx, {…})`             | `canViewAnalytics`                              | Staff listing with flags; `reviewable: true` is the review queue          |
 
 Attribution rules:
 
@@ -181,6 +181,33 @@ Required Discord access:
   invite-link attribution (every join becomes `unknown`); referral codes,
   campaigns via codes, the lifecycle, leaderboard and funnels keep working.
 
+## Surfaces
+
+Full reference: [docs/commands/invites.md](../commands/invites.md).
+
+- **Discord** (`apps/bot/src/features/invites`): `/invites mine` (funnel,
+  exits, codes, recent referrals) · `code` (create, deactivate, enter a code
+  through a modal) · `leaderboard` (VALID only, opt-outs respected, period
+  select, optional public card without controls) · staff `campaign create`
+  (modal) · `list` · `attach` (campaign select → paged invite picker, detach,
+  activate/deactivate); the **Referral Funnel** user context menu (yourself,
+  or anyone for `canViewAnalytics`). No job handlers: the module has no
+  `discord.*` contracts.
+- **Join attribution** (`tracker.ts`): the steps under _Discord job contracts_
+  above, run by one `InviteTracker` per process on a serial queue. `ready`
+  and invite create/delete re-sync (bursts coalesce); each non-bot join diffs
+  the cached snapshot against a fresh `listInvites()` and credits an invite
+  only when exactly one rose by exactly one use (vanity → method `vanity`),
+  otherwise `unknown`. The gateway's `InviteSnapshot` carries `vanity` and
+  `inviterUsername` for this.
+- **Dashboard** (`apps/dashboard/app/(console)/referrals`, `canViewAnalytics`):
+  `/referrals` with the server-wide funnel and tabs for inviters (filter by
+  campaign), campaigns, the review queue (`listReferrals({ reviewable: true })`
+  - `reviewReferral`) and the invite mirror; `/referrals/campaigns/[id]` with
+    the campaign funnel, attached invites, per-inviter funnels and, for
+    `canManageCampaigns`, settings, attach/detach, activate/deactivate and
+    delete (only when nothing was credited).
+
 ## Extension points
 
 - `DEFAULT_ANOMALY_RULES`, `ANOMALY_WEIGHTS` — tune thresholds; `detectAnomalies`
@@ -188,12 +215,19 @@ Required Discord access:
 - Settings: `analytics.retentionDays`, `analytics.validRequiresOnboarding`,
   `analytics.referralAnomalyThreshold`, `security.suspiciousAccountAgeDays`.
 - `referral.validated` event for achievements (e.g. "RECRUITER — 3 valid referrals").
-- `listReferrals({ flagged: true })` + `reviewReferral` for a dashboard review queue.
+- `listReferrals({ reviewable: true })` (flagged and still JOINED, RETAINED or VALID) +
+  `reviewReferral` for a review queue; `flagged: true` lists every flagged referral,
+  closed ones included.
 
 ## Known limitations
 
 - Detection is inherently ambiguous under truly concurrent joins; those joins
   are recorded as `unknown` rather than guessed.
+- Attribution is serialized per bot process, one invite fetch per join. During
+  a join burst (a raid) the queue drains at Discord's rate limit for that
+  route, so referral rows lag behind the burst; the joins themselves are
+  recorded immediately by the core feature, and most burst joins end up
+  `unknown` anyway because several invites change between fetches.
 - Invite `uses` are cumulative, so campaign/inviter INVITED counts include uses
   before an invite was attached to a campaign, and funnels are all-time.
 - The sweep rescores each validation candidate individually (bounded by

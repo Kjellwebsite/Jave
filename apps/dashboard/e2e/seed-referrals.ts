@@ -64,7 +64,8 @@ export const REFERRAL_FIXTURES = {
 } as const;
 
 const GUILD_CHANNEL = '400000000000000001';
-const FIRST_INVITEE_ID = 130_000_000_000_000_001n;
+/** Invitee Discord ids; 13… belongs to the trials fixtures, 14… to their channels. */
+const FIRST_INVITEE_ID = 150_000_000_000_000_001n;
 const RETENTION_DAYS = 7;
 const VALIDATION_DAYS = 8;
 const FAST_LEAVE_HOURS = 5;

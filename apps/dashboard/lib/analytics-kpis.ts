@@ -17,6 +17,13 @@ export interface Kpi {
   hint: string;
 }
 
+/** "2 of 3 joins stayed" for a retention cohort, or a calm "No cohort yet". */
+export function retentionHint(cohort: analytics.RetentionCohort): string {
+  return cohort.cohort > 0
+    ? `${formatCount(cohort.retained)} of ${formatCount(cohort.cohort)} joins stayed`
+    : 'No cohort yet';
+}
+
 /**
  * The headline readouts of the organization's health. Flows and rates cover
  * the selected range (the filter above the strip); the hint says when a
@@ -24,7 +31,6 @@ export interface Kpi {
  */
 export function overviewKpis(overview: analytics.ServerOverview): Kpi[] {
   const { members, applications, trials, missions, tickets } = overview;
-  const d30 = members.retention.d30;
   return [
     {
       key: 'present',
@@ -41,11 +47,8 @@ export function overviewKpis(overview: analytics.ServerOverview): Kpi[] {
     {
       key: 'retention',
       label: 'D30 RETENTION',
-      value: formatRate(d30.rate),
-      hint:
-        d30.cohort > 0
-          ? `${formatCount(d30.retained)} of ${formatCount(d30.cohort)} joins stayed`
-          : 'No cohort yet',
+      value: formatRate(members.retention.d30.rate),
+      hint: retentionHint(members.retention.d30),
     },
     {
       key: 'pending',

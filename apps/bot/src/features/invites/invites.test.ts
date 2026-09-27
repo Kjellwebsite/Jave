@@ -490,6 +490,35 @@ describe('invites feature: commands, components, modals', () => {
       expect(row?.active).toBe(false);
     });
 
+    it('detaches an invite ranked past the first select page of a large campaign', async () => {
+      const staff = await bot.member({ roles: ['core'] });
+      await createCampaign(staff.user);
+      const [campaign] = await bot.kit.db.select().from(campaigns);
+      const attachedCount = 30;
+      // Most used first: the least used invite ranks last, outside the first 25.
+      await invites.syncInvites(
+        bot.kit.system,
+        Array.from({ length: attachedCount }, (_, index) => ({
+          code: `bulk${String(index).padStart(2, '0')}`,
+          uses: attachedCount - index,
+        })),
+      );
+      await bot.kit.db.update(inviteCodes).set({ campaignId: campaign!.id });
+
+      const detached = await bot.run({
+        kind: 'select',
+        name: ns('inv-detach', campaign!.id),
+        values: ['bulk29'],
+        user: staff.user,
+      });
+      expect(detached.interaction.lastText()).toContain('INVITE DETACHED — BULK29');
+      const [row] = await bot.kit.db
+        .select()
+        .from(inviteCodes)
+        .where(eq(inviteCodes.code, 'bulk29'));
+      expect(row?.campaignId).toBeNull();
+    });
+
     it('BREAK: forged, stale and malformed campaign controls change nothing', async () => {
       const staff = await bot.member({ roles: ['core'] });
       await inviter('alpha01');

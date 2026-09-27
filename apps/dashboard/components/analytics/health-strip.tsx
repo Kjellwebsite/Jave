@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { formatRate, Icon, Panel } from '@jave/ui';
 import type { analytics } from '@jave/core';
+import { retentionHint } from '@/lib/analytics-kpis';
 import { formatHours, plural, signed } from '@/lib/analytics-view';
 import { ReadoutGrid } from './readouts';
 
@@ -31,7 +32,11 @@ export function HealthStrip({ overview }: { overview: analytics.ServerOverview }
             value: signed(members.net),
             hint: `${plural(members.joins, 'join')} · ${plural(members.leaves, 'leave')}`,
           },
-          { label: 'D30 retention', value: formatRate(members.retention.d30.rate) },
+          {
+            label: 'D30 retention',
+            value: formatRate(members.retention.d30.rate),
+            hint: retentionHint(members.retention.d30),
+          },
           {
             label: 'Median decision',
             value: formatHours(applications.medianHoursToDecision),

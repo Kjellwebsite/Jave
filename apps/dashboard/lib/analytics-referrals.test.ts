@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { retentionHint } from './analytics-kpis';
 import {
   coveredDays,
   enumLabel,
@@ -65,6 +66,16 @@ describe('analytics view helpers', () => {
     expect(latestValue(joins)).toBe(0);
     expect(latestValue([])).toBeNull();
     expect(coveredDays(joins)).toBe(2);
+  });
+
+  it('describes a retention cohort, and an empty one calmly', () => {
+    const window = { start: day('2026-08-01'), end: day('2026-08-28') };
+    expect(
+      retentionHint({ horizonDays: 30, window, cohort: 1200, retained: 900, rate: 0.75 }),
+    ).toBe('900 of 1,200 joins stayed');
+    expect(retentionHint({ horizonDays: 30, window, cohort: 0, retained: 0, rate: null })).toBe(
+      'No cohort yet',
+    );
   });
 });
 

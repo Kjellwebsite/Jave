@@ -19,6 +19,10 @@ const CAMPAIGN_KEY_MAX = 48;
 const CAMPAIGN_NAME_MAX = 120;
 const CAMPAIGN_DESCRIPTION_MAX = 2000;
 const SELECT_DESCRIPTION_MAX = 100;
+/** Invites read per page when checking that one is attached to a campaign (core's page cap). */
+const ATTACHED_SCAN_PAGE = 100;
+/** Discord caps a guild at 1000 invites (plus the vanity URL): 11 pages always suffice. */
+const ATTACHED_SCAN_MAX_PAGES = 11;
 
 type CampaignView = invites.CampaignView;
 
@@ -283,19 +287,26 @@ export async function attachInvite(h: HandlerContext, campaignId: string): Promi
   await showCampaign(h, campaignId, 'update', `INVITE ATTACHED — ${invite.code}`);
 }
 
+/** Whether `code` is attached to `campaignId` now (the card may be stale). */
+async function isAttached(h: HandlerContext, campaignId: string, code: string): Promise<boolean> {
+  for (let page = 0; page < ATTACHED_SCAN_MAX_PAGES; page++) {
+    const result = await invites.listInviteCodes(h.ctx, {
+      campaignId,
+      limit: ATTACHED_SCAN_PAGE,
+      offset: page * ATTACHED_SCAN_PAGE,
+    });
+    if (result.items.some((invite) => invite.code === code)) return true;
+    if ((page + 1) * ATTACHED_SCAN_PAGE >= result.total) return false;
+  }
+  return false;
+}
+
 /** Detach an invite from this campaign (only one that is attached to it). */
 export async function detachInvite(h: HandlerContext, campaignId: string): Promise<void> {
   const [code] = h.interaction.values;
   await authorize(h.ctx, 'canManageCampaigns', { type: 'campaign', id: campaignId });
-  const attached = await invites.listInviteCodes(h.ctx, {
-    campaignId: parseCampaignId(campaignId),
-    limit: LIMITS.selectOptions,
-  });
-  if (!attached.items.some((invite) => invite.code === code)) throw new NotFoundError('Invite');
-  const invite = await invites.attachInviteToCampaign(h.ctx, {
-    code: code ?? '',
-    campaignId: null,
-  });
+  if (!code || !(await isAttached(h, campaignId, code))) throw new NotFoundError('Invite');
+  const invite = await invites.attachInviteToCampaign(h.ctx, { code, campaignId: null });
   await showCampaign(h, campaignId, 'update', `INVITE DETACHED — ${invite.code}`);
 }
 

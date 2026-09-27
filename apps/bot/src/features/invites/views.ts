@@ -85,8 +85,8 @@ export interface LifecycleRules {
 
 function lifecycleCopy(rules: LifecycleRules): string {
   const valid = rules.validRequiresOnboarding
-    ? 'VALID once they have also completed onboarding'
-    : 'VALID after review of the join';
+    ? 'VALID once the member has completed onboarding, unless it is held for review'
+    : 'VALID unless it is held for review';
   return `A referral becomes RETAINED after ${rules.retentionDays} days in the server, then ${valid}. Only VALID referrals count.`;
 }
 

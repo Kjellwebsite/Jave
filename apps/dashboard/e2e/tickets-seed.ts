@@ -45,7 +45,7 @@ const DISCORD = {
   theo: '110000000000000014',
   elena: '110000000000000017',
   ren: '110000000000000019',
-  priya: '110000000000000021',
+  sol: '110000000000000022',
   ilya: '110000000000000012',
 } as const;
 type Person = keyof typeof DISCORD;
@@ -199,9 +199,10 @@ export async function seedTicketFixtures(databaseUrl: string): Promise<void> {
     });
     await post(s, waitingThread, 'theo', 'Thanks. Dates and team count, then we can plan.', MINUTE);
 
-    // Closed after an answer.
+    // Closed after an answer. (Not Priya: the moderation fixtures quarantine her,
+    // and quarantined members cannot open tickets.)
     s.clock.set(new Date(now.getTime() - 3 * 24 * HOUR));
-    const closed = await tickets.openTicket(await s.as('priya'), {
+    const closed = await tickets.openTicket(await s.as('sol'), {
       category: 'general',
       priority: 'normal',
       subject: TICKET_FIXTURES.closed,

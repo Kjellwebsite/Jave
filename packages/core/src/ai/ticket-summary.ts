@@ -46,10 +46,12 @@ export function ticketTranscript(input: TicketSummaryInput, maxChars: number): s
  * The tickets AI summary extension point, wired to the AI module. Every
  * summary takes the guarded completion path as the staff member who asked
  * (canUseAI, burst and daily limits, settings.ai.enabled, input cap, secret
- * redaction, untrusted-data wrapping, prompt-free ledger). The ticket's own
- * instructions travel as the trusted request; everything users wrote travels
- * as untrusted data. Usage:
- * `tickets.summarizeTicket(ctx, id, ai.ticketSummarizer(ctx, deps, 'dashboard'))`.
+ * redaction, untrusted-data wrapping, prompt-free ledger) under its own
+ * `ticket_summary` feature, so it is billed, limited and listed like any
+ * other AI request. The tickets module's instructions travel as the trusted
+ * request; everything users wrote travels as untrusted data. The transcript
+ * fits the live `settings.ai.maxInputChars` together with those instructions.
+ * Usage: `tickets.summarizeTicket(ctx, id, ai.ticketSummarizer(ctx, deps, 'dashboard'))`.
  */
 export function ticketSummarizer(
   ctx: ServiceContext,
@@ -60,7 +62,7 @@ export function ticketSummarizer(
     const { maxInputChars } = await getSettings(ctx, 'ai');
     const request = input.instructions;
     const result = await runCompletion(ctx, deps, {
-      feature: 'summarize',
+      feature: 'ticket_summary',
       surface,
       request,
       data: [

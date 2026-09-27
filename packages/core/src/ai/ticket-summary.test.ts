@@ -98,7 +98,7 @@ describe('ticketSummarizer', INTEGRATION_SUITE, () => {
     const call = provider.calls[0]!;
     expect(call.context).toEqual({
       userId: staff.userId,
-      feature: 'summarize',
+      feature: 'ticket_summary',
       surface: 'dashboard',
     });
     const content = call.request.messages[0]!.content;
@@ -111,7 +111,7 @@ describe('ticketSummarizer', INTEGRATION_SUITE, () => {
       .from(aiRequests)
       .where(eq(aiRequests.userId, staff.userId));
     expect(ledger).toHaveLength(1);
-    expect(ledger[0]!.surface).toBe('dashboard');
+    expect(ledger[0]).toMatchObject({ surface: 'dashboard', feature: 'ticket_summary' });
   });
 
   it('respects the live input budget', async () => {

@@ -127,16 +127,23 @@ describe('structured output', () => {
 
   it('parses mission drafts, falling back to a safe type and a plain-text brief', () => {
     expect(
-      parseTaskDraft('```json\n{"title":"Ship a CLI","brief":"Build it.","type":"build"}\n```'),
-    ).toEqual({ title: 'Ship a CLI', brief: 'Build it.', type: 'build' });
-    expect(parseTaskDraft('{"title":"T","brief":"B","type":"ban_everyone"}').type).toBe(
-      'individual',
-    );
+      parseTaskDraft(
+        '```json\n{"title":"Ship a CLI","brief":"Build it end to end.","type":"build"}\n```',
+      ),
+    ).toEqual({ title: 'Ship a CLI', brief: 'Build it end to end.', type: 'build' });
+    expect(
+      parseTaskDraft('{"title":"T","brief":"Build the thing.","type":"ban_everyone"}'),
+    ).toEqual({ title: 'Untitled mission', brief: 'Build the thing.', type: 'individual' });
     expect(parseTaskDraft('Just write a parser.')).toEqual({
       title: 'Untitled mission',
       brief: 'Just write a parser.',
       type: 'individual',
     });
+    expect(() => parseTaskDraft('{"title":"Fine title","brief":"B"}')).toThrow(/too short/);
+    expect(parseAnnouncementDraft('{"title":"X","body":"Trials open Monday."}').title).toBe(
+      'ANNOUNCEMENT',
+    );
+    expect(() => parseAnnouncementDraft('{"title":"TRIALS","body":"Go."}')).toThrow(/too short/);
     const huge = parseTaskDraft(
       JSON.stringify({ title: 't'.repeat(500), brief: 'b'.repeat(9000) }),
     );

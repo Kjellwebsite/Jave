@@ -39,10 +39,12 @@ export const auditLogs = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    index('audit_logs_time_idx').on(t.createdAt),
-    index('audit_logs_actor_idx').on(t.actorUserId, t.createdAt),
-    index('audit_logs_target_idx').on(t.targetType, t.targetId),
-    index('audit_logs_action_idx').on(t.action, t.createdAt),
+    // Listings page newest first with id as the tie-breaker: (…, created_at,
+    // id) lets Postgres walk the index in order and stop after one page.
+    index('audit_logs_time_idx').on(t.createdAt, t.id),
+    index('audit_logs_actor_idx').on(t.actorUserId, t.createdAt, t.id),
+    index('audit_logs_target_idx').on(t.targetType, t.targetId, t.createdAt, t.id),
+    index('audit_logs_action_idx').on(t.action, t.createdAt, t.id),
   ],
 );
 

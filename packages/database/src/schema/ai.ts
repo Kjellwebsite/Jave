@@ -36,7 +36,12 @@ export const aiRequests = pgTable(
   },
   (t) => [
     index('ai_requests_user_idx').on(t.userId, t.createdAt),
-    index('ai_requests_time_idx').on(t.createdAt),
+    // The ledger pages newest first with id as the tie-breaker, filtered by
+    // feature or status: each is an ordered index walk, and a capped count
+    // of a rare filter reads its matches only, never the whole ledger.
+    index('ai_requests_time_idx').on(t.createdAt, t.id),
+    index('ai_requests_feature_idx').on(t.feature, t.createdAt, t.id),
+    index('ai_requests_status_idx').on(t.status, t.createdAt, t.id),
   ],
 );
 

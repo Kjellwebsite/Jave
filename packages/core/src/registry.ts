@@ -7,6 +7,7 @@ import * as analytics from './analytics';
 import * as applications from './applications';
 import * as calendar from './calendar';
 import * as games from './games';
+import * as housekeeping from './housekeeping';
 import * as integrations from './integrations';
 import * as invites from './invites';
 import * as missions from './missions';
@@ -29,6 +30,7 @@ const MODULES = [
   applications,
   calendar,
   games,
+  housekeeping,
   integrations,
   invites,
   missions,

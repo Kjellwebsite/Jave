@@ -157,14 +157,22 @@ No member identity (user ids, member ids, Discord ids, names) is ever sent to Si
   returns `HttpSidusClient` when both are set, otherwise `NotConfiguredSidusClient`.
 - **Wiring real Sidus credentials:** the static registry (`research.jobHandlers`) uses the public
   resolvers and the not-configured Sidus client because core cannot read the environment. The
-  bot composition must use
+  bot replaces those two handlers with
   `research.createJobHandlers({ ...research.defaultResearchJobDeps(), sidus: research.createSidusClient({ baseUrl: env.SIDUS_API_URL, apiKey: env.SIDUS_API_KEY }) })`
-  in place of the static research handlers (see known limitations).
+  (`apps/bot/src/integrations.ts` → `createBotApp({ researchJobs })`).
+
+## Surfaces
+
+- **Discord** (`apps/bot/src/features/research`): `/sidus search | recent | view | review`, the
+  _Save to Sidus_ message context menu (`saveFromMessage` with the gateway's message), item cards
+  with DOI / arXiv / source / message links, the review modal (status, evidence level, topic,
+  tags, note; bound to the item version) and _Push to Sidus_. See
+  [`docs/commands/research.md`](../commands/research.md).
+- **Dashboard**: `/research` (search, filters, Add reference) and `/research/<id>` (metadata,
+  links, Sidus sync status, review form for `canReviewResearch`, archive, push).
 
 ## Known limitations
 
-- `apps/bot` merges handler maps with duplicate detection, so replacing the static research
-  handlers with the credentialed ones requires a small composition change at merge time.
 - Un-verifying an item does not delete it from Sidus; the contract has no delete endpoint yet.
 - Enrichment never overwrites member-provided fields and does not set a DOI found on arXiv.
 - Discord CDN attachment links expire; items saved from attachments keep the message link as

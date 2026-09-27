@@ -1,9 +1,12 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { can, type HealthState } from '@jave/core';
 import type { CommandDefinition } from '../../interactions/types';
-import { panel } from '../../ui/components';
+import { panel, row } from '../../ui/components';
 import { alignRows } from '../../ui/format';
 import { COLORS } from '../../ui/theme';
+import { aiUsageReport } from '../ai/usage';
+import { deadJobCount, deadJobsButton } from './job-admin';
+import { runSetup } from './setup';
 
 const MARK: Record<HealthState, string> = { ok: '✓', degraded: '▲', down: '✕', disabled: '—' };
 const LABELS: Record<string, string> = {
@@ -22,10 +25,25 @@ export const statusCommand: CommandDefinition = {
     .addSubcommand((s) =>
       s.setName('status').setDescription('System status: Discord, database, AI, webhooks, queue.'),
     )
+    .addSubcommand((s) =>
+      s.setName('ai-usage').setDescription('JAVE AI usage today: yours, and the organization’s.'),
+    )
+    .addSubcommand((s) =>
+      s
+        .setName('setup')
+        .setDescription('Readiness check: permissions, role hierarchy, mappings, channels.'),
+    )
     .toJSON(),
-  help: { category: 'system', summary: 'System diagnostics.', usage: '/jave status' },
+  help: {
+    category: 'system',
+    summary: 'System diagnostics, setup readiness and AI usage.',
+    usage: '/jave status | setup | ai-usage',
+  },
   defer: 'ephemeral',
   async execute(h) {
+    const subcommand = h.interaction.options.subcommand();
+    if (subcommand === 'ai-usage') return aiUsageReport(h);
+    if (subcommand === 'setup') return runSetup(h);
     const report = await h.services.health();
     const detailed = can(h.ctx, 'canViewSystemStatus');
     const rows: [string, string][] = report.checks.map((check) => {
@@ -39,6 +57,7 @@ export const statusCommand: CommandDefinition = {
         : report.status === 'degraded'
           ? COLORS.warning
           : COLORS.danger;
+    const deadJobs = detailed ? await deadJobCount(h) : 0;
     await h.respond({
       embeds: [
         panel({
@@ -51,6 +70,7 @@ export const statusCommand: CommandDefinition = {
             : '✓ ok · ▲ degraded · ✕ down · — disabled',
         }),
       ],
+      components: deadJobs > 0 ? [row(deadJobsButton(deadJobs))] : undefined,
       ephemeral: true,
     });
   },

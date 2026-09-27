@@ -30,7 +30,13 @@ describe('health server', () => {
     const ready = await fetch(`http://127.0.0.1:${port}/readyz`);
     expect(ready.status).toBe(200);
     const body = (await ready.json()) as { checks: { name: string }[] };
-    expect(body.checks.map((c) => c.name)).toEqual(['discord', 'database', 'queue', 'webhooks']);
+    expect(body.checks.map((c) => c.name)).toEqual([
+      'discord',
+      'database',
+      'queue',
+      'webhooks',
+      'ai',
+    ]);
     bot.gateway.ready = false;
     expect((await fetch(`http://127.0.0.1:${port}/readyz`)).status).toBe(503);
     await bot.app.worker.stop();

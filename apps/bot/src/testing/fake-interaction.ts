@@ -6,6 +6,7 @@ import type {
   InteractionUser,
   ModalPayload,
   ReplyPayload,
+  SourceMessage,
   TargetMessage,
 } from '../interactions/types';
 
@@ -25,6 +26,12 @@ export interface FakeInteractionInit {
   modalSelect?: Record<string, string[]>;
   targetUser?: InteractionUser;
   targetMessage?: TargetMessage;
+  /**
+   * The message the interaction came from. Default: a private (ephemeral) one
+   * for buttons and selects, none otherwise. Set it for a modal opened from a
+   * component, or to `{ ephemeral: false }` for a press on a public post.
+   */
+  sourceMessage?: SourceMessage | null;
 }
 
 export type RecordedResponse =
@@ -52,6 +59,7 @@ export class FakeInteraction implements InteractionContext {
   readonly values: string[];
   readonly targetUser: InteractionUser | null;
   readonly targetMessage: TargetMessage | null;
+  readonly sourceMessage: SourceMessage | null;
   readonly responses: RecordedResponse[] = [];
   readonly options: CommandOptions;
   readonly modal: InteractionContext['modal'];
@@ -68,6 +76,12 @@ export class FakeInteraction implements InteractionContext {
     this.values = init.values ?? [];
     this.targetUser = init.targetUser ?? null;
     this.targetMessage = init.targetMessage ?? null;
+    this.sourceMessage =
+      init.sourceMessage !== undefined
+        ? init.sourceMessage
+        : init.kind === 'button' || init.kind === 'select'
+          ? { ephemeral: true }
+          : null;
     const opts = init.options ?? {};
     const get = <T>(name: string, check: (v: unknown) => boolean): T | null => {
       const value = opts[name];
@@ -122,8 +136,7 @@ export class FakeInteraction implements InteractionContext {
     this.responses.push({ type: 'followUp', payload });
   }
   async update(payload: ReplyPayload) {
-    if (this.kind !== 'button' && this.kind !== 'select')
-      throw new Error('update on non-component');
+    if (!this.sourceMessage) throw new Error('update without a source message');
     this.assertFresh('update');
     this._replied = true;
     this.responses.push({ type: 'update', payload });

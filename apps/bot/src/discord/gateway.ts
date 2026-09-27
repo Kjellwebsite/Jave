@@ -1,3 +1,4 @@
+import type { PermissionFlagsBits } from 'discord.js';
 import type { ReplyPayload } from '../interactions/types';
 
 /**
@@ -60,9 +61,51 @@ export interface ScheduledEventSpec {
   location?: string;
 }
 
+/** Discord's scheduled event states (Discord spells the last one CANCELED). */
+export type ScheduledEventStatus = 'scheduled' | 'active' | 'completed' | 'canceled';
+
+/**
+ * Fields to change on a scheduled event, plus the status it should end up in.
+ * The gateway applies only the transitions Discord allows (scheduled → active →
+ * completed) and skips edits Discord refuses (the start of an active event, a
+ * start less than a minute ahead, anything on a completed or canceled one); an
+ * unchanged start is not re-sent. A refused field edit still applies the status
+ * before it throws. Completing an event that never started deletes it: Discord
+ * completes only active events, and starting one notifies everyone Interested.
+ */
+export interface ScheduledEventEdit extends Partial<ScheduledEventSpec> {
+  status?: Exclude<ScheduledEventStatus, 'canceled'>;
+}
+
+/** Whose channel permissions to check: the bot itself or a guild member. */
+export type ChannelSubject = { kind: 'bot' } | { kind: 'member'; userId: string };
+
+/** Effective permissions of a subject in a channel (threads use Send Messages in Threads). */
+export interface ChannelAccess {
+  /** Messages can be posted in this channel at all (text, announcement or thread). */
+  textBased: boolean;
+  view: boolean;
+  send: boolean;
+  embedLinks: boolean;
+  readHistory: boolean;
+}
+
 export interface SentMessage {
   channelId: string;
   messageId: string;
+}
+
+/** A guild message read on behalf of a member (see `fetchMessageAs`). */
+export interface ReadableMessage {
+  id: string;
+  channelId: string;
+  authorId: string;
+  authorName: string;
+  authorIsBot: boolean;
+  content: string;
+  embedsText: string[];
+  createdAt: Date;
+  url: string;
 }
 
 /** Idle periods after which Discord archives a thread (the values its API accepts). */
@@ -140,13 +183,41 @@ export interface DiscordGateway {
   fetchThreadState(threadId: string): Promise<ThreadState>;
 
   // Scheduled events
+  /** Discord refuses a start that is not in the future (Invalid Form Body). */
   createScheduledEvent(spec: ScheduledEventSpec & { reason: string }): Promise<string>;
-  editScheduledEvent(
-    eventId: string,
-    spec: Partial<ScheduledEventSpec>,
+  editScheduledEvent(eventId: string, spec: ScheduledEventEdit, reason: string): Promise<void>;
+  /** Scheduled → canceled; an active event cannot be canceled on Discord and is deleted. */
+  cancelScheduledEvent(eventId: string, reason: string): Promise<void>;
+  deleteScheduledEvent(eventId: string, reason: string): Promise<void>;
+
+  // Permissions
+  /** Null when the channel or member is unknown, or the channel is outside the guild. */
+  channelAccess(channelId: string, subject: ChannelSubject): Promise<ChannelAccess | null>;
+
+  // Trials (appended)
+  /**
+   * Create or replace one permission overwrite, leaving the channel's other
+   * overwrites untouched (e.g. lock a member out of sending without dropping
+   * the evaluator roles' access).
+   */
+  setChannelOverwrite(
+    channelId: string,
+    overwrite: PermissionOverwriteSpec,
     reason: string,
   ): Promise<void>;
-  cancelScheduledEvent(eventId: string, reason: string): Promise<void>;
+  /** Discord user ids currently holding a role (empty when the role is unknown). */
+  roleMemberIds(roleId: string): Promise<string[]>;
+  // Introspection (read-only: readiness checks and settings validation)
+  botMember(): Promise<BotMemberSnapshot>;
+  /**
+   * Null when the channel does not exist in the guild. `audienceRoleIds`:
+   * roles to test for View Channel there (reported in `audienceWithView`).
+   */
+  botPermissionsIn(
+    channelId: string,
+    audienceRoleIds?: readonly string[],
+  ): Promise<ChannelAccessSnapshot | null>;
+  listRoles(): Promise<RoleSnapshot[]>;
 
   // Idempotent posting
   /**
@@ -155,6 +226,67 @@ export interface DiscordGateway {
    * the message already posted instead of posting a duplicate.
    */
   sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string): Promise<SentMessage>;
+
+  // Member-scoped reads
+  /**
+   * Read one home-guild message on behalf of a member. Returns null when the
+   * message or channel does not exist, is outside the home guild, or the
+   * member lacks View Channel + Read Message History there (and, in a
+   * private thread, is not a thread member). The bot's own access is never
+   * lent to a member.
+   */
+  fetchMessageAs(
+    asUserId: string,
+    channelId: string,
+    messageId: string,
+  ): Promise<ReadableMessage | null>;
+}
+
+/** A Discord permission flag name, e.g. 'ManageRoles'. */
+export type DiscordPermission = keyof typeof PermissionFlagsBits;
+
+/** The bot's own membership in the guild. */
+export interface BotMemberSnapshot {
+  userId: string;
+  /** Effective guild-level permissions (Administrator implies every flag). */
+  permissions: DiscordPermission[];
+  administrator: boolean;
+  /** Position of the bot's highest role; it can only manage roles strictly below. */
+  highestRolePosition: number;
+}
+
+export type ChannelKind =
+  'text' | 'announcement' | 'category' | 'voice' | 'forum' | 'thread' | 'other';
+
+/** What the bot can do in one guild channel (permission overwrites applied). */
+export interface ChannelAccessSnapshot {
+  channelId: string;
+  /** Null when the channel is hidden from the bot. */
+  name: string | null;
+  kind: ChannelKind;
+  /** False when the channel exists but the bot cannot see it. */
+  visible: boolean;
+  permissions: DiscordPermission[];
+  /** A member with no roles beyond @everyone can view the channel. */
+  everyoneCanView: boolean;
+  /**
+   * The requested audience roles whose holders can view the channel (with
+   * @everyone's permissions and the channel overwrites applied).
+   */
+  audienceWithView: string[];
+}
+
+export interface RoleSnapshot {
+  id: string;
+  name: string;
+  /** Hierarchy position; higher outranks lower. */
+  position: number;
+  /** Bot, booster and integration roles: Discord never lets anyone assign them. */
+  managed: boolean;
+  /** The @everyone role (same id as the guild). */
+  everyone: boolean;
+  /** Permissions the role grants server-wide (Administrator implies every flag). */
+  permissions: DiscordPermission[];
 }
 
 /** Discord caps message nonces at 25 characters. */

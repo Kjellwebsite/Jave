@@ -33,6 +33,12 @@ export {
 } from './roles.service';
 export { raiseRedFlag, type RedFlagResult } from './red-flag.service';
 export {
+  STOP_WORD_CHAT_NOTE,
+  stopWordTyped,
+  type StopWordOutcome,
+  type StopWordTypist,
+} from './stop-word.service';
+export {
   addTrigger,
   approveTrigger,
   fireTrigger,
@@ -101,8 +107,11 @@ export {
   isAwaitingReveal,
   LIVE_STATUSES,
   OUTCOME_LABELS,
+  PLANNING_TRIAL_STATUSES,
+  REVEAL_TRIAL_STATUSES,
   stoppedEarly,
   TECHNIQUE_LABELS,
+  TRIGGER_EDITABLE_STATUSES,
   wasExposed,
   type Outcome,
   type RoleRecord,

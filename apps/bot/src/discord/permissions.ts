@@ -22,6 +22,8 @@ export const REQUIRED_PERMISSIONS = {
   BanMembers: 'Ban/unban members (moderation cases).',
   ManageGuild: 'List invites for referral attribution.',
   ManageEvents: 'Create Discord scheduled events for JAVELIN events.',
+  AddReactions:
+    'Grant (and, when archiving, revoke) reactions in private trial team channels — Discord only lets a bot set overwrites for permissions it holds.',
 } as const satisfies Partial<Record<keyof typeof PermissionFlagsBits, string>>;
 
 export const REQUIRED_PERMISSION_BITS = (

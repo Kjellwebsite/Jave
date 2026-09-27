@@ -13,8 +13,8 @@
     "generate": "drizzle-kit generate",
     "check": "drizzle-kit check",
     "migrate": "tsx src/scripts/migrate.ts",
-    "seed": "tsx src/scripts/seed.ts",
-    "docs": "tsx src/scripts/generate-docs.ts"
+    "docs": "tsx src/scripts/generate-docs.ts",
+    "test:db:clean": "tsx src/scripts/clean-test-databases.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.3",

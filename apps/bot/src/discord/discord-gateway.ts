@@ -3,6 +3,8 @@ import {
   ChannelType,
   type Client,
   DiscordAPIError,
+  DiscordjsError,
+  DiscordjsErrorCodes,
   GuildScheduledEventEntityType,
   GuildScheduledEventPrivacyLevel,
   GuildScheduledEventStatus,
@@ -10,23 +12,36 @@ import {
   OverwriteType,
   PermissionFlagsBits,
   RESTJSONErrorCodes,
+  type Role,
   type TextChannel,
   ThreadAutoArchiveDuration,
   type ThreadChannel,
 } from 'discord.js';
 import {
+  type BotMemberSnapshot,
+  type ChannelAccessSnapshot,
+  type ChannelAccess,
+  type ChannelSubject,
   DiscordActionError,
   type DiscordGateway,
   MESSAGE_NONCE_MAX,
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
+  type PermissionName,
   type PermissionOverwriteSpec,
+  type ReadableMessage,
+  type RoleSnapshot,
+  type ScheduledEventEdit,
   type ScheduledEventSpec,
+  type ScheduledEventStatus,
   type SentMessage,
   type ThreadAutoArchiveMinutes,
   type ThreadState,
 } from './gateway';
+import { channelKind, permissionNames, roleCanView } from './introspection';
+import { isDiscordError, UNKNOWN_OBJECT } from './discord-errors';
+import { planScheduledEventUpdate, scheduledStartEdit } from './scheduled-event-status';
 
 const AUTO_ARCHIVE_DURATION: Record<ThreadAutoArchiveMinutes, ThreadAutoArchiveDuration> = {
   60: ThreadAutoArchiveDuration.OneHour,
@@ -67,10 +82,47 @@ function normalize(error: unknown, action: string): never {
   throw error;
 }
 
+/** A guild role, or null when it no longer exists (a deleted role still mapped). */
+async function roleOrNull(guild: Guild, roleId: string): Promise<Role | null> {
+  const cached = guild.roles.cache.get(roleId);
+  if (cached) return cached;
+  try {
+    return await guild.roles.fetch(roleId);
+  } catch (error) {
+    if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownRole)
+      return null;
+    throw error;
+  }
+}
+
 async function attempt<T>(action: string, fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (error) {
+    return normalize(error, action);
+  }
+}
+
+/** Lookups whose failure means "not there / not yours", never "retry". */
+const NOT_READABLE_CODES = new Set<number>([
+  RESTJSONErrorCodes.UnknownChannel,
+  RESTJSONErrorCodes.UnknownMessage,
+  RESTJSONErrorCodes.UnknownMember,
+  RESTJSONErrorCodes.MissingAccess,
+  RESTJSONErrorCodes.MissingPermissions,
+]);
+
+/** Resolves to null for "not there / not readable" API errors; rethrows the rest normalized. */
+async function readable<T>(action: string, fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (
+      error instanceof DiscordAPIError &&
+      typeof error.code === 'number' &&
+      NOT_READABLE_CODES.has(error.code)
+    )
+      return null;
     return normalize(error, action);
   }
 }
@@ -87,6 +139,34 @@ function toMessageOptions(payload: MessagePayload) {
     allowedMentions: { parse: [] as never[] },
   };
 }
+
+/** External scheduled events need a location and an end; these fill in when none is given. */
+const DEFAULT_EVENT_LOCATION = 'JAVELIN';
+const DEFAULT_EXTERNAL_EVENT_MS = 60 * 60 * 1000;
+
+const SCHEDULED_EVENT_STATUS: Record<GuildScheduledEventStatus, ScheduledEventStatus> = {
+  [GuildScheduledEventStatus.Scheduled]: 'scheduled',
+  [GuildScheduledEventStatus.Active]: 'active',
+  [GuildScheduledEventStatus.Completed]: 'completed',
+  [GuildScheduledEventStatus.Canceled]: 'canceled',
+};
+
+/** Channel lookups that mean "not there for us" rather than a failure. */
+const MISSING_CHANNEL_CODES = new Set<number>([
+  RESTJSONErrorCodes.UnknownChannel,
+  RESTJSONErrorCodes.MissingAccess,
+]);
+
+type ScheduledEventEntity =
+  | {
+      entityType: GuildScheduledEventEntityType.Voice | GuildScheduledEventEntityType.StageInstance;
+      channel: string;
+    }
+  | {
+      entityType: GuildScheduledEventEntityType.External;
+      channel: null;
+      entityMetadata: { location: string };
+    };
 
 function toOverwrites(overwrites: PermissionOverwriteSpec[]) {
   return overwrites.map((o) => ({
@@ -381,49 +461,290 @@ export class DiscordJsGateway implements DiscordGateway {
     return { archived: channel.archived ?? false, locked: channel.locked ?? false };
   }
 
+  /** A guild channel, or null when it does not exist or the bot cannot see it. */
+  private async guildChannel(guild: Guild, channelId: string) {
+    try {
+      return await guild.channels.fetch(channelId);
+    } catch (error) {
+      if (error instanceof DiscordAPIError && MISSING_CHANNEL_CODES.has(Number(error.code))) {
+        return null;
+      }
+      return normalize(error, 'fetch channel');
+    }
+  }
+
+  /**
+   * Voice and stage channels host the event; any other channel (or none)
+   * becomes an external location, since Discord refuses other channel types.
+   */
+  private async scheduledEventEntity(
+    guild: Guild,
+    spec: Pick<ScheduledEventSpec, 'channelId' | 'location'>,
+  ): Promise<ScheduledEventEntity> {
+    const external = (location: string): ScheduledEventEntity => ({
+      entityType: GuildScheduledEventEntityType.External,
+      channel: null,
+      entityMetadata: { location },
+    });
+    if (!spec.channelId) return external(spec.location ?? DEFAULT_EVENT_LOCATION);
+    const channel = await this.guildChannel(guild, spec.channelId);
+    if (channel?.type === ChannelType.GuildVoice) {
+      return { entityType: GuildScheduledEventEntityType.Voice, channel: spec.channelId };
+    }
+    if (channel?.type === ChannelType.GuildStageVoice) {
+      return { entityType: GuildScheduledEventEntityType.StageInstance, channel: spec.channelId };
+    }
+    return external(channel ? `#${channel.name}` : (spec.location ?? DEFAULT_EVENT_LOCATION));
+  }
+
   async createScheduledEvent(spec: ScheduledEventSpec & { reason: string }) {
     const guild = await this.guild();
-    const external = !spec.channelId;
+    const entity = await this.scheduledEventEntity(guild, spec);
+    const external = entity.entityType === GuildScheduledEventEntityType.External;
     const event = await attempt('create scheduled event', () =>
       guild.scheduledEvents.create({
         name: spec.name,
         description: spec.description,
         scheduledStartTime: spec.startAt,
         scheduledEndTime:
-          spec.endAt ?? (external ? new Date(spec.startAt.getTime() + 60 * 60 * 1000) : undefined),
+          spec.endAt ??
+          (external ? new Date(spec.startAt.getTime() + DEFAULT_EXTERNAL_EVENT_MS) : undefined),
         privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-        entityType: external
-          ? GuildScheduledEventEntityType.External
-          : GuildScheduledEventEntityType.Voice,
-        channel: spec.channelId,
-        entityMetadata: external ? { location: spec.location ?? 'JAVELIN' } : undefined,
+        entityType: entity.entityType,
+        channel: entity.channel ?? undefined,
+        entityMetadata: 'entityMetadata' in entity ? entity.entityMetadata : undefined,
         reason: spec.reason,
       }),
     );
     return event.id;
   }
 
-  async editScheduledEvent(eventId: string, spec: Partial<ScheduledEventSpec>, reason: string) {
-    const guild = await this.guild();
+  private async currentScheduledEvent(guild: Guild, eventId: string) {
+    const event = await attempt('fetch scheduled event', () =>
+      guild.scheduledEvents.fetch(eventId),
+    );
+    return { status: SCHEDULED_EVENT_STATUS[event.status], startAt: event.scheduledStartAt };
+  }
+
+  private async setScheduledEventStatus(
+    guild: Guild,
+    eventId: string,
+    status: Exclude<ScheduledEventStatus, 'scheduled'>,
+    reason: string,
+  ) {
+    await attempt('update scheduled event status', async () => {
+      switch (status) {
+        case 'active':
+          await guild.scheduledEvents.edit(eventId, {
+            status: GuildScheduledEventStatus.Active,
+            reason,
+          });
+          return;
+        case 'completed':
+          await guild.scheduledEvents.edit(eventId, {
+            status: GuildScheduledEventStatus.Completed,
+            reason,
+          });
+          return;
+        case 'canceled':
+          await guild.scheduledEvents.edit(eventId, {
+            status: GuildScheduledEventStatus.Canceled,
+            reason,
+          });
+          return;
+      }
+    });
+  }
+
+  private async editScheduledEventFields(
+    guild: Guild,
+    eventId: string,
+    spec: ScheduledEventEdit,
+    startAt: Date | undefined,
+    reason: string,
+  ) {
+    const relocated = spec.channelId !== undefined || spec.location !== undefined;
+    const entity = relocated ? await this.scheduledEventEntity(guild, spec) : null;
     await attempt('edit scheduled event', async () => {
       await guild.scheduledEvents.edit(eventId, {
         name: spec.name,
         description: spec.description,
-        scheduledStartTime: spec.startAt,
+        scheduledStartTime: startAt,
         scheduledEndTime: spec.endAt,
+        ...(entity && {
+          entityType: entity.entityType,
+          channel: entity.channel,
+          entityMetadata: 'entityMetadata' in entity ? entity.entityMetadata : undefined,
+        }),
         reason,
       });
     });
   }
 
+  async editScheduledEvent(eventId: string, spec: ScheduledEventEdit, reason: string) {
+    const guild = await this.guild();
+    const current = await this.currentScheduledEvent(guild, eventId);
+    const plan = planScheduledEventUpdate(current.status, spec.status ?? current.status);
+    if (plan.remove) return this.deleteScheduledEvent(eventId, reason);
+    // A refused field edit must not hold back the status: going live matters more.
+    let fieldFailure: { error: unknown } | null = null;
+    if (plan.editable) {
+      const startAt = scheduledStartEdit(plan, current.startAt, spec.startAt, new Date());
+      try {
+        await this.editScheduledEventFields(guild, eventId, spec, startAt, reason);
+      } catch (error) {
+        if (isDiscordError(error, UNKNOWN_OBJECT.scheduledEvent)) throw error;
+        fieldFailure = { error };
+      }
+    }
+    for (const status of plan.transitions) {
+      await this.setScheduledEventStatus(guild, eventId, status, reason);
+    }
+    if (fieldFailure) throw fieldFailure.error;
+  }
+
   async cancelScheduledEvent(eventId: string, reason: string) {
     const guild = await this.guild();
-    await attempt('cancel scheduled event', async () => {
-      await guild.scheduledEvents.edit(eventId, {
-        status: GuildScheduledEventStatus.Canceled,
-        reason,
-      });
-    });
+    const { status: current } = await this.currentScheduledEvent(guild, eventId);
+    const plan = planScheduledEventUpdate(current, 'canceled');
+    if (plan.remove) return this.deleteScheduledEvent(eventId, reason);
+    for (const status of plan.transitions) {
+      await this.setScheduledEventStatus(guild, eventId, status, reason);
+    }
+  }
+
+  async deleteScheduledEvent(eventId: string, reason: string) {
+    const guild = await this.guild();
+    void reason; // scheduled event deletes do not accept an audit-log reason
+    await attempt('delete scheduled event', () => guild.scheduledEvents.delete(eventId));
+  }
+
+  async channelAccess(channelId: string, subject: ChannelSubject): Promise<ChannelAccess | null> {
+    const guild = await this.guild();
+    const channel = await this.guildChannel(guild, channelId);
+    if (!channel) return null;
+    let member;
+    if (subject.kind === 'bot') {
+      member = await attempt('fetch bot member', () => guild.members.fetchMe());
+    } else {
+      try {
+        member = await guild.members.fetch(subject.userId);
+      } catch (error) {
+        if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownMember) {
+          return null;
+        }
+        return normalize(error, 'fetch member');
+      }
+    }
+    const permissions = channel.permissionsFor(member);
+    const thread = channel.isThread();
+    return {
+      textBased:
+        thread ||
+        channel.type === ChannelType.GuildText ||
+        channel.type === ChannelType.GuildAnnouncement,
+      view: permissions.has(PermissionFlagsBits.ViewChannel),
+      send: permissions.has(
+        thread ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages,
+      ),
+      embedLinks: permissions.has(PermissionFlagsBits.EmbedLinks),
+      readHistory: permissions.has(PermissionFlagsBits.ReadMessageHistory),
+    };
+  }
+
+  async setChannelOverwrite(channelId: string, overwrite: PermissionOverwriteSpec, reason: string) {
+    const channel = await this.textChannel(channelId);
+    if (channel.isThread()) throw new DiscordActionError('threads have no overwrites', null, true);
+    const options: Partial<Record<PermissionName, boolean>> = {};
+    for (const permission of overwrite.allow ?? []) options[permission] = true;
+    for (const permission of overwrite.deny ?? []) options[permission] = false;
+    await attempt(
+      'set overwrite',
+      async () =>
+        // create() replaces this one overwrite; the channel's other overwrites stay as they are.
+        void (await (channel as TextChannel).permissionOverwrites.create(overwrite.id, options, {
+          reason,
+          type: overwrite.type === 'member' ? OverwriteType.Member : OverwriteType.Role,
+        })),
+    );
+  }
+
+  async roleMemberIds(roleId: string): Promise<string[]> {
+    const guild = await this.guild();
+    // role.members reads the member cache: fetch the member list first (GuildMembers intent).
+    await attempt('fetch members', () => guild.members.fetch());
+    const role = await attempt('fetch role', () => guild.roles.fetch(roleId));
+    return role ? [...role.members.keys()] : [];
+  }
+
+  async botMember(): Promise<BotMemberSnapshot> {
+    const guild = await this.guild();
+    const me = await attempt('fetch bot member', () => guild.members.fetchMe());
+    return {
+      userId: me.id,
+      permissions: permissionNames(me.permissions),
+      administrator: me.permissions.has(PermissionFlagsBits.Administrator),
+      highestRolePosition: me.roles.highest.position,
+    };
+  }
+
+  async botPermissionsIn(
+    channelId: string,
+    audienceRoleIds: readonly string[] = [],
+  ): Promise<ChannelAccessSnapshot | null> {
+    const guild = await this.guild();
+    let channel;
+    try {
+      channel = await guild.channels.fetch(channelId);
+    } catch (error) {
+      if (error instanceof DiscordjsError && error.code === DiscordjsErrorCodes.GuildChannelUnowned)
+        return null;
+      if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.UnknownChannel)
+        return null;
+      if (error instanceof DiscordAPIError && error.code === RESTJSONErrorCodes.MissingAccess)
+        return {
+          channelId,
+          name: null,
+          kind: 'other',
+          visible: false,
+          permissions: [],
+          everyoneCanView: false,
+          audienceWithView: [],
+        };
+      return normalize(error, 'fetch channel');
+    }
+    if (!channel) return null;
+    const me = await attempt('fetch bot member', () => guild.members.fetchMe());
+    const permissions = channel.permissionsFor(me);
+    const visible = permissions.has(PermissionFlagsBits.ViewChannel);
+    const everyone = guild.roles.everyone;
+    const audience = await attempt('fetch roles', () =>
+      Promise.all(audienceRoleIds.map((id) => roleOrNull(guild, id))),
+    );
+    return {
+      channelId: channel.id,
+      name: visible ? channel.name : null,
+      kind: channelKind(channel.type),
+      visible,
+      permissions: permissionNames(permissions),
+      everyoneCanView: roleCanView(channel, everyone, everyone),
+      audienceWithView: audience
+        .filter((role): role is Role => role !== null && roleCanView(channel, everyone, role))
+        .map((role) => role.id),
+    };
+  }
+
+  async listRoles(): Promise<RoleSnapshot[]> {
+    const guild = await this.guild();
+    const roles = await attempt('list roles', () => guild.roles.fetch());
+    return roles.map((role) => ({
+      id: role.id,
+      name: role.name,
+      position: role.position,
+      managed: role.managed,
+      everyone: role.id === guild.id,
+      permissions: permissionNames(role.permissions),
+    }));
   }
 
   async sendMessageOnce(
@@ -438,5 +759,44 @@ export class DiscordJsGateway implements DiscordGateway {
       channel.send({ ...toMessageOptions(payload), nonce, enforceNonce: true }),
     );
     return { channelId: message.channelId, messageId: message.id };
+  }
+
+  async fetchMessageAs(
+    asUserId: string,
+    channelId: string,
+    messageId: string,
+  ): Promise<ReadableMessage | null> {
+    const channel = await readable('fetch channel', () => this.client.channels.fetch(channelId));
+    if (!channel || !channel.isTextBased() || channel.isDMBased()) return null;
+    if (channel.guildId !== this.guildId) return null;
+    const member = await readable('fetch member', () => channel.guild.members.fetch(asUserId));
+    if (!member) return null;
+    const permissions = channel.permissionsFor(member);
+    if (
+      !permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory])
+    )
+      return null;
+    if (channel.type === ChannelType.PrivateThread) {
+      const threadMember = await readable('fetch thread member', () =>
+        channel.members.fetch({ member: asUserId }),
+      );
+      if (!threadMember && !permissions.has(PermissionFlagsBits.ManageThreads)) return null;
+    }
+    const message = await readable('fetch message', () => channel.messages.fetch(messageId));
+    if (!message) return null;
+    return {
+      id: message.id,
+      channelId: message.channelId,
+      authorId: message.author.id,
+      authorName:
+        message.member?.displayName ?? message.author.globalName ?? message.author.username,
+      authorIsBot: message.author.bot,
+      content: message.content,
+      embedsText: message.embeds
+        .map((e) => [e.title, e.description].filter(Boolean).join('\n'))
+        .filter(Boolean),
+      createdAt: message.createdAt,
+      url: message.url,
+    };
   }
 }

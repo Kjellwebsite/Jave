@@ -162,7 +162,13 @@ describe('content security policy', () => {
 describe('navigation', () => {
   it('shows each entry only with its capability and drops empty groups', () => {
     const member = visibleNav(NAV_GROUPS, ['canViewMembers']);
-    expect(member.map((group) => group.label)).toEqual(['OVERVIEW', 'PEOPLE', 'SUPPORT & SAFETY']);
+    expect(member.map((group) => group.label)).toEqual([
+      'OVERVIEW',
+      'PEOPLE',
+      'OPERATIONS',
+      'SUPPORT & SAFETY',
+      'INTELLIGENCE',
+    ]);
     const founder = visibleNav(NAV_GROUPS, [
       'canViewMembers',
       'canViewAuditLogs',
@@ -172,13 +178,16 @@ describe('navigation', () => {
       '/overview',
       '/members',
       '/ranking',
+      '/events',
+      '/games',
       '/tickets',
+      '/research',
       '/audit',
       '/settings',
     ]);
     expect(
       visibleNav(NAV_GROUPS, []).flatMap((group) => group.items.map((item) => item.href)),
-    ).toEqual(['/overview', '/tickets']);
+    ).toEqual(['/overview', '/events', '/games', '/tickets']);
   });
 
   it('resolves page context from nested paths', () => {

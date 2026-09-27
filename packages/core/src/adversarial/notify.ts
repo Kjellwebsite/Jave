@@ -24,7 +24,7 @@ function operativeCopy(kind: OperativeMessage, trialNumber: number, revision: nu
       return {
         type: 'adversarial.briefing' as const,
         title: 'CONFIDENTIAL BRIEFING',
-        body: `You were selected for an authorized exercise in ${trial}. Your briefing arrives by DM and is on your dashboard. Keep it confidential.`,
+        body: `You were selected for an authorized exercise in ${trial}. Your briefing arrives by DM; /trial briefing shows it again. Keep it confidential.`,
         // The full briefing is DMed by discord.adversarial.brief; the inbox row is a pointer.
         channels: [] as const,
       };

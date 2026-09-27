@@ -13,7 +13,13 @@ import {
   MAX_SUMMARIZE_MESSAGES,
 } from './constants';
 import { assertProposalCapacity, proposeAction, type ProposalView } from './proposals.service';
-import { type AiDeps, type AiWarning, type CompletionResult, runCompletion } from './runtime';
+import {
+  type AiDeps,
+  type AiWarning,
+  type CompletionResult,
+  runCompletion,
+  type UntrustedInput,
+} from './runtime';
 import {
   parseAnnouncementDraft,
   parseResearchAnswer,
@@ -58,7 +64,8 @@ export const brainstormSchema = z.object({
   surface: surfaceSchema,
 });
 
-const MAX_DRAFT_BRIEF_LENGTH = 4000;
+/** Longest brief a draft feature accepts (a Discord message fits). */
+export const MAX_DRAFT_BRIEF_LENGTH = 4000;
 
 export const draftAnnouncementInputSchema = z.object({
   brief: z.string().trim().min(1).max(MAX_DRAFT_BRIEF_LENGTH),
@@ -67,8 +74,16 @@ export const draftAnnouncementInputSchema = z.object({
 
 export const draftTaskInputSchema = z.object({
   brief: z.string().trim().min(1).max(MAX_DRAFT_BRIEF_LENGTH),
+  /**
+   * Material the mission is drafted from that the requester did not write
+   * (a right-clicked Discord message): sent as untrusted data, never as the brief.
+   */
+  source: z.string().trim().min(1).max(MAX_DRAFT_BRIEF_LENGTH).optional(),
   surface: surfaceSchema,
 });
+
+/** Label of the untrusted block that carries `draftTask`'s source material. */
+export const DRAFT_SOURCE_LABEL = 'source_material';
 
 /** A plain AI answer. `text` is raw model output: surfaces must sanitize before posting. */
 export interface AiAnswer {
@@ -217,7 +232,12 @@ async function draftProposal(
   ctx: ServiceContext,
   deps: AiDeps,
   kind: RegisteredActionKind,
-  spec: { feature: DraftFeature; surface: AISurface; brief: string },
+  spec: {
+    feature: DraftFeature;
+    surface: AISurface;
+    brief: string;
+    data?: readonly UntrustedInput[];
+  },
   toPayload: (text: string) => Record<string, unknown>,
 ): Promise<DraftProposalResult> {
   const actor = requireUser(ctx);
@@ -227,6 +247,7 @@ async function draftProposal(
     feature: spec.feature,
     surface: spec.surface,
     request: spec.brief,
+    data: spec.data,
   });
   const proposal = await proposeAction(ctx, {
     kind: kind.kind,
@@ -261,7 +282,8 @@ export async function draftAnnouncement(
 /**
  * SUGGEST → PREVIEW: the model drafts a mission and JAVE stores it as a
  * pending `create_task` proposal. A mission manager must confirm; it is then
- * created as DRAFT, never published.
+ * created as DRAFT, never published. `brief` is the requester's own
+ * instruction; `source` (someone else's words) travels as untrusted data.
  */
 export async function draftTask(
   ctx: ServiceContext,
@@ -273,7 +295,12 @@ export async function draftTask(
     ctx,
     deps,
     createTaskAction,
-    { feature: 'draft_task', surface: data.surface, brief: data.brief },
+    {
+      feature: 'draft_task',
+      surface: data.surface,
+      brief: data.brief,
+      data: data.source ? [{ label: DRAFT_SOURCE_LABEL, text: data.source }] : [],
+    },
     (text) => ({ ...parseTaskDraft(text) }),
   );
 }

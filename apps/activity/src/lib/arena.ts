@@ -88,13 +88,7 @@ export function standings(session: ArenaSessionWire): PodiumSpot[] {
 }
 
 export type ArenaStage =
-  | 'none'
-  | 'lobby'
-  | 'question'
-  | 'reveal'
-  | 'starting'
-  | 'completed'
-  | 'abandoned';
+  'none' | 'lobby' | 'question' | 'reveal' | 'starting' | 'completed' | 'abandoned';
 
 export function stageOf(session: ArenaSessionWire | null): ArenaStage {
   if (!session) return 'none';

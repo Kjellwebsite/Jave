@@ -68,7 +68,8 @@ export class ActivitySession {
     path: string,
     options: Omit<RequestOptions, 'token'> = {},
   ): Promise<T> {
-    const send = async () => this.api.request<T>(method, path, { ...options, token: await this.token() });
+    const send = async () =>
+      this.api.request<T>(method, path, { ...options, token: await this.token() });
     let result: T;
     try {
       result = await send();

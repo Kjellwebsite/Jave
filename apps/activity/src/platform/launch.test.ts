@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_DEV_INSTANCE, detectLaunch, isSafeApiBase } from './launch';
+import { DEFAULT_DEV_INSTANCE, detectLaunch, isSafeApiBase, standaloneDevAllowed } from './launch';
 
 const at = (query: string) => new URL(`https://1234.discordsays.com/${query}`);
 
@@ -25,7 +25,13 @@ describe('launch detection', () => {
   });
 
   it('BREAK: never sends tokens to another origin through a configured base', () => {
-    for (const base of ['//evil.example/api', 'https://evil.example/api', 'javascript:alert(1)', '/../x', 'api']) {
+    for (const base of [
+      '//evil.example/api',
+      'https://evil.example/api',
+      'javascript:alert(1)',
+      '/../x',
+      'api',
+    ]) {
       expect(isSafeApiBase(base), base).toBe(false);
       expect(detectLaunch(at('?frame_id=1'), base).apiBase).toBe('/.proxy/api');
     }
@@ -37,5 +43,12 @@ describe('launch detection', () => {
     const odd = detectLaunch(new URL('http://localhost/?persona=%3Cscript%3E&instance=a/b'));
     expect(odd).toMatchObject({ devPersona: null, devInstanceId: DEFAULT_DEV_INSTANCE });
     expect(detectLaunch(new URL('http://localhost/?instance=dev-x')).devInstanceId).toBe('dev-x');
+  });
+
+  it('BREAK: a production build has no standalone dev mode unless it opts in', () => {
+    expect(standaloneDevAllowed({ DEV: true })).toBe(true);
+    expect(standaloneDevAllowed({ DEV: false })).toBe(false);
+    expect(standaloneDevAllowed({ DEV: false, VITE_JAVE_STANDALONE_DEV: '1' })).toBe(false);
+    expect(standaloneDevAllowed({ DEV: false, VITE_JAVE_STANDALONE_DEV: 'true' })).toBe(true);
   });
 });

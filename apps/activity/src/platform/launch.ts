@@ -22,6 +22,22 @@ export const DEFAULT_DEV_INSTANCE = 'dev-arena';
 const DEV_INSTANCE_PREFIX = 'dev-';
 const DEV_PARAM_PATTERN = /^[a-z0-9_-]{1,40}$/i;
 
+/** The build flags that decide whether the standalone dev mode exists at all. */
+export interface StandaloneFlags {
+  DEV?: boolean;
+  VITE_JAVE_STANDALONE_DEV?: string;
+}
+
+/**
+ * MOCK / DEVELOPMENT ONLY — the standalone mode exists in dev-server builds,
+ * or in a build that opts in with VITE_JAVE_STANDALONE_DEV=true (a staging
+ * preview). A production build opened outside Discord asks to be launched
+ * from Discord; the dashboard independently refuses dev tokens in production.
+ */
+export function standaloneDevAllowed(flags: StandaloneFlags): boolean {
+  return flags.DEV === true || flags.VITE_JAVE_STANDALONE_DEV === 'true';
+}
+
 /** Only same-origin absolute paths: the CSP allows nothing else, and `//host` is another origin. */
 export function isSafeApiBase(value: string): boolean {
   return /^\/(?!\/)[\w./-]*$/.test(value) && !value.includes('..');

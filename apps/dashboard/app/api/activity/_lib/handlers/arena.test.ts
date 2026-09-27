@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { games, type UserActor } from '@jave/core';
 import { createTestKit, type TestKit } from '@jave/core/testing';
-import { gameSessions, members as membersTable } from '@jave/database';
+import { auditLogs, gameSessions, members as membersTable } from '@jave/database';
 import type { ActivityErrorBody, ArenaResponse, ArenaSessionWire } from '../contract';
 import { ACTIVITY_RATE_LIMITS } from '../limits';
 import {
@@ -14,6 +14,7 @@ import {
   tokenFor,
 } from '../testing/support';
 import {
+  handleArenaClose,
   handleArenaLeave,
   handleArenaMove,
   handleArenaOpen,
@@ -75,6 +76,8 @@ const tick = (token: string, sessionId: string) =>
   call(handleArenaTick, 'POST', '/trivia/tick', token, { sessionId });
 const leave = (token: string, sessionId: string) =>
   call(handleArenaLeave, 'POST', '/trivia/leave', token, { sessionId });
+const close = (token: string, sessionId: string) =>
+  call(handleArenaClose, 'POST', '/trivia/close', token, { sessionId });
 const move = (token: string, sessionId: string, round: number, choice: number) =>
   call(handleArenaMove, 'POST', '/trivia/move', token, { sessionId, round, choice });
 
@@ -115,8 +118,9 @@ describe('JVLN Arena · trivia', () => {
       ['p1', 'hostess', true, false],
       ['p2', 'visitor', false, true],
     ]);
+    expect(session.canClose).toBe(false);
     const hostView = await ok(await state(hostToken));
-    expect(hostView.session).toMatchObject({ isHost: true, canStart: true });
+    expect(hostView.session).toMatchObject({ isHost: true, canStart: true, canClose: true });
     expect(hostView.liveSessionId).toBe(session.id);
     const [row] = await kit.db.select().from(gameSessions).where(eq(gameSessions.id, session.id));
     expect(row).toMatchObject({ surface: 'activity', activityInstanceId: INSTANCE });
@@ -206,6 +210,48 @@ describe('JVLN Arena · trivia', () => {
     const left = (await ok(await leave(token, lobby.id))).session!;
     expect(left.status).toBe('abandoned');
     expect((await ok(await state(token))).session).toBeNull();
+  });
+
+  it('the host closes the lobby and frees the instance for a new one', async () => {
+    const { hostToken, guestToken, session } = await lobbyForTwo();
+    const closed = (await ok(await close(hostToken, session.id))).session!;
+    expect(closed).toMatchObject({ status: 'abandoned', endReason: 'Stopped by the host.' });
+    expect(closed).toMatchObject({ canStart: false, canClose: false, canJoin: false });
+    const guestSees = await ok(await state(guestToken, session.id));
+    expect(guestSees.session!.status).toBe('abandoned');
+    expect(guestSees.liveSessionId).toBeNull();
+    const reopened = (await ok(await open(hostToken))).session!;
+    expect(reopened.id).not.toBe(session.id);
+    expect(reopened.status).toBe('lobby');
+  });
+
+  it('event staff can start or close a lobby they do not host (audited by core)', async () => {
+    const { session, guestToken } = await lobbyForTwo();
+    const staff = await kit.member({ roles: ['operations'] });
+    const staffToken = tokenFor(kit, staff);
+    const seen = (await ok(await state(staffToken, session.id))).session!;
+    expect(seen).toMatchObject({ isHost: false, youArePlayer: false, canStart: true });
+    expect(seen.canClose).toBe(true);
+    const started = (await ok(await start(staffToken, session.id))).session!;
+    expect(started.status).toBe('active');
+    const audits = await kit.db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.action, 'game.started_by_staff'));
+    expect(audits).toHaveLength(1);
+    // Players never see staff controls.
+    expect((await ok(await state(guestToken, session.id))).session!.canClose).toBe(false);
+  });
+
+  it('BREAK: a guest cannot close the host’s lobby', async () => {
+    const { guestToken, hostToken, session } = await lobbyForTwo();
+    expect(await status(await close(guestToken, session.id))).toEqual([403, 'FORBIDDEN']);
+    expect((await ok(await state(hostToken, session.id))).session!.status).toBe('lobby');
+    const elsewhere = tokenFor(kit, await kit.member({ roles: ['operations'] }), {
+      instanceId: OTHER_INSTANCE,
+    });
+    // Even staff act only inside their own Activity instance.
+    expect(await status(await close(elsewhere, session.id))).toEqual([404, 'NOT_FOUND']);
   });
 
   it('BREAK: a guest cannot start the host’s lobby', async () => {

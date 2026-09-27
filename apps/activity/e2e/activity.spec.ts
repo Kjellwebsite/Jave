@@ -4,9 +4,12 @@ import { type Browser, expect, type Page, test } from '@playwright/test';
 /**
  * The Activity end to end, in standalone dev mode (MOCK / DEVELOPMENT ONLY):
  * real dashboard routes, real database, two browser contexts as two players.
- * With JAVE_SCREENSHOTS=1 the captures are written to docs/screenshots/.
+ * With JAVE_SCREENSHOTS=1 the captures are written to docs/screenshots/, or to
+ * JAVE_SCREENSHOT_DIR when set (review iterations outside the repository).
  */
-const SCREENSHOT_DIR = fileURLToPath(new URL('../../../docs/screenshots/', import.meta.url));
+const SCREENSHOT_DIR = process.env.JAVE_SCREENSHOT_DIR
+  ? `${process.env.JAVE_SCREENSHOT_DIR.replace(/\/+$/, '')}/`
+  : fileURLToPath(new URL('../../../docs/screenshots/', import.meta.url));
 const SAVE = process.env.JAVE_SCREENSHOTS === '1';
 
 const DESKTOP = { width: 1280, height: 720 } as const;
@@ -122,6 +125,7 @@ test.describe('JVLN Arena · trivia', () => {
     await guest.getByRole('tab', { name: /JVLN ARENA/ }).click();
     await expect(guest.getByTestId('lobby')).toBeVisible();
     await expect(guest.getByRole('button', { name: 'Start game' })).toHaveCount(0);
+    await expect(guest.getByRole('button', { name: 'Close lobby' })).toHaveCount(0);
     await guest.getByRole('button', { name: 'Join lobby' }).click();
     await expect(guest.getByTestId('lobby-players').getByRole('listitem')).toHaveCount(2);
     await capture(guest, 'arena-lobby');
@@ -197,9 +201,10 @@ test.describe('JVLN Arena · trivia', () => {
     await expect(host.getByRole('status').filter({ hasText: 'ONLINE' })).toBeVisible();
     await expect(host.getByTestId('lobby')).toBeVisible();
 
-    // Leaving as the last player closes the lobby.
-    await host.getByRole('button', { name: 'Leave' }).click();
-    await expect(host.getByTestId('ended')).toContainText('Everyone left the lobby.');
+    // The host closes the lobby; the instance is free for the next one.
+    await expect(host.getByRole('button', { name: 'Leave' })).toHaveCount(0);
+    await host.getByRole('button', { name: 'Close lobby' }).click();
+    await expect(host.getByTestId('ended')).toContainText('Stopped by the host.');
     await host.context().close();
   });
 

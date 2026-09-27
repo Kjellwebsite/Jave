@@ -32,7 +32,7 @@ export function EventsPanel({ events, now }: { events: EventWire[]; now: number 
           icon={CalendarDays}
           title="NOTHING SCHEDULED"
           description="Workshops, talks and build nights appear here once they are published."
-          className="py-8"
+          className="py-8!"
         />
       ) : (
         <ul className="divide-y divide-line-subtle">

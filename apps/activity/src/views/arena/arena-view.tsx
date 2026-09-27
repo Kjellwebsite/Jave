@@ -1,9 +1,9 @@
 import { LoaderCircle, X } from 'lucide-react';
-import { Callout, Card, Icon, IconButton, Skeleton } from '@jave/ui';
+import { Callout, Card, cx, ErrorState, Icon, IconButton, Skeleton } from '@jave/ui';
 import type { ApiError } from '../../api/client';
 import type { ServerClock } from '../../api/session';
 import type { ArenaController } from '../../hooks/use-arena';
-import { stageOf } from '../../lib/arena';
+import { type ArenaStage, stageOf } from '../../lib/arena';
 import { Lobby } from './lobby';
 import { OpenLobby } from './open-lobby';
 import { Ended, Results } from './results';
@@ -17,6 +17,19 @@ const ERROR_TITLES: Readonly<Record<string, string>> = {
   RATE_LIMITED: 'SLOW DOWN',
   VALIDATION: 'NOT ACCEPTED',
 };
+
+/**
+ * Stages that are a single card read as a stage on wide screens: centered in
+ * the space below the bar. Rounds stay top-aligned so the reveal never shifts
+ * the question.
+ */
+const CENTERED_STAGES: ReadonlySet<ArenaStage> = new Set([
+  'none',
+  'lobby',
+  'starting',
+  'completed',
+  'abandoned',
+]);
 
 function ActionError({ error, onDismiss }: { error: ApiError; onDismiss: () => void }) {
   const title = ERROR_TITLES[error.code] ?? (error.transient ? 'CONNECTION LOST' : 'NOT DONE');
@@ -52,10 +65,33 @@ export interface ArenaViewProps {
   active: boolean;
 }
 
+/**
+ * The Arena never loaded and the server refused (not a lost connection): say
+ * why instead of connecting forever. Polling continues underneath, so the view
+ * recovers on its own if the refusal lifts.
+ */
+function ArenaUnavailable({ error }: { error: ApiError }) {
+  return (
+    <Card data-testid="arena-unavailable">
+      <ErrorState
+        title={ERROR_TITLES[error.code] ?? 'ARENA UNAVAILABLE'}
+        description={error.message}
+        reference={error.reference}
+      />
+    </Card>
+  );
+}
+
 /** JVLN ARENA · TRIVIA — every stage of the instance's game, as the server reports it. */
 export function ArenaView({ arena, clock, active }: ArenaViewProps) {
-  const { response, session, pending, actionError } = arena;
-  if (!response) return <ArenaSkeleton />;
+  const { response, session, pending, actionError, pollError } = arena;
+  if (!response) {
+    return pollError && !pollError.transient ? (
+      <ArenaUnavailable error={pollError} />
+    ) : (
+      <ArenaSkeleton />
+    );
+  }
 
   const stage = stageOf(session);
   const nextLobby =
@@ -68,7 +104,14 @@ export function ArenaView({ arena, clock, active }: ArenaViewProps) {
   };
 
   return (
-    <div className="space-y-4" data-testid="arena" data-stage={stage}>
+    <div
+      className={cx(
+        'flex flex-1 flex-col gap-4',
+        CENTERED_STAGES.has(stage) && 'lg:justify-center',
+      )}
+      data-testid="arena"
+      data-stage={stage}
+    >
       {actionError ? <ActionError error={actionError} onDismiss={arena.clearError} /> : null}
       {stage === 'none' ? (
         <OpenLobby
@@ -84,6 +127,7 @@ export function ArenaView({ arena, clock, active }: ArenaViewProps) {
           onStart={arena.start}
           onJoin={() => arena.open()}
           onLeave={arena.leave}
+          onClose={arena.close}
         />
       ) : null}
       {(stage === 'question' || stage === 'reveal') && session?.trivia ? (

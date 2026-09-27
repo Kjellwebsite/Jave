@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivityHost, AuthSession } from '../platform/hosts';
-import { ApiClient, ApiError, type FetchFn } from './client';
+import { ApiClient, type ApiError, type FetchFn } from './client';
 import { ActivitySession, REFRESH_MARGIN_MS, ServerClock } from './session';
 
 interface Call {
@@ -99,7 +99,10 @@ describe('ActivitySession', () => {
   it('shares one sign-in between concurrent callers and feeds the server clock', async () => {
     let local = 1_000;
     const clock = new ServerClock(() => local);
-    const fetch = stubFetch([Response.json({ serverNow: 5_000 }), Response.json({ serverNow: 5_000 })]);
+    const fetch = stubFetch([
+      Response.json({ serverNow: 5_000 }),
+      Response.json({ serverNow: 5_000 }),
+    ]);
     const h = host([auth('t1', 10_000_000)]);
     const session = new ActivitySession(h, new ApiClient('/api', fetch), clock);
     await Promise.all([session.call('GET', '/activity/me'), session.call('GET', '/activity/me')]);

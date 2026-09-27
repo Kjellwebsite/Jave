@@ -6,13 +6,15 @@ import type { ArenaResponse } from '../contract';
 import { activityHandler } from '../handler';
 import { json, readJsonBody } from '../http';
 import { BODY_LIMITS, spendActivityBudget } from '../limits';
-import { toArenaSession } from '../mappers/arena';
+import { type ArenaViewer, toArenaSession } from '../mappers/arena';
 import { requireInstanceSession } from '../scope';
 
 const TRIVIA_KEY = games.trivia.TRIVIA_KEY;
 const MAX_DIFFICULTY_LENGTH = 16;
 /** One retry after losing the create race to another player in the same instance. */
 const OPEN_ATTEMPTS = 2;
+/** Trivia questions have four options (indices 0–3); core validates the move again. */
+const LAST_OPTION_INDEX = 3;
 
 const sessionIdSchema = z.uuid();
 const sessionRequestSchema = z.object({ sessionId: sessionIdSchema }).strict();
@@ -20,7 +22,7 @@ const moveRequestSchema = z
   .object({
     sessionId: sessionIdSchema,
     round: z.number().int().min(1).max(games.trivia.TRIVIA_MAX_ROUNDS),
-    choice: z.number().int().min(0).max(3),
+    choice: z.number().int().min(0).max(LAST_OPTION_INDEX),
   })
   .strict();
 /** Ranges are enforced by the trivia engine's own config schema in core. */
@@ -42,6 +44,10 @@ function canHost(caller: ActivityCaller): boolean {
   return actor.memberId !== null && actor.standing === 'good' && can(caller.ctx, 'canHostGames');
 }
 
+function viewerOf(caller: ActivityCaller): ArenaViewer {
+  return { userId: caller.ctx.actor.userId, eventStaff: can(caller.ctx, 'canManageEvents') };
+}
+
 async function liveSession(caller: ActivityCaller) {
   return games.findLiveSession(caller.ctx, { activityInstanceId: caller.claims.iid });
 }
@@ -56,7 +62,7 @@ function respond(
   }
   return json<ArenaResponse>({
     serverNow: caller.ctx.clock.now().getTime(),
-    session: session ? toArenaSession(session, caller.ctx.actor.userId) : null,
+    session: session ? toArenaSession(session, viewerOf(caller)) : null,
     liveSessionId,
     canHost: canHost(caller),
   });
@@ -152,6 +158,14 @@ export const handleArenaStart = sessionEndpoint('activity.arena.start', 'lobby',
 /** POST /api/activity/trivia/leave — leave the lobby (the last player out closes it). */
 export const handleArenaLeave = sessionEndpoint('activity.arena.leave', 'lobby', (caller, body) =>
   games.leaveSession(caller.ctx, body),
+);
+
+/**
+ * POST /api/activity/trivia/close — the host (or event staff, audited by
+ * core) ends the session, so the instance is free for a new lobby.
+ */
+export const handleArenaClose = sessionEndpoint('activity.arena.close', 'lobby', (caller, body) =>
+  games.abandonSession(caller.ctx, body),
 );
 
 /**

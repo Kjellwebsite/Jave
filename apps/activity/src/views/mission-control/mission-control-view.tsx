@@ -74,28 +74,44 @@ export function MissionControlView({ session }: { session: ActivitySession }) {
     return <MissionControlSkeleton />;
   }
 
+  const profile = (
+    <div key="profile" className="lg:col-span-5 lg:col-start-1 lg:row-span-2 lg:row-start-1">
+      {data.profile ? (
+        <ProfileCard profile={data.profile} />
+      ) : (
+        <Card>
+          <EmptyState
+            icon={UserRound}
+            title="NO JVLN PROFILE YET"
+            description="Your JAVELIN profile appears once you have joined the server."
+          />
+        </Card>
+      )}
+    </div>
+  );
+  const trial = (
+    <div key="trial" className="lg:col-span-7 lg:col-start-6 lg:row-start-1">
+      <TrialPanel trial={data.trial} now={now} />
+    </div>
+  );
+  const lists = (
+    <div
+      key="lists"
+      className="grid items-start gap-4 md:grid-cols-2 lg:col-span-7 lg:col-start-6 lg:row-start-2"
+    >
+      <MissionsPanel missions={data.missions} now={now} />
+      <EventsPanel events={data.events} now={now} />
+    </div>
+  );
+  // Wide screens place the three blocks explicitly. On a phone a running trial's
+  // countdown is the most urgent fact, so it comes first (in reading order too).
+  const order = data.trial ? [trial, profile, lists] : [profile, trial, lists];
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-12" data-testid="mission-control">
-      <div className="lg:col-span-5">
-        {data.profile ? (
-          <ProfileCard profile={data.profile} />
-        ) : (
-          <Card>
-            <EmptyState
-              icon={UserRound}
-              title="NO JVLN PROFILE YET"
-              description="Your JAVELIN profile appears once you have joined the server."
-            />
-          </Card>
-        )}
-      </div>
-      <div className="grid gap-4 lg:col-span-7">
-        <TrialPanel trial={data.trial} now={now} />
-        <div className="grid items-start gap-4 md:grid-cols-2">
-          <MissionsPanel missions={data.missions} now={now} />
-          <EventsPanel events={data.events} now={now} />
-        </div>
-      </div>
+    <div
+      className="grid items-start gap-4 lg:grid-cols-12 lg:grid-rows-[auto_1fr]"
+      data-testid="mission-control"
+    >
+      {order}
     </div>
   );
 }

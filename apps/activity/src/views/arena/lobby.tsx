@@ -1,4 +1,4 @@
-import { LogIn, LogOut, Play } from 'lucide-react';
+import { CircleX, LogIn, LogOut, Play } from 'lucide-react';
 import { Avatar, Badge, Button, cx } from '@jave/ui';
 import type { ArenaSessionWire } from '../../api/contract';
 import type { ArenaAction } from '../../hooks/use-arena';
@@ -10,6 +10,7 @@ export interface LobbyProps {
   onStart: () => void;
   onJoin: () => void;
   onLeave: () => void;
+  onClose: () => void;
 }
 
 function Seat({ player }: { player: ArenaSessionWire['players'][number] }) {
@@ -29,7 +30,18 @@ function Seat({ player }: { player: ArenaSessionWire['players'][number] }) {
 }
 
 /** The instance's open lobby: who is in, the settings, and what this viewer can do. */
-export function Lobby({ session, pending, onStart, onJoin, onLeave }: LobbyProps) {
+function lobbyHint(session: ArenaSessionWire): string {
+  if (session.isHost) {
+    return session.practice
+      ? 'Start now to practise alone, or wait for others to join. Ranked games need two players.'
+      : 'Everyone in this Activity can join until you start.';
+  }
+  if (session.canClose) return 'As event staff you can start or close this lobby.';
+  if (session.youArePlayer) return 'You are in. The host starts the game.';
+  return 'Join to play, or stay to watch.';
+}
+
+export function Lobby({ session, pending, onStart, onJoin, onLeave, onClose }: LobbyProps) {
   const seats = session.players.length;
   const busy = pending !== null;
   return (
@@ -61,7 +73,7 @@ export function Lobby({ session, pending, onStart, onJoin, onLeave }: LobbyProps
           ) : null}
           {session.canJoin ? (
             <Button
-              variant="primary"
+              variant={session.canStart ? 'secondary' : 'primary'}
               size="lg"
               iconLeft={LogIn}
               loading={pending === 'open'}
@@ -71,7 +83,7 @@ export function Lobby({ session, pending, onStart, onJoin, onLeave }: LobbyProps
               Join lobby
             </Button>
           ) : null}
-          {session.youArePlayer ? (
+          {session.youArePlayer && !session.isHost ? (
             <Button
               variant="ghost"
               iconLeft={LogOut}
@@ -80,6 +92,17 @@ export function Lobby({ session, pending, onStart, onJoin, onLeave }: LobbyProps
               onClick={onLeave}
             >
               Leave
+            </Button>
+          ) : null}
+          {session.canClose ? (
+            <Button
+              variant="ghost"
+              iconLeft={CircleX}
+              loading={pending === 'close'}
+              disabled={busy}
+              onClick={onClose}
+            >
+              Close lobby
             </Button>
           ) : null}
         </div>
@@ -99,13 +122,7 @@ export function Lobby({ session, pending, onStart, onJoin, onLeave }: LobbyProps
           ))}
         </ul>
         <p className="mt-5 text-small text-fg-subtle" data-testid="lobby-hint">
-          {session.isHost
-            ? session.practice
-              ? 'Start now to practise alone, or wait for others to join. Ranked games need two players.'
-              : 'Everyone in this Activity can join until you start.'
-            : session.youArePlayer
-              ? 'You are in. The host starts the game.'
-              : 'Join to play, or stay to watch.'}
+          {lobbyHint(session)}
         </p>
       </div>
 

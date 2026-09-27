@@ -4,7 +4,7 @@ import type { ArenaResponse, ArenaSessionWire, TriviaConfigWire } from '../api/c
 import type { ActivitySession } from '../api/session';
 import { newerResponse, pollDelay, shouldTick } from '../lib/arena';
 
-export type ArenaAction = 'open' | 'start' | 'leave' | 'answer';
+export type ArenaAction = 'open' | 'start' | 'leave' | 'close' | 'answer';
 export type Connection = 'connecting' | 'live' | 'reconnecting';
 
 /** An answer on its way to the server: shown as locked in before the response lands. */
@@ -18,6 +18,8 @@ export interface ArenaController {
   response: ArenaResponse | null;
   session: ArenaSessionWire | null;
   connection: Connection;
+  /** The last failed poll, until one succeeds (a refusal is shown, a lost connection retried). */
+  pollError: ApiError | null;
   pending: ArenaAction | null;
   actionError: ApiError | null;
   locked: LockedAnswer | null;
@@ -25,6 +27,8 @@ export interface ArenaController {
   open(config?: Partial<TriviaConfigWire>): void;
   start(): void;
   leave(): void;
+  /** Host or event staff: end the lobby so the instance is free again. */
+  close(): void;
   answer(choice: number): void;
   clearError(): void;
 }
@@ -54,6 +58,7 @@ function retryDelay(error: unknown, session: ArenaSessionWire | null, failures: 
 export function useArena(session: ActivitySession): ArenaController {
   const [response, setResponse] = useState<ArenaResponse | null>(null);
   const [connection, setConnection] = useState<Connection>('connecting');
+  const [pollError, setPollError] = useState<ApiError | null>(null);
   const [pending, setPending] = useState<ArenaAction | null>(null);
   const [actionError, setActionError] = useState<ApiError | null>(null);
   const [locked, setLocked] = useState<LockedAnswer | null>(null);
@@ -93,6 +98,7 @@ export function useArena(session: ActivitySession): ArenaController {
         failures = 0;
         apply(next);
         setConnection('live');
+        setPollError(null);
         delay = pollDelay(latest.current?.session ?? null, 0);
       } catch (error) {
         if (cancelled) return;
@@ -100,6 +106,7 @@ export function useArena(session: ActivitySession): ArenaController {
         // The followed session is gone (or out of scope): fall back to the live one.
         if (error instanceof ApiError && error.status === HTTP_NOT_FOUND) following.current = null;
         setConnection('reconnecting');
+        setPollError(asApiError(error));
         delay = retryDelay(error, latest.current?.session ?? null, failures);
       }
       timer = window.setTimeout(() => void run(), delay);
@@ -142,6 +149,9 @@ export function useArena(session: ActivitySession): ArenaController {
   const leave = useCallback(() => {
     if (sessionId) void act('leave', '/activity/trivia/leave', { sessionId });
   }, [act, sessionId]);
+  const close = useCallback(() => {
+    if (sessionId) void act('close', '/activity/trivia/close', { sessionId });
+  }, [act, sessionId]);
   const answer = useCallback(
     (choice: number) => {
       const current = latest.current?.session;
@@ -164,12 +174,14 @@ export function useArena(session: ActivitySession): ArenaController {
     response,
     session: response?.session ?? null,
     connection,
+    pollError,
     pending,
     actionError,
     locked,
     open,
     start,
     leave,
+    close,
     answer,
     clearError,
   };

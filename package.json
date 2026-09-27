@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "pnpm --filter @jave/dashboard test:e2e",
+    "test:e2e:activity": "pnpm --filter @jave/activity test:e2e",
     "db:generate": "pnpm --filter @jave/database generate",
     "db:migrate": "pnpm --filter @jave/database migrate",
     "db:seed": "pnpm --filter @jave/database seed",

@@ -104,10 +104,43 @@ export function errorResponse(error: unknown, ctx: ServiceContext, route: string
 
 const JSON_CONTENT_TYPE = /^application\/json(\s*;.*)?$/i;
 
+function notJson(): ActivityHttpError {
+  return new ActivityHttpError(HTTP_BAD_REQUEST, 'VALIDATION', 'The request body is not JSON.');
+}
+
+/**
+ * The body as UTF-8 text, reading at most `maxBytes`. The declared length is
+ * checked first, and the stream is cut off as soon as it exceeds the cap, so
+ * a chunked body without Content-Length can never be buffered whole.
+ */
+async function readBodyText(request: Request, maxBytes: number): Promise<string> {
+  const declared = Number(request.headers.get('content-length') ?? '0');
+  if (Number.isFinite(declared) && declared > maxBytes) throw tooLarge();
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
+  } catch {
+    throw notJson();
+  }
+}
+
 /**
  * Reads and validates a JSON body: JSON content type only, at most `maxBytes`
- * (checked on the declared length and again on the bytes actually read), then
- * the zod schema. Schemas are strict, so unknown fields are refused.
+ * (declared length and bytes actually received), valid UTF-8, then the zod
+ * schema. Schemas are strict, so unknown fields are refused.
  */
 export async function readJsonBody<S extends z.ZodType>(
   request: Request,
@@ -121,15 +154,12 @@ export async function readJsonBody<S extends z.ZodType>(
       'Send JSON.',
     );
   }
-  const declared = Number(request.headers.get('content-length') ?? '0');
-  if (Number.isFinite(declared) && declared > maxBytes) throw tooLarge();
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > maxBytes) throw tooLarge();
+  const text = await readBodyText(request, maxBytes);
   let value: unknown;
   try {
     value = text.length === 0 ? {} : JSON.parse(text);
   } catch {
-    throw new ActivityHttpError(HTTP_BAD_REQUEST, 'VALIDATION', 'The request body is not JSON.');
+    throw notJson();
   }
   const parsed = schema.safeParse(value);
   if (!parsed.success) {

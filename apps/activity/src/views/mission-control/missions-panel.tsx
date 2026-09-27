@@ -31,7 +31,7 @@ export function MissionsPanel({ missions, now }: { missions: MissionWire[]; now:
           icon={Crosshair}
           title="NO ACTIVE MISSIONS"
           description="Missions assigned to you or accepted by you appear here with their deadlines."
-          className="py-8"
+          className="py-8!"
         />
       ) : (
         <ul className="divide-y divide-line-subtle">

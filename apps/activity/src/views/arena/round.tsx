@@ -29,6 +29,36 @@ const KEY_PLATE: Record<TileState, string> = {
   wrong: 'border-danger/50 text-danger',
 };
 
+/** Round rail segments: finished rounds, the round on screen, rounds to come. */
+const RAIL_SEGMENT = {
+  done: 'bg-fg-subtle',
+  current: 'bg-fg',
+  next: 'bg-line-strong',
+} as const;
+const ROUND_DIGITS = 2;
+
+const padRound = (value: number) => String(value).padStart(ROUND_DIGITS, '0');
+
+/** Where the game stands: one segment per round. Decorative; the label carries the numbers. */
+function RoundRail({ view }: { view: TriviaViewWire }) {
+  return (
+    <div aria-hidden className="flex gap-1" data-testid="round-rail">
+      {Array.from({ length: view.totalRounds }, (_, index) => {
+        const number = index + 1;
+        const state =
+          number < view.round || (number === view.round && view.phase !== 'question')
+            ? 'done'
+            : number === view.round
+              ? 'current'
+              : 'next';
+        return (
+          <span key={number} className={cx('h-0.5 flex-1 rounded-full', RAIL_SEGMENT[state])} />
+        );
+      })}
+    </div>
+  );
+}
+
 /** Keyboard answers: A–D and 1–4. */
 const KEY_TO_CHOICE: Readonly<Record<string, number>> = {
   a: 0,
@@ -92,6 +122,10 @@ function StatusLine({
         <p className="text-small text-fg-subtle">
           Faster correct answers earn more.
           <span className="hidden md:inline"> Keys A–D or 1–4.</span>
+          {/* Phones show the standings below the fold: keep the live count in view. */}
+          <span className="type-data ml-2 text-fg-muted lg:hidden" data-testid="answered-count">
+            {view.answeredCount}/{view.playerCount} ANSWERED
+          </span>
         </p>
       );
     }
@@ -161,15 +195,16 @@ export function Round({ session, view, clock, locked, submitting, active, onAnsw
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <section
         aria-label={`Round ${view.round} of ${view.totalRounds}`}
-        className="machined relative rounded-lg border border-line bg-surface p-5 sm:p-6"
+        className="machined relative rounded-lg border border-line bg-surface p-5 sm:p-6 lg:p-8"
         data-testid="round"
         data-phase={view.phase}
         data-round={view.round}
       >
-        <div className="flex items-start justify-between gap-4">
+        <RoundRail view={view} />
+        <div className="mt-5 flex items-start justify-between gap-4">
           <div className="min-w-0 space-y-2">
             <p className="type-eyebrow text-fg-subtle">
-              ROUND {String(view.round).padStart(2, '0')} / {view.totalRounds}
+              ROUND {padRound(view.round)} / {padRound(view.totalRounds)}
             </p>
             {view.question ? (
               <div className="flex flex-wrap gap-1.5">
@@ -187,13 +222,17 @@ export function Round({ session, view, clock, locked, submitting, active, onAnsw
         </div>
 
         <h2
-          className="mt-5 text-[19px] font-medium leading-snug text-fg sm:text-[22px]"
+          className="mt-5 text-[19px] font-medium leading-snug text-fg sm:text-[22px] lg:mt-6 lg:text-[26px]"
           data-testid="question-prompt"
         >
           {view.question?.prompt ?? 'Preparing the round.'}
         </h2>
 
-        <div className="mt-5 grid gap-2.5 sm:grid-cols-2" role="group" aria-label="Answers">
+        <div
+          className="mt-5 grid gap-2.5 sm:grid-cols-2 lg:mt-7 lg:gap-3"
+          role="group"
+          aria-label="Answers"
+        >
           {options.map((option, index) => {
             const state = tileState(index, view, choice, canAnswer);
             const tag = TAG[state];
@@ -207,7 +246,7 @@ export function Round({ session, view, clock, locked, submitting, active, onAnsw
                 data-testid={`option-${index}`}
                 data-state={state}
                 className={cx(
-                  'relative flex min-h-14 w-full items-center gap-3 rounded-lg border px-3.5 py-3 text-left transition-[border-color,background-color,opacity] disabled:cursor-default',
+                  'relative flex min-h-14 w-full items-center gap-3 rounded-lg border px-3.5 py-3 text-left transition-[border-color,background-color,opacity] disabled:cursor-default lg:min-h-[68px] lg:px-4',
                   TILE[state],
                 )}
               >
@@ -220,7 +259,7 @@ export function Round({ session, view, clock, locked, submitting, active, onAnsw
                 >
                   {OPTION_KEYS[index]}
                 </span>
-                <span className="min-w-0 flex-1 text-body text-fg">{option}</span>
+                <span className="min-w-0 flex-1 text-body text-fg lg:text-[15px]">{option}</span>
                 {tag ? (
                   <span className={cx('type-eyebrow flex shrink-0 items-center gap-1', tag.tone)}>
                     <Icon icon={tag.icon} size="sm" />

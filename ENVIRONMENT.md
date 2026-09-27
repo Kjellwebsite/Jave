@@ -18,7 +18,7 @@ for local development; production values live in your host's secret store.
 | `DISCORD_TOKEN`                   |    ✓    |           | **yes (bot)**                | Developer portal → Bot → Reset Token. Secret.                                                                                              |
 | `DISCORD_CLIENT_SECRET`           |         |     ✓     | prod                         | OAuth2 → Client Secret. Secret. Required for Discord login in production.                                                                  |
 | `JAVE_FOUNDER_DISCORD_IDS`        |    ✓    |     ✓     | no                           | Comma-separated Discord user IDs bootstrapped to FOUNDER on first contact (audited).                                                       |
-| `JAVE_PUBLIC_URL`                 |    ✓    |     ✓     | no (`http://localhost:3000`) | Dashboard base URL. OAuth redirect is `${JAVE_PUBLIC_URL}/api/auth/callback`. Bot uses it for profile links.                               |
+| `JAVE_PUBLIC_URL`                 |    ✓    |     ✓     | no (`http://localhost:3000`) | Dashboard base URL. OAuth redirect is `${JAVE_PUBLIC_URL}/api/auth/discord/callback`. Bot uses it for profile links.                       |
 | `JAVE_SESSION_SECRET`             |         |     ✓     | **yes**                      | ≥ 32 chars. Signs OAuth state cookies. `openssl rand -base64 48`. Secret.                                                                  |
 | `JAVE_DEV_AUTH`                   |         |     ✓     | no (`false`)                 | **MOCK / DEVELOPMENT ONLY.** Persona login without Discord. Rejected when `NODE_ENV=production`.                                           |
 | `BOT_HEALTH_PORT`                 |    ✓    |           | no (`8080`)                  | `/healthz` and `/readyz`.                                                                                                                  |
@@ -33,6 +33,10 @@ for local development; production values live in your host's secret store.
 | `GITHUB_WEBHOOK_SECRET`           |         |     ✓     | for GitHub                   | ≥ 16 chars; the same value goes into the GitHub webhook configuration. Secret.                                                             |
 | `SIDUS_API_URL` / `SIDUS_API_KEY` |    ✓    |     ✓     | for Sidus sync               | Without them research items are stored locally and marked not synced.                                                                      |
 | `JAVE_MIGRATIONS_DIR`             | migrate |           | no                           | Only for the bundled migration runner in the bot container (`/app/drizzle`).                                                               |
+
+The Discord Activity is a static bundle: its build-time variables (`VITE_DISCORD_CLIENT_ID`,
+`VITE_JAVE_API_BASE`, `VITE_JAVE_STANDALONE_DEV`) are listed in [docs/ACTIVITY.md](docs/ACTIVITY.md).
+Only `VITE_*` variables are ever compiled into it.
 
 ## Secrets policy
 

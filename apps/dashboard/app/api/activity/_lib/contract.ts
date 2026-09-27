@@ -209,8 +209,10 @@ export interface ArenaSessionWire {
   gameName: string;
   isHost: boolean;
   youArePlayer: boolean;
-  /** You may start it now (host of a lobby with enough players). */
+  /** You may start it now: host (or event staff) of a lobby with enough players. */
   canStart: boolean;
+  /** You may close the lobby: its host, or event staff. */
+  canClose: boolean;
   /** You may join it now (open lobby with a free seat). */
   canJoin: boolean;
   /** Fewer than two players: practice, never ranked. */

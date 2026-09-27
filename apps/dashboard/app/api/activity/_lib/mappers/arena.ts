@@ -82,12 +82,20 @@ function toTrivia(
   };
 }
 
+export interface ArenaViewer {
+  userId: string;
+  /** Holds `canManageEvents`: core lets event staff start or close any lobby (audited). */
+  eventStaff: boolean;
+}
+
 /**
  * The viewer's Arena view of a session: core's public view (already stripped
  * of answers until the reveal) with account ids replaced by seat keys and
- * the host reduced to an `isHost` flag.
+ * the host reduced to an `isHost` flag. The `can*` flags only choose which
+ * controls to show; core decides every action again.
  */
-export function toArenaSession(session: SessionView, viewerUserId: string): ArenaSessionWire {
+export function toArenaSession(session: SessionView, viewer: ArenaViewer): ArenaSessionWire {
+  const viewerUserId = viewer.userId;
   const names = new Map(
     session.players.map((player, index) => [
       player.userId,
@@ -95,6 +103,7 @@ export function toArenaSession(session: SessionView, viewerUserId: string): Aren
     ]),
   );
   const isHost = session.hostUserId === viewerUserId;
+  const controls = isHost || viewer.eventStaff;
   const seats = session.players.length;
   const lobby = session.status === 'lobby';
   return {
@@ -104,7 +113,8 @@ export function toArenaSession(session: SessionView, viewerUserId: string): Aren
     gameName: session.gameName,
     isHost,
     youArePlayer: session.youArePlayer,
-    canStart: lobby && isHost && seats >= session.minPlayers && seats <= session.maxPlayers,
+    canStart: lobby && controls && seats >= session.minPlayers && seats <= session.maxPlayers,
+    canClose: lobby && controls,
     canJoin: lobby && !session.youArePlayer && seats < session.maxPlayers,
     practice: seats < games.MIN_RANKED_PLAYERS,
     minPlayers: session.minPlayers,

@@ -18,6 +18,7 @@ import {
 } from '@jave/core';
 import { DEV_PERSONAS, findDevPersona, provisionDevPersona } from '@/server/auth/dev-auth';
 import type { ActivityAuthMode, ActivityTokenResponse, DevPersonasResponse } from '../contract';
+import type { ActivityDiscordClient, ActivityDiscordSession } from '../discord';
 import { activityHandler, clientKey } from '../handler';
 import { json, notAvailable, readJsonBody } from '../http';
 import { activityInstanceIdSchema } from '../instance';
@@ -45,12 +46,25 @@ const devTokenRequestSchema = z
   })
   .strict();
 
-async function issueFor(
-  ctx: ServiceContext,
-  user: UserRecord,
-  input: { instanceId: string; mode: ActivityAuthMode; secret: string; accessToken: string | null },
-): Promise<Response> {
+interface SignIn {
+  instanceId: string;
+  mode: ActivityAuthMode;
+  secret: string;
+  accessToken: string | null;
+  audit:
+    | { action: 'auth.login'; context: { method: 'discord_activity' } }
+    | { action: 'auth.dev_login'; context: { persona: string; mock: true; surface: 'activity' } };
+}
+
+/** Audits the sign-in as the user it signs in, then issues the token bound to user + instance. */
+async function signIn(ctx: ServiceContext, user: UserRecord, input: SignIn): Promise<Response> {
   const actor = await resolveUserActor(ctx, user.id);
+  await recordAudit(withActor(ctx, actor), {
+    action: input.audit.action,
+    targetType: 'user',
+    targetId: user.id,
+    context: input.audit.context,
+  });
   const issued = issueActivityToken(
     { userId: user.id, instanceId: input.instanceId, mode: input.mode },
     input.secret,
@@ -63,6 +77,31 @@ async function issueFor(
     user: { discordId: user.discordId, displayName: actor.displayName },
     mode: input.mode,
   });
+}
+
+/**
+ * The Discord half of the sign-in. Failures are logged by kind only (a Discord
+ * error body may echo credentials) and surface as a calm 502.
+ */
+async function exchangeCode(
+  ctx: ServiceContext,
+  discord: ActivityDiscordClient,
+  code: string,
+): Promise<ActivityDiscordSession> {
+  try {
+    return await discord.exchange(code);
+  } catch (error) {
+    const reason =
+      error instanceof ExternalServiceError
+        ? error.userMessage
+        : error instanceof Error
+          ? error.name
+          : 'unknown';
+    ctx.logger.warn({ reason }, 'activity code exchange failed');
+    throw error instanceof ExternalServiceError
+      ? error
+      : new ExternalServiceError('discord', 'Discord sign-in failed. Try again.');
+  }
 }
 
 /** Same provisioning as the dashboard's Discord login: user + member, never guild membership. */
@@ -86,19 +125,7 @@ export const handleTokenExchange = activityHandler('activity.token', async (requ
   await spendActivityBudget(ctx, 'token', clientKey(request, deps));
   const body = await readJsonBody(request, tokenRequestSchema, BODY_LIMITS.token);
   if (!deps.discord) throw new DisabledError('Discord sign-in');
-  let session;
-  try {
-    session = await deps.discord.exchange(body.code);
-  } catch (error) {
-    ctx.logger.warn(
-      { reason: error instanceof ExternalServiceError ? error.userMessage : 'unknown' },
-      'activity code exchange failed',
-    );
-    throw error instanceof ExternalServiceError
-      ? error
-      : new ExternalServiceError('discord', 'Discord sign-in failed. Try again.');
-  }
-  const { accessToken, profile } = session;
+  const { accessToken, profile } = await exchangeCode(ctx, deps.discord, body.code);
   if (profile.isBot) throw new ForbiddenError('Bot accounts cannot use the Activity.');
   await spendActivityBudget(ctx, 'tokenUser', profile.discordId);
   const inInstance = await deps.instanceVerifier({
@@ -107,17 +134,12 @@ export const handleTokenExchange = activityHandler('activity.token', async (requ
   });
   if (!inInstance) throw new ForbiddenError('This Activity session could not be verified.');
   const user = await provisionDiscordUser(ctx, profile);
-  await recordAudit(withActor(ctx, await resolveUserActor(ctx, user.id)), {
-    action: 'auth.login',
-    targetType: 'user',
-    targetId: user.id,
-    context: { method: 'discord_activity' },
-  });
-  return issueFor(ctx, user, {
+  return signIn(ctx, user, {
     instanceId: body.instanceId,
     mode: 'discord',
     secret: deps.sessionSecret,
     accessToken,
+    audit: { action: 'auth.login', context: { method: 'discord_activity' } },
   });
 });
 
@@ -145,16 +167,14 @@ export const handleDevToken = activityHandler('activity.dev-token', async (reque
   if (!persona) throw new ValidationError('Unknown persona.');
   const system = withActor(ctx, systemActor('dev-login'));
   const user = await withTransaction(system, (tx) => provisionDevPersona(tx, persona));
-  await recordAudit(withActor(ctx, await resolveUserActor(ctx, user.id)), {
-    action: 'auth.dev_login',
-    targetType: 'user',
-    targetId: user.id,
-    context: { persona: persona.key, mock: true, surface: 'activity' },
-  });
-  return issueFor(ctx, user, {
+  return signIn(ctx, user, {
     instanceId: body.instanceId,
     mode: 'dev',
     secret: deps.sessionSecret,
     accessToken: null,
+    audit: {
+      action: 'auth.dev_login',
+      context: { persona: persona.key, mock: true, surface: 'activity' },
+    },
   });
 });

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin, type ProxyOptions } from 'vite';
@@ -57,7 +58,15 @@ function contentSecurityPolicy(): Plugin {
   };
 }
 
+/**
+ * The monorepo's root `.env` configures every app. Vite exposes only
+ * `VITE_*` variables to the bundle (VITE_DISCORD_CLIENT_ID, …); everything
+ * else in that file (secrets included) never reaches the client.
+ */
+const ENV_DIR = fileURLToPath(new URL('../..', import.meta.url));
+
 export default defineConfig({
+  envDir: ENV_DIR,
   plugins: [react(), tailwindcss(), contentSecurityPolicy()],
   server: {
     port,

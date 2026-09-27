@@ -44,7 +44,7 @@ In the [Discord Developer Portal](https://discord.com/developers/applications):
    intents **Server Members** and **Message Content** (automod, ticket
    transcripts, join screening). Disable "Public Bot".
 3. **OAuth2** → Client Secret → `DISCORD_CLIENT_SECRET` (secret). Add the
-   redirect `${JAVE_PUBLIC_URL}/api/auth/callback`.
+   redirect `${JAVE_PUBLIC_URL}/api/auth/discord/callback`.
 4. Invite the bot with the URL printed by
    `DISCORD_CLIENT_ID=… pnpm --filter @jave/bot exec tsx src/scripts/print-commands.ts`
    (no network needed). It requests exactly the permissions below — **never

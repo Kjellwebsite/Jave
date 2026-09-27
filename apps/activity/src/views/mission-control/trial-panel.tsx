@@ -44,6 +44,9 @@ function countdownFor(trial: TrialWire): Countdown {
   }
 }
 
+/** Below this the fill would render as a stray dot; the empty track says "just started". */
+const MIN_VISIBLE_FRACTION = 0.01;
+
 function elapsedFraction(from: number | null, to: number | null, now: number): number | null {
   if (from === null || to === null || to <= from) return null;
   return Math.min(1, Math.max(0, (now - from) / (to - from)));
@@ -59,7 +62,7 @@ export function TrialPanel({ trial, now }: { trial: TrialWire | null; now: numbe
           icon={Timer}
           title="NO ACTIVE TRIAL"
           description="When you are selected for a trial, its countdown runs here."
-          className="py-4"
+          className="py-2!"
         />
       </Panel>
     );
@@ -109,13 +112,15 @@ export function TrialPanel({ trial, now }: { trial: TrialWire | null; now: numbe
           aria-valuenow={Math.round(progress * 100)}
           className="mt-4 h-1 overflow-hidden rounded-full bg-surface-sunken"
         >
-          <div
-            className={cx(
-              'h-full rounded-full',
-              countdown.tone === 'warning' ? 'bg-warning' : 'bg-fg-muted',
-            )}
-            style={{ width: `${progress * 100}%` }}
-          />
+          {progress >= MIN_VISIBLE_FRACTION ? (
+            <div
+              className={cx(
+                'h-full rounded-full',
+                countdown.tone === 'warning' ? 'bg-warning' : 'bg-fg-muted',
+              )}
+              style={{ width: `${progress * 100}%` }}
+            />
+          ) : null}
         </div>
       ) : null}
     </Panel>

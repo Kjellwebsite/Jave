@@ -33,7 +33,7 @@ export function App({ boot }: { boot: Boot }) {
   if (!boot.ok) {
     return (
       <div className="flex min-h-dvh flex-col">
-        <FailureScreen title="NOT CONFIGURED" description={boot.problem} />
+        <FailureScreen title={boot.problem.title} description={boot.problem.description} />
       </div>
     );
   }

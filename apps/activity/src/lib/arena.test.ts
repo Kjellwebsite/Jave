@@ -46,6 +46,7 @@ function session(overrides: Partial<ArenaSessionWire> = {}): ArenaSessionWire {
     isHost: false,
     youArePlayer: true,
     canStart: false,
+    canClose: false,
     canJoin: false,
     practice: false,
     minPlayers: 1,

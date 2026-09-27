@@ -102,8 +102,10 @@ export interface TestDatabase {
   backend: TestBackend;
   /** Run raw SQL, several statements allowed (fault injection in tests). */
   exec: (sql: string) => Promise<void>;
-  /** Another handle on the same database that reports every query it runs. */
-  withQueryLog: (logQuery: (query: string) => void) => Database;
+  /** Another handle on the same database that reports every query it runs, with its parameters. */
+  withQueryLog: (logQuery: (query: string, params: unknown[]) => void) => Database;
+  /** Run one statement with positional parameters and return its rows (EXPLAIN, fixtures). */
+  query: (sql: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
   close: () => Promise<void>;
 }
 
@@ -125,6 +127,7 @@ async function createPgliteTestDatabase(): Promise<TestDatabase> {
     },
     withQueryLog: (logQuery) =>
       drizzle(pg, { schema, logger: { logQuery } }) as unknown as Database,
+    query: async (sql, params = []) => (await pg.query<Record<string, unknown>>(sql, params)).rows,
     close: () => pg.close(),
   };
 }
@@ -174,9 +177,8 @@ async function ensureTemplate(adminUrl: string): Promise<string> {
     await lock`select pg_advisory_lock(${TEMPLATE_LOCK_KEY})`;
     const [existing] = await lock`select 1 from pg_database where datname = ${name}`;
     if (existing) return name;
-    // Templates of other migration sets (`jave_tpl_<hash>`) may belong to other
-    // checkouts running tests on this server right now: never drop them here.
-    // Operators remove stale ones by hand once no test run uses them.
+    // Templates of other migration sets belong to other checkouts sharing this
+    // server; never drop them here (`pnpm --filter @jave/database test:db:clean`).
     const building = `${name}_${randomBytes(4).toString('hex')}`;
     await lock.unsafe(`create database ${building}`);
     const client = quiet(databaseUrl(adminUrl, building), { max: 1 });
@@ -214,12 +216,33 @@ async function dropTestDatabase(sql: postgres.Sql, name: string): Promise<void> 
   }
 }
 
+/** SQLSTATE invalid_catalog_name: the template database does not exist. */
+const MISSING_DATABASE = '3D000';
+
+/**
+ * Create `name` from this migration set's template. Someone may drop the
+ * template meanwhile (a manual cleanup, an older harness in another
+ * checkout): rebuild it once and retry.
+ */
+async function cloneTemplate(adminUrl: string, name: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    templateName ??= ensureTemplate(adminUrl);
+    const template = await templateName;
+    try {
+      await admin(adminUrl).unsafe(`create database ${name} template ${template}`);
+      return;
+    } catch (error) {
+      const missing = (error as { code?: string }).code === MISSING_DATABASE;
+      if (!missing || attempt > 1) throw error;
+      templateName = null;
+    }
+  }
+}
+
 async function createPostgresTestDatabase(): Promise<TestDatabase> {
   const adminUrl = process.env[TEST_POSTGRES_URL_VARIABLE]!;
-  templateName ??= ensureTemplate(adminUrl);
-  const template = await templateName;
   const name = `${TEST_DATABASE_PREFIX}${randomBytes(8).toString('hex')}`;
-  await admin(adminUrl).unsafe(`create database ${name} template ${template}`);
+  await cloneTemplate(adminUrl, name);
   const client = quiet(databaseUrl(adminUrl, name), {
     max: TEST_POOL_CONNECTIONS,
     idle_timeout: 5,
@@ -240,6 +263,11 @@ async function createPostgresTestDatabase(): Promise<TestDatabase> {
       serializeRawDates(client);
       return logged as unknown as Database;
     },
+    query: async (sql, params = []) =>
+      (await client.unsafe(sql, params as postgres.ParameterOrJSON<never>[])) as unknown as Record<
+        string,
+        unknown
+      >[],
     close: async () => {
       if (closed) return;
       closed = true;

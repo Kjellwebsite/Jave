@@ -4,7 +4,7 @@ import { auditLogs, users } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
 import { redact } from '../kernel/redact';
 import { parseInput } from '../kernel/validation';
-import { type Page, pageSchema } from '../kernel/pagination';
+import { type CappedPage, cappedCount, pageSchema } from '../kernel/pagination';
 import { authorize } from '../permissions/authorize';
 
 export type AuditResult = 'success' | 'denied' | 'failure';
@@ -82,7 +82,7 @@ export interface AuditLogView {
 export async function listAuditLogs(
   ctx: ServiceContext,
   query: z.input<typeof auditQuerySchema>,
-): Promise<Page<AuditLogView>> {
+): Promise<CappedPage<AuditLogView>> {
   await authorize(ctx, 'canViewAuditLogs');
   const q = parseInput(auditQuerySchema, query);
   const filters: SQL[] = [];
@@ -100,7 +100,7 @@ export async function listAuditLogs(
   if (q.until) filters.push(lte(auditLogs.createdAt, q.until));
   const where = filters.length ? and(...filters) : undefined;
 
-  const [rows, [count]] = await Promise.all([
+  const [rows, count] = await Promise.all([
     ctx.db
       .select({
         id: auditLogs.id,
@@ -121,10 +121,13 @@ export async function listAuditLogs(
       .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
       .limit(q.limit)
       .offset(q.offset),
-    ctx.db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(auditLogs)
-      .where(where),
+    cappedCount(ctx.db, auditLogs, where, { offset: q.offset }),
   ]);
-  return { items: rows, total: count?.total ?? 0, limit: q.limit, offset: q.offset };
+  return {
+    items: rows,
+    total: count.total,
+    totalCapped: count.capped,
+    limit: q.limit,
+    offset: q.offset,
+  };
 }

@@ -1540,10 +1540,10 @@ CREATE UNIQUE INDEX "webhook_deliveries_github_delivery_uq" ON "webhook_deliveri
 CREATE UNIQUE INDEX "webhook_deliveries_github_signature_uq" ON "webhook_deliveries" USING btree ("provider","signature_digest") WHERE "webhook_deliveries"."provider" = 'github';--> statement-breakpoint
 CREATE INDEX "webhook_deliveries_status_idx" ON "webhook_deliveries" USING btree ("status","received_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "analytics_snapshots_uq" ON "analytics_snapshots" USING btree ("day","metric","dimension");--> statement-breakpoint
-CREATE INDEX "audit_logs_time_idx" ON "audit_logs" USING btree ("created_at");--> statement-breakpoint
-CREATE INDEX "audit_logs_actor_idx" ON "audit_logs" USING btree ("actor_user_id","created_at");--> statement-breakpoint
-CREATE INDEX "audit_logs_target_idx" ON "audit_logs" USING btree ("target_type","target_id");--> statement-breakpoint
-CREATE INDEX "audit_logs_action_idx" ON "audit_logs" USING btree ("action","created_at");--> statement-breakpoint
+CREATE INDEX "audit_logs_time_idx" ON "audit_logs" USING btree ("created_at","id");--> statement-breakpoint
+CREATE INDEX "audit_logs_actor_idx" ON "audit_logs" USING btree ("actor_user_id","created_at","id");--> statement-breakpoint
+CREATE INDEX "audit_logs_target_idx" ON "audit_logs" USING btree ("target_type","target_id","created_at","id");--> statement-breakpoint
+CREATE INDEX "audit_logs_action_idx" ON "audit_logs" USING btree ("action","created_at","id");--> statement-breakpoint
 CREATE INDEX "domain_events_type_subject_idx" ON "domain_events" USING btree ("type","subject_member_id");--> statement-breakpoint
 CREATE INDEX "domain_events_aggregate_idx" ON "domain_events" USING btree ("aggregate_type","aggregate_id");--> statement-breakpoint
 CREATE INDEX "domain_events_time_idx" ON "domain_events" USING btree ("occurred_at");--> statement-breakpoint

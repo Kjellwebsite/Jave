@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Search, Users } from 'lucide-react';
 import { z } from 'zod';
-import { listMembers, listMembersSchema, ROLE_KEYS } from '@jave/core';
+import { listMembersSchema, ROLE_KEYS } from '@jave/core';
 import {
   Avatar,
   Badge,
@@ -26,6 +26,7 @@ import {
   TableRow,
   Toolbar,
   buttonStyles,
+  cx,
 } from '@jave/ui';
 import { NextLink } from '@/components/next-link';
 import { RestrictedPage } from '@/components/restricted-page';
@@ -41,6 +42,7 @@ import { firstParam, offsetParam, type SearchParams, toQueryString } from '@/lib
 import { ROLE_OPTIONS } from '@/lib/settings-form';
 import { formatDate } from '@/lib/time';
 import { requireConsoleContext } from '@/server/context';
+import { loadMemberDirectory } from '@/server/data/member-directory';
 import { loadViewer } from '@/server/data/viewer';
 import { guarded } from '@/server/guard';
 
@@ -77,7 +79,7 @@ export default async function MembersPage({
   const offset = offsetParam(params.offset);
 
   const result = await guarded(() =>
-    listMembers(ctx, {
+    loadMemberDirectory(ctx, {
       search: filters.q,
       role: filters.role as (typeof ROLE_KEYS)[number] | undefined,
       guildStatus: filters.status,
@@ -89,14 +91,16 @@ export default async function MembersPage({
   );
   if (!result.ok)
     return <RestrictedPage eyebrow="PEOPLE" title="Members" capability="canViewMembers" />;
-  const page = result.value;
+  const { page, staffView } = result.value;
+  // Standing is staff-only: for everyone else the filter is ignored, never echoed back.
+  const standing = staffView ? filters.standing : undefined;
   const viewer = await loadViewer(ctx);
-  const filtered = Boolean(filters.q || filters.role || filters.status || filters.standing);
+  const filtered = Boolean(filters.q || filters.role || filters.status || standing);
   const query = {
     q: filters.q,
     role: filters.role,
     status: filters.status,
-    standing: filters.standing,
+    standing,
     sort: filters.sort === 'joined_desc' ? undefined : filters.sort,
   };
 
@@ -121,8 +125,20 @@ export default async function MembersPage({
           aria-label="Filter members"
           className="border-b border-line-subtle p-4"
         >
-          <Toolbar className="grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))_auto]">
-            <label className="relative col-span-2 min-w-0 md:col-span-4 xl:col-span-1">
+          <Toolbar
+            className={cx(
+              'grid grid-cols-2 gap-2.5',
+              staffView
+                ? 'md:grid-cols-4 xl:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))_auto]'
+                : 'md:grid-cols-3 xl:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))_auto]',
+            )}
+          >
+            <label
+              className={cx(
+                'relative col-span-2 min-w-0 xl:col-span-1',
+                staffView ? 'md:col-span-4' : 'md:col-span-3',
+              )}
+            >
               <span className="sr-only">Search members</span>
               <Icon
                 icon={Search}
@@ -152,20 +168,27 @@ export default async function MembersPage({
               placeholder="Any status"
               options={optionsFrom(GUILD_STATUS_LABELS)}
             />
-            <NativeSelect
-              name="standing"
-              aria-label="Standing"
-              defaultValue={filters.standing ?? ''}
-              placeholder="Any standing"
-              options={optionsFrom(STANDING_LABELS)}
-            />
+            {staffView ? (
+              <NativeSelect
+                name="standing"
+                aria-label="Standing"
+                defaultValue={standing ?? ''}
+                placeholder="Any standing"
+                options={optionsFrom(STANDING_LABELS)}
+              />
+            ) : null}
             <NativeSelect
               name="sort"
               aria-label="Sort"
               defaultValue={filters.sort}
               options={optionsFrom(MEMBER_SORT_LABELS)}
             />
-            <div className="col-span-2 flex gap-2 md:col-span-4 xl:col-span-1">
+            <div
+              className={cx(
+                'flex gap-2 xl:col-span-1',
+                staffView ? 'col-span-2 md:col-span-4' : 'col-span-1 md:col-span-3',
+              )}
+            >
               <Button type="submit" variant="primary" className="flex-1 xl:flex-none">
                 Apply
               </Button>
@@ -211,11 +234,11 @@ export default async function MembersPage({
                 />
               ) : (
                 page.items.map((member) => (
-                  <TableRow key={member.id} className="relative">
+                  <TableRow key={member.id}>
                     <TableCell>
                       <Link
                         href={`/members/${member.id}`}
-                        className="flex min-w-0 items-center gap-3 after:absolute after:inset-0 focus-visible:outline-none"
+                        className="row-link flex min-w-0 items-center gap-3"
                       >
                         <Avatar name={member.displayName} src={member.avatarUrl} size="md" />
                         <span className="min-w-0">
@@ -223,7 +246,7 @@ export default async function MembersPage({
                             <span className="truncate text-body font-medium text-fg">
                               {member.displayName}
                             </span>
-                            {member.standing !== 'good' ? (
+                            {member.standing && member.standing !== 'good' ? (
                               <Badge tone={STANDING_TONE[member.standing]}>
                                 {STANDING_LABELS[member.standing]}
                               </Badge>

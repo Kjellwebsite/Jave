@@ -10,7 +10,7 @@ import {
 } from './briefing';
 import { STANDARD_GUARDRAILS, STOP_WORD } from './safety';
 import { countOutcomes, SCORE_BASELINE, suggestScore } from './scoring';
-import { acceptsObservations, isAwaitingReveal, type Outcome } from './state';
+import { acceptsObservations, isAwaitingReveal, type Outcome, stoppedEarly } from './state';
 
 describe('suggested security-culture score', () => {
   it('has no basis without observations', () => {
@@ -75,6 +75,15 @@ describe('role state', () => {
     expect(acceptsObservations({ ...base, status: 'active' })).toBe(true);
     expect(acceptsObservations({ ...base, status: 'briefed' })).toBe(false);
     expect(acceptsObservations({ ...base, status: 'planned' })).toBe(false);
+  });
+
+  it('stopped early only when aborted before a normal conclusion', () => {
+    const at = new Date();
+    expect(stoppedEarly({ abortedAt: at, concludedAt: null })).toBe(true);
+    // A concluded exercise aborted afterwards still ran to its end.
+    expect(stoppedEarly({ abortedAt: at, concludedAt: at })).toBe(false);
+    expect(stoppedEarly({ abortedAt: null, concludedAt: at })).toBe(false);
+    expect(stoppedEarly({ abortedAt: null, concludedAt: null })).toBe(false);
   });
 });
 

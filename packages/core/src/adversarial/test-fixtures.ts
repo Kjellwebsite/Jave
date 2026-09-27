@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import {
+  adversarialRoles,
   adversarialScenarios,
   trialParticipants,
   trials,
@@ -16,6 +17,7 @@ import type { TestKit } from '../testing';
 import { authorizeRole, activateRole, briefRole, planRole } from './roles.service';
 import { seedStarterScenarios } from './scenarios.service';
 import type { RoleRecord, TrialStatus } from './state';
+import { addTrigger, approveTrigger, type TriggerRecord } from './triggers.service';
 
 /**
  * Test fixtures: a trial built with direct inserts into the trials schema
@@ -191,10 +193,49 @@ export async function planDefault(fx: AdversarialFixture): Promise<RoleRecord> {
   });
 }
 
+/** The plan revision an authorizer sees when reviewing the role (getRole shows the same). */
+export async function currentPlanRevision(kit: TestKit, roleId: string): Promise<number> {
+  const [row] = await kit.db
+    .select({ planRevision: adversarialRoles.planRevision })
+    .from(adversarialRoles)
+    .where(eq(adversarialRoles.id, roleId));
+  return required(row, 'role').planRevision;
+}
+
+/** Second signature on the plan as it stands now (default: the fixture's authorizer). */
+export async function authorizeCurrent(
+  fx: AdversarialFixture,
+  roleId: string,
+  authorizer: UserActor = fx.authorizer,
+): Promise<RoleRecord> {
+  return authorizeRole(fx.kit.as(authorizer), {
+    roleId,
+    planRevision: await currentPlanRevision(fx.kit, roleId),
+    sandboxAttested: true,
+  });
+}
+
+/**
+ * Add a trigger to an authorized role and have a second person approve it
+ * (default: written by the founder, approved by the fixture's authorizer).
+ */
+export async function addApprovedTrigger(
+  fx: AdversarialFixture,
+  input: { roleId: string; label: string; description: string },
+  people: { author?: UserActor; approver?: UserActor } = {},
+): Promise<TriggerRecord> {
+  const trigger = await addTrigger(fx.kit.as(people.author ?? fx.founder), input);
+  return approveTrigger(fx.kit.as(people.approver ?? fx.authorizer), {
+    roleId: input.roleId,
+    triggerId: trigger.id,
+    sandboxAttested: true,
+  });
+}
+
 /** plan → authorize → brief → activate. */
 export async function runToActive(fx: AdversarialFixture): Promise<RoleRecord> {
   const planned = await planDefault(fx);
-  await authorizeRole(fx.kit.as(fx.authorizer), { roleId: planned.id, sandboxAttested: true });
+  await authorizeCurrent(fx, planned.id);
   await briefRole(fx.kit.as(fx.planner), { roleId: planned.id });
   return activateRole(fx.kit.as(fx.planner), { roleId: planned.id });
 }

@@ -1,12 +1,12 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { recordAudit, resolveUserActor, systemActor, withActor, withTransaction } from '@jave/core';
+import { systemActor, withActor, withTransaction } from '@jave/core';
 import { formString } from '@/lib/form-data';
 import { LOGIN_PATH, safeNextPath } from '@/lib/routes';
 import { findDevPersona, isDevAuthEnabled, provisionDevPersona } from '../auth/dev-auth';
 import { allowAuthAttempt } from '../auth/rate-limits';
-import { createSession, revokeSession } from '../auth/session-store';
+import { endSession, startSession } from '../auth/sign-in';
 import { baseContext } from '../context';
 import { currentClientIpHash, currentUserAgent, isTrustedMutationRequest } from '../request';
 import { getRuntime } from '../runtime';
@@ -32,39 +32,25 @@ export async function devLoginAction(data: FormData): Promise<void> {
   if (!(await allowAuthAttempt(ctx, 'devLogin', ipHash))) loginWithError('rate_limited');
 
   const user = await withTransaction(ctx, (tx) => provisionDevPersona(tx, persona));
-  // Rotate: a new sign-in never leaves a previous session in this browser alive.
-  const previous = await readSessionToken();
-  if (previous) await revokeSession(ctx, previous);
-  const session = await createSession(ctx, {
+  const session = await startSession(ctx, {
     userId: user.id,
+    previousToken: await readSessionToken(),
     userAgent: await currentUserAgent(),
     ipHash,
+    audit: { action: 'auth.dev_login', context: { persona: persona.key, mock: true } },
   });
+  // Only after the session and its audit entry have committed.
   await writeSessionCookie(session);
-  await recordAudit(withActor(ctx, await resolveUserActor(ctx, user.id)), {
-    action: 'auth.dev_login',
-    targetType: 'user',
-    targetId: user.id,
-    context: { persona: persona.key, mock: true },
-  });
   redirect(safeNextPath(formString(data, 'next')));
 }
 
-/** Revokes the current session server-side, clears the cookie, audits auth.logout. */
+/** Revokes the current session server-side (audited auth.logout), then clears the cookie. */
 export async function signOutAction(): Promise<void> {
   if (!(await isTrustedMutationRequest())) return;
   const token = await readSessionToken();
-  if (token) {
-    const ctx = baseContext();
-    const revoked = await revokeSession(ctx, token);
-    if (revoked) {
-      await recordAudit(withActor(ctx, await resolveUserActor(ctx, revoked.userId)), {
-        action: 'auth.logout',
-        targetType: 'user',
-        targetId: revoked.userId,
-      });
-    }
-  }
+  // Throws if the revocation cannot commit: the cookie is then kept, never
+  // cleared while its session stays valid on the server.
+  if (token) await endSession(baseContext(), token);
   await clearSessionCookie();
   redirect(LOGIN_PATH);
 }

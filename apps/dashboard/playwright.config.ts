@@ -7,7 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
  * seeded before the server starts. Dev login (MOCK / DEVELOPMENT ONLY) is
  * enabled by running `next start` with NODE_ENV=test.
  */
-/** Override with E2E_PORT when several suites run on one machine. */
+/** Override with E2E_PORT when several checkouts run end-to-end suites on one machine. */
 const PORT = Number(process.env.E2E_PORT ?? 3107);
 const BASE_URL = `http://localhost:${PORT}`;
 const DATABASE_URL =
@@ -43,8 +43,6 @@ export default defineConfig({
       JAVE_PUBLIC_URL: BASE_URL,
       JAVE_SESSION_SECRET: randomBytes(32).toString('hex'),
       JAVE_DEV_AUTH: 'true',
-      // MOCK / DEVELOPMENT ONLY: deterministic offline AI (refused with NODE_ENV=production).
-      AI_PROVIDER: 'mock',
     },
   },
 });

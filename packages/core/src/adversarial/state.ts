@@ -14,6 +14,9 @@ import type {
  *   concluded ──reveal (trial over, evaluated)──► revealed
  *   planned | briefed | active | concluded ──abort──► aborted
  *   aborted (after it was active) ──reveal──► revealed   // participants were exposed: they get a debrief
+ *
+ * RED FLAG on a concluded role is recorded and escalated without a
+ * transition: the exercise already ended normally.
  */
 export type RoleRecord = typeof adversarialRoles.$inferSelect;
 export type RoleStatus = (typeof adversarialRoleStatus.enumValues)[number];
@@ -35,7 +38,7 @@ export const ABORTABLE_STATUSES: readonly RoleStatus[] = [
 /** States in which the operative knows about the role and may raise RED FLAG. */
 export const OPERATIVE_STOPPABLE_STATUSES: readonly RoleStatus[] = ['briefed', 'active'];
 
-/** States in which staff may add triggers. */
+/** States in which staff may add, approve or withdraw triggers. */
 export const TRIGGER_EDITABLE_STATUSES: readonly RoleStatus[] = ['planned', 'briefed', 'active'];
 
 /** Trial states in which a role can still be planned, authorized or briefed. */
@@ -54,6 +57,14 @@ export const REVEAL_TRIAL_STATUSES: readonly TrialStatus[] = [
 ];
 
 type RoleState = Pick<RoleRecord, 'status' | 'activatedAt' | 'revealedAt'>;
+
+/**
+ * The exercise was cut short: aborted before it concluded normally. A
+ * concluded role that staff abort afterwards still ran to its end.
+ */
+export function stoppedEarly(role: Pick<RoleRecord, 'abortedAt' | 'concludedAt'>): boolean {
+  return role.abortedAt !== null && role.concludedAt === null;
+}
 
 /** Participants were exposed to the exercise (it was activated at some point). */
 export function wasExposed(role: Pick<RoleRecord, 'activatedAt'>): boolean {

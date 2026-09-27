@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { adversarialRoles, members, notifications, trialParticipants } from '@jave/database';
+import { listAuditLogs } from '../audit/audit.service';
 import { ForbiddenError, NotFoundError } from '../kernel/errors';
 import { resolveUserActor } from '../identity/users.service';
 import type { UserActor } from '../permissions/actor';
@@ -8,11 +9,14 @@ import { createTestKit, type TestKit } from '../testing';
 import { createEventHandlers } from '../events/bus';
 import { enqueueJob } from '../jobs/queue';
 import { jobHandlers, subscribers } from './index';
+import { OPERATIVE_AUDIT_REASON } from './guards';
 import { ADVERSARIAL_SWEEP_JOB } from './lifecycle';
-import { fireTrigger, addTrigger } from './observations.service';
 import { getMyBriefing, getRole, listMyBriefings, listRoles } from './queries.service';
-import { planRole, raiseRedFlag } from './roles.service';
+import { raiseRedFlag } from './red-flag.service';
+import { planRole } from './roles.service';
+import { fireTrigger } from './triggers.service';
 import {
+  addApprovedTrigger,
   type AdversarialFixture,
   memberIdOf,
   planDefault,
@@ -79,6 +83,55 @@ describe('adversarial conflict of interest and standing', () => {
     expect((await listRoles(kit.as(fx.authorizer), { trialId: fx.trialId })).total).toBe(1);
   });
 
+  it('BREAK: the shared audit log never tells a competing staff member who operates where', async () => {
+    const insider = await coreParticipant();
+    const role = await runToActive(fx);
+    const trigger = await addApprovedTrigger(fx, {
+      roleId: role.id,
+      label: 'Ask',
+      description: 'Ask for the sandbox deploy key.',
+    });
+    const operative = kit.as(fx.operative);
+    await getMyBriefing(operative, { roleId: role.id });
+    await listMyBriefings(operative);
+    await fireTrigger(operative, { roleId: role.id, triggerId: trigger.id });
+    await listRoles(kit.as(fx.authorizer), { trialId: fx.trialId });
+    await raiseRedFlag(operative, { roleId: role.id, note: 'Stopping here.' });
+
+    const ctx = kit.as(insider);
+    const entries = [
+      ...(await listAuditLogs(ctx, { action: 'adversarial.*', limit: 100 })).items,
+      ...(await listAuditLogs(ctx, { targetType: 'adversarial_role', limit: 100 })).items,
+    ];
+    expect(entries.length).toBeGreaterThan(10);
+    const identifying = [
+      fx.trialId,
+      fx.teamAId,
+      fx.teamBId,
+      memberIdOf(fx.operative),
+      fx.operative.userId,
+      fx.operative.discordId,
+      fx.operative.displayName,
+    ];
+    for (const entry of entries) {
+      expect(entry.actorUserId).not.toBe(fx.operative.userId);
+      const serialized = JSON.stringify(entry);
+      for (const value of identifying) expect(serialized).not.toContain(value);
+    }
+    // Still audited: pseudonymously, attributable through the role row.
+    const byOperative = entries
+      .filter((entry) => entry.context.systemReason === OPERATIVE_AUDIT_REASON)
+      .map((entry) => entry.action);
+    expect(byOperative).toEqual(
+      expect.arrayContaining([
+        'adversarial.briefing_viewed',
+        'adversarial.briefings_listed',
+        'adversarial.trigger_fired',
+        'adversarial.role_aborted',
+      ]),
+    );
+  });
+
   it('BREAK: RED FLAG alerts skip staff who compete in the trial', async () => {
     const insider = await coreParticipant();
     const role = await runToActive(fx);
@@ -93,7 +146,7 @@ describe('adversarial conflict of interest and standing', () => {
 
   it('BREAK: a quarantined operative loses the briefing and triggers, but can still raise RED FLAG', async () => {
     const role = await runToActive(fx);
-    const trigger = await addTrigger(kit.as(fx.founder), {
+    const trigger = await addApprovedTrigger(fx, {
       roleId: role.id,
       label: 'Ask',
       description: 'Ask for the sandbox deploy key.',

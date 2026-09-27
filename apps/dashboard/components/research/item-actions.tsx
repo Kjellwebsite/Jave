@@ -3,6 +3,7 @@
 import { Archive, Upload } from 'lucide-react';
 import { Button, Textarea } from '@jave/ui';
 import type { FormAction } from '../forms/action-form';
+import { useAnnouncedAction } from '../forms/announced-action';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 
@@ -18,6 +19,8 @@ export interface ItemActionsProps {
 
 /** Push a verified item to Sidus (reviewers) and archive (submitter or reviewer). */
 export function ItemActions({ itemId, canArchive, canPush, archiveAction, pushAction }: ItemActionsProps) {
+  // ARCHIVE disappears once the item is archived: announce its result directly.
+  const archive = useAnnouncedAction(archiveAction);
   if (!canArchive && !canPush) return null;
   return (
     <div className="flex flex-wrap gap-2">
@@ -28,7 +31,7 @@ export function ItemActions({ itemId, canArchive, canPush, archiveAction, pushAc
           description="It leaves the library for everyone but its submitter and reviewers. A reviewer can restore it to NEEDS REVIEW."
           confirmLabel="Archive item"
           tone="danger"
-          action={archiveAction}
+          action={archive}
           hidden={{ itemId }}
           trigger={
             <Button variant="ghost" iconLeft={Archive} data-testid="archive-item">

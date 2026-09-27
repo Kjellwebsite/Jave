@@ -6,6 +6,7 @@ import {
   type ReactNode,
   startTransition,
   useActionState,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -36,8 +37,6 @@ interface ConfirmFormProps extends Pick<
 > {
   onPendingChange: (pending: boolean) => void;
   onSuccess: () => void;
-  /** Announces the result; called as the action resolves (see ConfirmForm). */
-  announce: (message: string) => void;
 }
 
 function ConfirmForm({
@@ -48,23 +47,24 @@ function ConfirmForm({
   children,
   onPendingChange,
   onSuccess,
-  announce,
 }: ConfirmFormProps) {
-  const callbacks = useRef({ onPendingChange, onSuccess, announce });
-  // Announce as the action resolves, not in an effect: a successful action often
-  // revalidates the page and removes this dialog's trigger (a table row, a status
-  // button) in the same render, and the effect would never run.
-  const [state, dispatch, pending] = useActionState(
+  const toast = useToast();
+  // The success toast is raised by the call itself: an action that revalidates
+  // the page often removes this dialog's trigger (Claim, Submit, Accept…), and
+  // an effect in an unmounted form never runs, so the result would go unannounced.
+  const announced = useCallback(
     async (previous: ActionState, data: FormData): Promise<ActionState> => {
-      const result = await action(previous, data);
-      if (result.status === 'success') callbacks.current.announce(result.message);
-      return result;
+      const next = await action(previous, data);
+      if (next.status === 'success') toast({ text: next.message, tone: 'success' });
+      return next;
     },
-    IDLE_STATE,
+    [action, toast],
   );
+  const [state, dispatch, pending] = useActionState(announced, IDLE_STATE);
+  const callbacks = useRef({ onPendingChange, onSuccess });
 
   useEffect(() => {
-    callbacks.current = { onPendingChange, onSuccess, announce };
+    callbacks.current = { onPendingChange, onSuccess };
   });
 
   useEffect(() => {
@@ -127,7 +127,6 @@ export function ConfirmActionDialog({
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState(0);
   const [pending, setPending] = useState(false);
-  const toast = useToast();
 
   return (
     <Dialog
@@ -145,7 +144,6 @@ export function ConfirmActionDialog({
           {...form}
           onPendingChange={setPending}
           onSuccess={() => setOpen(false)}
-          announce={(message) => toast({ text: message, tone: 'success' })}
         />
       </DialogContent>
     </Dialog>

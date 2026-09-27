@@ -2,10 +2,15 @@ import {
   Award,
   Bell,
   ChartNoAxesColumn,
+  FileText,
+  Inbox,
   LayoutGrid,
+  LifeBuoy,
   type LucideIcon,
   ScrollText,
   Settings2,
+  ShieldAlert,
+  ShieldCheck,
   Target,
   UserRound,
   Users,
@@ -39,6 +44,18 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { href: '/members', label: 'Members', icon: Users, capability: 'canViewMembers' },
       { href: '/ranking', label: 'Ranking', icon: ChartNoAxesColumn, capability: 'canViewMembers' },
+      {
+        href: '/applications',
+        label: 'Applications',
+        icon: Inbox,
+        capability: 'canViewApplications',
+      },
+      {
+        href: '/verification',
+        label: 'Verification',
+        icon: ShieldCheck,
+        capability: 'canVerifyMembers',
+      },
       { href: '/achievements', label: 'Achievements', icon: Award, capability: null },
     ],
   },
@@ -46,7 +63,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: 'OPERATIONS',
     items: [{ href: '/missions', label: 'Missions', icon: Target, capability: null }],
   },
-  { label: 'SUPPORT & SAFETY', items: [] },
+  {
+    label: 'SUPPORT & SAFETY',
+    items: [
+      { href: '/tickets', label: 'Tickets', icon: LifeBuoy, capability: null },
+      { href: '/moderation', label: 'Moderation', icon: ShieldAlert, capability: 'canModerate' },
+    ],
+  },
   { label: 'INTELLIGENCE', items: [] },
   {
     label: 'SYSTEM',
@@ -59,6 +82,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
 
 /** Account pages live in the user menu and top bar, not the sidebar. */
 export const ACCOUNT_ITEMS: readonly NavItem[] = [
+  // Before /me: the breadcrumb takes the first item whose path matches.
+  { href: '/me/application', label: 'My application', icon: FileText, capability: null },
   { href: '/me', label: 'My profile', icon: UserRound, capability: null },
   { href: '/notifications', label: 'Notifications', icon: Bell, capability: null },
 ];

@@ -184,7 +184,7 @@ export function DefinitionDialog({
           submitLabel={mode === 'create' ? 'Create achievement' : 'Save achievement'}
           onSuccess={() => {
             setOpen(false);
-            toast(lastMessage.current);
+            toast({ text: lastMessage.current, tone: 'success' });
           }}
           aria-label={mode === 'create' ? 'New achievement' : 'Edit achievement'}
         >

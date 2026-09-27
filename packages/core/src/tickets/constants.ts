@@ -55,6 +55,8 @@ export const URL_MAX_LENGTH = 2048;
 export const ATTACHMENT_MAX_BYTES = 1024 * 1024 * 1024;
 export const DISCORD_NAME_MAX_LENGTH = 64;
 export const SEARCH_MAX_LENGTH = 64;
+/** Ticket numbers come from a Postgres integer identity column. */
+export const TICKET_NUMBER_MAX = 2_147_483_647;
 
 // ─── Views & transcripts ─────────────────────────────────────────────────────
 

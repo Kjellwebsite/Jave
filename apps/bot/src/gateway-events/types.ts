@@ -29,10 +29,28 @@ export interface MessageUpdate {
   guildId: string | null;
   content: string;
   editedAt: Date;
+  /**
+   * The edited message's author (Discord's update carries the full message).
+   * Optional so synthetic updates that do not need it stay valid.
+   */
+  author?: IncomingMessage['author'];
+  /** Set when a webhook posted the message (its author is not a user). */
+  webhookId?: string | null;
+  /** False for updates Discord makes itself (link embeds unfurling); true for real edits. */
+  contentEdited?: boolean;
+  mentionCount?: number;
+  mentionsEveryone?: boolean;
 }
 
 export interface MessageDeletion {
   id: string;
+  channelId: string;
+  guildId: string | null;
+}
+
+/** Several messages deleted at once (a moderator purge, a bulk delete). */
+export interface MessageBulkDeletion {
+  ids: string[];
   channelId: string;
   guildId: string | null;
 }

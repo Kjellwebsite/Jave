@@ -160,36 +160,47 @@ describe('content security policy', () => {
 
 describe('navigation', () => {
   it('shows each entry only with its capability and drops empty groups', () => {
-    // Invariants rather than exact lists: every workstream adds its own pages.
     const member = visibleNav(NAV_GROUPS, ['canViewMembers']);
-    expect(member.map((group) => group.label)).toEqual(
-      expect.arrayContaining(['OVERVIEW', 'PEOPLE']),
-    );
+    expect(member.map((group) => group.label)).toEqual([
+      'OVERVIEW',
+      'PEOPLE',
+      'OPERATIONS',
+      'SUPPORT & SAFETY',
+    ]);
     expect(member.map((group) => group.label)).not.toContain('SYSTEM');
     const founder = visibleNav(NAV_GROUPS, [
       'canViewMembers',
       'canViewAuditLogs',
       'canViewSettings',
     ]);
-    expect(founder.flatMap((group) => group.items.map((item) => item.href))).toEqual(
-      expect.arrayContaining(['/overview', '/members', '/ranking', '/audit', '/settings']),
-    );
-    const signedIn = visibleNav(NAV_GROUPS, []);
-    expect(signedIn.flatMap((group) => group.items.map((item) => item.href))).toContain(
+    expect(founder.flatMap((group) => group.items.map((item) => item.href))).toEqual([
       '/overview',
-    );
+      '/members',
+      '/ranking',
+      '/achievements',
+      '/missions',
+      '/tickets',
+      '/audit',
+      '/settings',
+    ]);
+    const signedIn = visibleNav(NAV_GROUPS, []);
+    expect(signedIn.flatMap((group) => group.items.map((item) => item.href))).toEqual([
+      '/overview',
+      '/achievements',
+      '/missions',
+      '/tickets',
+    ]);
     for (const group of signedIn) {
       expect(group.items.length).toBeGreaterThan(0);
       for (const item of group.items) expect(item.capability).toBeNull();
     }
-    expect(signedIn.flatMap((group) => group.items.map((item) => item.href))).not.toContain(
-      '/members',
-    );
   });
 
   it('resolves page context from nested paths', () => {
     expect(navContext('/members/123')).toEqual({ group: 'PEOPLE', label: 'Members' });
     expect(navContext('/notifications')).toEqual({ group: 'ACCOUNT', label: 'Notifications' });
+    expect(navContext('/me/application')).toEqual({ group: 'ACCOUNT', label: 'My application' });
+    expect(navContext('/me')).toEqual({ group: 'ACCOUNT', label: 'My profile' });
     expect(navContext('/nowhere')).toBeNull();
     expect(isActivePath('/membership', '/members')).toBe(false);
   });

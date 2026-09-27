@@ -82,6 +82,17 @@ export function wireClient(client: Client, app: BotApp, guildId: string, logger:
         guildId: updated.guildId,
         content: updated.content,
         editedAt: updated.editedAt ?? new Date(),
+        author: {
+          id: updated.author.id,
+          username: updated.author.username,
+          globalName: updated.author.globalName,
+          avatar: updated.author.avatar,
+          bot: updated.author.bot,
+        },
+        webhookId: updated.webhookId,
+        contentEdited: updated.editedTimestamp !== null,
+        mentionCount: updated.mentions.users.size + updated.mentions.roles.size,
+        mentionsEveryone: updated.mentions.everyone,
       }),
     );
   });
@@ -93,6 +104,17 @@ export function wireClient(client: Client, app: BotApp, guildId: string, logger:
         id: message.id,
         channelId: message.channelId,
         guildId: message.guildId,
+      }),
+    );
+  });
+
+  client.on(Events.MessageBulkDelete, (messages, channel) => {
+    if (channel.guildId !== guildId) return;
+    guard('messageDeleteBulk', () =>
+      app.events.messageDeleteBulk({
+        ids: [...messages.keys()],
+        channelId: channel.id,
+        guildId: channel.guildId,
       }),
     );
   });

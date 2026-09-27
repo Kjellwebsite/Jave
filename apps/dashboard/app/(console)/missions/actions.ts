@@ -5,9 +5,11 @@ import { redirect } from 'next/navigation';
 import { isUuid, missions, ValidationError } from '@jave/core';
 import type { ActionState } from '@/lib/action-state';
 import { formBoolean, formOptional, formString, formStrings } from '@/lib/form-data';
+import type { MemberSearchResult } from '@/lib/member-search';
 import { MISSION_FORM_FIELDS, missionFormInput, optionalNumber } from '@/lib/mission-form';
 import { runAction } from '@/server/actions';
 import type { UserContext } from '@/server/context';
+import { runMemberSearch } from '@/server/data/member-search';
 
 const SKIP_LABELS: Record<missions.AssignSkipReason, string> = {
   not_found: 'no profile',
@@ -142,6 +144,11 @@ export async function archiveMissionAction(_: ActionState, data: FormData): Prom
 }
 
 // ── Staff: roster and review ────────────────────────────────────────────────
+
+/** The assign dialog's member search: mission managers only. */
+export async function searchAssignableMembersAction(query: string): Promise<MemberSearchResult> {
+  return runMemberSearch('canManageMissions', query);
+}
 
 export async function assignMissionAction(_: ActionState, data: FormData): Promise<ActionState> {
   return runAction(

@@ -1,66 +1,138 @@
 'use client';
 
-import { useId } from 'react';
+import { useRef, useState } from 'react';
 import { Award, BadgeX } from 'lucide-react';
-import { Button, Input, NativeSelect, Textarea } from '@jave/ui';
+import { Button, NativeSelect, Textarea } from '@jave/ui';
+import type { AchievementOption, HeldAwardsResult, HeldAwardView } from '@/lib/achievement-labels';
+import type { MemberOption, MemberSearch } from '@/lib/member-search';
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
+import { MemberPicker } from '../forms/member-picker';
 
-const HANDLE_MAX = 32;
+/** Limits mirrored from the achievements service (it re-validates everything). */
 const REASON_MIN = 3;
 const REASON_MAX = 500;
 
-export interface AchievementOption {
-  value: string;
-  label: string;
+type HeldState =
+  | { status: 'none' }
+  | { status: 'loading' }
+  | { status: 'ready'; held: readonly HeldAwardView[] }
+  | { status: 'error'; message: string };
+
+export interface AwardDialogsProps {
+  /** Active achievements staff may award. */
+  options: readonly AchievementOption[];
+  search: MemberSearch;
+  initial: readonly MemberOption[];
+  lookup: (memberId: string) => Promise<HeldAwardsResult>;
+  awardAction: FormAction;
+  revokeAction: FormAction;
 }
 
-function MemberField({ listId }: { listId: string }) {
+/**
+ * The award and revoke forms: pick a member, then an achievement they lack
+ * (award) or hold (revoke), with a required reason. The service re-checks
+ * everything, including that nobody acts on their own achievements.
+ */
+function AwardFields({
+  mode,
+  options,
+  search,
+  initial,
+  lookup,
+}: Omit<AwardDialogsProps, 'awardAction' | 'revokeAction'> & { mode: 'award' | 'revoke' }) {
+  const [held, setHeld] = useState<HeldState>({ status: 'none' });
+  const latest = useRef(0);
+
+  function memberChanged(selected: readonly MemberOption[]) {
+    const request = ++latest.current;
+    const [member] = selected;
+    if (!member) {
+      setHeld({ status: 'none' });
+      return;
+    }
+    setHeld({ status: 'loading' });
+    lookup(member.memberId)
+      .then((result) => {
+        if (request !== latest.current) return;
+        setHeld(
+          result.status === 'ok'
+            ? { status: 'ready', held: result.held }
+            : { status: 'error', message: result.message },
+        );
+      })
+      .catch(() => {
+        if (request === latest.current)
+          setHeld({ status: 'error', message: 'Their awards could not be loaded. Try again.' });
+      });
+  }
+
+  const ready = held.status === 'ready';
+  const heldKeys = new Set(ready ? held.held.map((award) => award.key) : []);
+  const choices =
+    mode === 'award'
+      ? options.filter((option) => !heldKeys.has(option.value))
+      : ready
+        ? held.held.map((award) => ({
+            value: award.key,
+            label: award.verified ? award.title : `${award.title} · pending verification`,
+          }))
+        : [];
+  const hint =
+    held.status === 'none'
+      ? 'Choose a member first.'
+      : held.status === 'loading'
+        ? 'Loading their awards…'
+        : held.status === 'error'
+          ? held.message
+          : choices.length === 0
+            ? mode === 'award'
+              ? 'They hold every active achievement.'
+              : 'They hold no achievements.'
+            : mode === 'award'
+              ? 'Active achievements they do not hold.'
+              : 'Achievements they hold.';
+
   return (
-    <FormField name="handle" label="Member" description="Their handle, e.g. @mara." required>
-      <Input
-        name="handle"
-        required
-        maxLength={HANDLE_MAX + 1}
-        list={listId}
-        autoComplete="off"
-        placeholder="@handle"
-        mono
+    <>
+      <MemberPicker
+        name="memberId"
+        legend="Member"
+        description="Present in the guild. Search by name or handle."
+        search={search}
+        initial={initial}
+        onChange={memberChanged}
       />
-    </FormField>
-  );
-}
-
-function ReasonField({ description }: { description: string }) {
-  return (
-    <FormField name="reason" label="Reason" description={description} required>
-      <Textarea name="reason" required minLength={REASON_MIN} maxLength={REASON_MAX} rows={3} />
-    </FormField>
+      <FormField name="key" label="Achievement" description={hint} required>
+        <NativeSelect
+          name="key"
+          required
+          disabled={!ready || choices.length === 0}
+          placeholder={ready && choices.length > 0 ? 'Choose an achievement' : '—'}
+          options={choices}
+        />
+      </FormField>
+      <FormField
+        name="reason"
+        label="Reason"
+        description={
+          mode === 'award'
+            ? 'Required. Recorded in the audit log.'
+            : 'Required. The member is told it was revoked.'
+        }
+        required
+      >
+        <Textarea name="reason" required minLength={REASON_MIN} maxLength={REASON_MAX} rows={3} />
+      </FormField>
+    </>
   );
 }
 
 /** Manual award and revocation. Nobody acts on their own achievements; the service enforces it. */
-export function AwardControls({
-  options,
-  handles,
-  awardAction,
-  revokeAction,
-}: {
-  options: readonly AchievementOption[];
-  /** Member handles offered as suggestions (the field accepts any handle). */
-  handles: readonly string[];
-  awardAction: FormAction;
-  revokeAction: FormAction;
-}) {
-  const listId = `${useId()}-handles`;
+export function AwardControls({ awardAction, revokeAction, ...fields }: AwardDialogsProps) {
   return (
     <>
-      <datalist id={listId}>
-        {handles.map((handle) => (
-          <option key={handle} value={`@${handle}`} />
-        ))}
-      </datalist>
       <ConfirmActionDialog
         eyebrow="ACHIEVEMENTS"
         title="Award achievement"
@@ -73,11 +145,7 @@ export function AwardControls({
           </Button>
         }
       >
-        <MemberField listId={listId} />
-        <FormField name="key" label="Achievement" required>
-          <NativeSelect name="key" options={options} />
-        </FormField>
-        <ReasonField description="Required. Recorded in the audit log." />
+        <AwardFields mode="award" {...fields} />
       </ConfirmActionDialog>
       <ConfirmActionDialog
         eyebrow="ACHIEVEMENTS"
@@ -92,11 +160,7 @@ export function AwardControls({
           </Button>
         }
       >
-        <MemberField listId={listId} />
-        <FormField name="key" label="Achievement" required>
-          <NativeSelect name="key" options={options} />
-        </FormField>
-        <ReasonField description="Required. The member is told it was revoked." />
+        <AwardFields mode="revoke" {...fields} />
       </ConfirmActionDialog>
     </>
   );
@@ -123,7 +187,7 @@ export function VerifyAwardButton({
       action={action}
       hidden={{ memberId, key: achievementKey }}
       trigger={
-        <Button size="sm" variant="primary">
+        <Button size="sm" variant="secondary">
           Verify
         </Button>
       }

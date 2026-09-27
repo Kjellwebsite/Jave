@@ -1,14 +1,14 @@
 import { Award, LockKeyhole } from 'lucide-react';
 import type { achievements } from '@jave/core';
 import { Badge, cx, EmptyState, Icon, Mono } from '@jave/ui';
-import { RARITY_LABELS, RARITY_TONE } from '@/lib/achievement-labels';
+import { type HolderShare, RARITY_LABELS, RARITY_TONE } from '@/lib/achievement-labels';
 import { formatDate } from '@/lib/time';
 
-function Percent({ value }: { value: number | undefined }) {
-  if (value === undefined) return null;
+function Share({ share }: { share: HolderShare | undefined }) {
+  if (!share) return null;
   return (
     <Mono dim className="text-[12px]" title="Share of active members holding it">
-      {value === 0 ? 'nobody yet' : `${value}%`}
+      {share.holders === 0 ? 'nobody yet' : `${share.percent}% of members`}
     </Mono>
   );
 }
@@ -19,11 +19,11 @@ function Percent({ value }: { value: number | undefined }) {
  */
 export function CatalogGrid({
   catalog,
-  percents,
+  shares,
   timeZone,
 }: {
   catalog: readonly achievements.CatalogEntry[];
-  percents: ReadonlyMap<string, number> | null;
+  shares: ReadonlyMap<string, HolderShare> | null;
   timeZone: string;
 }) {
   if (catalog.length === 0) {
@@ -102,7 +102,7 @@ export function CatalogGrid({
                       {formatDate(entry.unlockedAt, timeZone)}
                     </Mono>
                   ) : (
-                    <Percent value={percents?.get(entry.key)} />
+                    <Share share={shares?.get(entry.key)} />
                   )}
                 </span>
               </div>

@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { can } from '@jave/core';
 import { Card, Icon, PageHeader, buttonStyles } from '@jave/ui';
 import { MissionForm } from '@/components/missions/mission-form';
+import { MissionLifecycle } from '@/components/missions/mission-lifecycle';
 import { RestrictedPage } from '@/components/restricted-page';
 import { requireConsoleContext } from '@/server/context';
 import { facetOptions, rewardOptions } from '@/server/data/missions';
@@ -31,28 +32,31 @@ export default async function NewMissionPage() {
           </Link>
         }
       />
-      <Card className="max-w-3xl">
-        <MissionForm
-          action={createMissionAction}
-          submitLabel="Create draft"
-          typeLocked={false}
-          facets={facets}
-          rewards={rewards}
-          values={{
-            title: '',
-            brief: '',
-            type: 'individual',
-            facetKey: null,
-            evidenceRequired: true,
-            rewardAchievementKey: null,
-            rewardNote: null,
-            maxAssignees: null,
-            selfAssignable: true,
-            deadlineAt: null,
-            durationHours: null,
-          }}
-        />
-      </Card>
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,48rem)_minmax(0,20rem)]">
+        <Card>
+          <MissionForm
+            action={createMissionAction}
+            submitLabel="Create draft"
+            typeLocked={false}
+            facets={facets}
+            rewards={rewards}
+            values={{
+              title: '',
+              brief: '',
+              type: 'individual',
+              facetKey: null,
+              evidenceRequired: true,
+              rewardAchievementKey: null,
+              rewardNote: null,
+              maxAssignees: null,
+              selfAssignable: true,
+              deadlineAt: null,
+              durationHours: null,
+            }}
+          />
+        </Card>
+        <MissionLifecycle />
+      </div>
     </div>
   );
 }

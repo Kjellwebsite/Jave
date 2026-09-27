@@ -1,35 +1,66 @@
 import { ExternalLink, Inbox } from 'lucide-react';
 import { can, missions, type ServiceContext } from '@jave/core';
-import { Badge, Card, EmptyState, Icon, Mono, RestrictedState } from '@jave/ui';
+import { Badge, Card, EmptyState, Icon, Mono, Pagination, RestrictedState } from '@jave/ui';
 import { safeExternalUrl } from '@/lib/safe-url';
+import { toQueryString } from '@/lib/search-params';
 import { formatTimestamp } from '@/lib/time';
 import type { FormAction } from '../forms/action-form';
+import { NextLink } from '../next-link';
 import { ReviewActions } from './review-actions';
 
-/** Units fetched per page of the global queue (the service's page cap). */
-const QUEUE_PAGE = 100;
-/** Stop scanning after this many units; the service itself scans at most 500 submissions. */
-const QUEUE_SCAN_MAX = 500;
+/** Units per page of one mission's queue. */
+export const REVIEW_PAGE_SIZE = 20;
 
 function unitLabel(item: missions.ReviewQueueItem): string {
   if (!item.teamKey) return item.members[0]?.displayName ?? 'Member';
   return `Team ${item.teamKey} (${item.members.length} member${item.members.length === 1 ? '' : 's'})`;
 }
 
+function Evidence({ item }: { item: missions.ReviewQueueItem }) {
+  const url = safeExternalUrl(item.evidenceUrl);
+  if (!item.evidenceTitle && !url) return null;
+  const host = url ? new URL(url).host : null;
+  return (
+    <p className="flex flex-wrap items-center gap-2 text-small">
+      <span className="type-eyebrow text-fg-subtle">EVIDENCE</span>
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="inline-flex min-w-0 items-center gap-1 break-all text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg"
+        >
+          {item.evidenceTitle ?? host}
+          <Icon icon={ExternalLink} size="sm" />
+        </a>
+      ) : (
+        <span className="text-fg-muted">{item.evidenceTitle}</span>
+      )}
+      {host ? (
+        <Mono dim className="text-[12px]">
+          {host}
+        </Mono>
+      ) : null}
+    </p>
+  );
+}
+
 /**
- * Submissions of one mission awaiting review, oldest first, one entry per
- * unit (a team reviews as one). The reviewer's own units show no controls;
- * the service refuses them anyway.
+ * One mission's submissions awaiting review, oldest first, one entry per unit
+ * (a team reviews as one). The reviewer's own units show no controls; the
+ * service refuses them anyway.
  */
 export async function ReviewQueue({
   ctx,
   missionId,
+  offset,
   timeZone,
   verifyAction,
   rejectAction,
 }: {
   ctx: ServiceContext;
   missionId: string;
+  offset: number;
   timeZone: string;
   verifyAction: FormAction;
   rejectAction: FormAction;
@@ -41,13 +72,12 @@ export async function ReviewQueue({
       </Card>
     );
   }
-  const items: missions.ReviewQueueItem[] = [];
-  for (let offset = 0; offset < QUEUE_SCAN_MAX; offset += QUEUE_PAGE) {
-    const page = await missions.listSubmissionsForReview(ctx, { limit: QUEUE_PAGE, offset });
-    items.push(...page.items.filter((item) => item.missionId === missionId));
-    if (offset + QUEUE_PAGE >= page.total) break;
-  }
-  if (items.length === 0) {
+  const page = await missions.listSubmissionsForReview(ctx, {
+    missionId,
+    limit: REVIEW_PAGE_SIZE,
+    offset,
+  });
+  if (page.items.length === 0) {
     return (
       <Card padding="none">
         <EmptyState
@@ -59,10 +89,9 @@ export async function ReviewQueue({
     );
   }
   return (
-    <ul className="space-y-3" aria-label="Submissions awaiting review">
-      {items.map((item) => {
-        const evidenceUrl = safeExternalUrl(item.evidenceUrl);
-        return (
+    <div className="space-y-4">
+      <ul className="space-y-3" aria-label="Submissions awaiting review">
+        {page.items.map((item) => (
           <li key={item.assignmentId}>
             <Card className="space-y-4" data-review-unit={item.assignmentId}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -98,33 +127,22 @@ export async function ReviewQueue({
               <p className="whitespace-pre-wrap break-words rounded-md border border-line-subtle bg-surface-sunken p-3 text-body text-fg-muted">
                 {item.submission ?? 'No text submitted.'}
               </p>
-              {item.evidenceTitle || evidenceUrl ? (
-                <p className="flex flex-wrap items-center gap-2 text-small">
-                  <span className="type-eyebrow text-fg-subtle">EVIDENCE</span>
-                  {evidenceUrl ? (
-                    <a
-                      href={evidenceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer nofollow"
-                      className="inline-flex min-w-0 items-center gap-1 break-all text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg"
-                    >
-                      {item.evidenceTitle ?? new URL(evidenceUrl).host}
-                      <Icon icon={ExternalLink} size="sm" />
-                    </a>
-                  ) : (
-                    <span className="text-fg-muted">{item.evidenceTitle}</span>
-                  )}
-                  {evidenceUrl ? (
-                    <Mono dim className="text-[12px]">
-                      {new URL(evidenceUrl).host}
-                    </Mono>
-                  ) : null}
-                </p>
-              ) : null}
+              <Evidence item={item} />
             </Card>
           </li>
-        );
-      })}
-    </ul>
+        ))}
+      </ul>
+      {page.total > page.limit ? (
+        <Pagination
+          offset={page.offset}
+          limit={page.limit}
+          total={page.total}
+          linkComponent={NextLink}
+          hrefForOffset={(next) =>
+            `/missions/${missionId}${toQueryString({ tab: 'review', offset: next || undefined })}`
+          }
+        />
+      ) : null}
+    </div>
   );
 }

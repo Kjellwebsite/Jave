@@ -10,16 +10,22 @@ import {
 } from '@jave/core';
 import type { CommandDefinition, HandlerContext, ReplyPayload } from '../../interactions/types';
 import { heldAwards, resolveMemberId } from './data';
-import { buildCatalogLines, renderCatalogPanel } from './render';
+import { buildCatalogLines, type HolderShares, renderCatalogPanel } from './render';
 import { awardFromCommand, achievementAutocomplete, revokeFromCommand } from './staff';
 
-async function percentBySlot(h: HandlerContext): Promise<Map<number, number>> {
+/** Share of active members holding each achievement, as the viewer may see it. */
+async function holderShares(h: HandlerContext): Promise<HolderShares> {
+  const byKey = new Map<string, number>();
   const bySlot = new Map<number, number>();
   // Rarity stats need canViewMembers; checking first keeps refusals out of the audit log.
-  if (!can(h.ctx, 'canViewMembers')) return bySlot;
-  const stats = await achievements.getAchievementRarityStats(h.ctx);
-  stats.achievements.forEach((stat, slot) => bySlot.set(slot, stat.percent));
-  return bySlot;
+  if (can(h.ctx, 'canViewMembers')) {
+    const stats = await achievements.getAchievementRarityStats(h.ctx);
+    for (const stat of stats.achievements) {
+      if (stat.masked) bySlot.set(stat.slot, stat.percent);
+      else byKey.set(stat.key, stat.percent);
+    }
+  }
+  return { byKey, bySlot };
 }
 
 /**
@@ -33,10 +39,10 @@ export async function memberCatalogPayload(
   options: { page: number; share: boolean },
 ): Promise<ReplyPayload> {
   const held = await heldAwards(h, memberId);
-  const [catalog, member, percents] = await Promise.all([
+  const [catalog, member, shares] = await Promise.all([
     achievements.getAchievementCatalog(h.ctx),
     getMemberById(h.ctx, memberId),
-    percentBySlot(h),
+    holderShares(h),
   ]);
   // Staff-only profiles are never posted publicly, even when the viewer may see them.
   const shared = options.share && member.profileVisibility !== 'staff';
@@ -47,7 +53,7 @@ export async function memberCatalogPayload(
   return renderCatalogPanel({
     memberId,
     memberName: member.displayName,
-    lines: buildCatalogLines(catalog, held, percents),
+    lines: buildCatalogLines(catalog, held, shares),
     page: options.page,
     staff,
     shared,

@@ -147,6 +147,7 @@ export async function openAssignOptions(h: HandlerContext, missionId: string): P
 
 /** Team key and time limit set: show the panel again, now carrying them. */
 export async function assignOptionsFromModal(h: HandlerContext, missionId: string): Promise<void> {
+  if (!(await ensureManager(h))) return;
   const { modal } = h.interaction;
   const options = {
     teamKey: parseTeamKey(modal.text(FIELD_TEAM)),
@@ -165,6 +166,7 @@ export async function assignPicked(
   missionId: string,
   encoded: readonly string[],
 ): Promise<void> {
+  if (!(await ensureManager(h))) return;
   const options = decodeAssignOptions(encoded);
   const { memberIds, unknown } = await resolveAssignees(h, h.interaction.values);
   const lines: string[] = [];

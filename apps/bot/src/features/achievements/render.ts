@@ -54,6 +54,15 @@ export interface CatalogLine {
   percent: number | null;
 }
 
+/**
+ * Share of active members holding an achievement: by key where the viewer
+ * may see the definition, by catalog slot where it is masked for them.
+ */
+export interface HolderShares {
+  byKey: ReadonlyMap<string, number>;
+  bySlot: ReadonlyMap<number, number>;
+}
+
 export interface HeldAward {
   key: string;
   title: string;
@@ -72,7 +81,7 @@ export interface HeldAward {
 export function buildCatalogLines(
   catalog: readonly achievements.CatalogEntry[],
   held: readonly HeldAward[],
-  percentBySlot: ReadonlyMap<number, number>,
+  shares: HolderShares,
 ): CatalogLine[] {
   const heldByKey = new Map(held.map((award) => [award.key, award]));
   const revealedKeys = new Set<string>();
@@ -90,7 +99,7 @@ export function buildCatalogLines(
       summary: entry.summary,
       rarity: entry.rarity,
       state: award ? (award.verified ? 'verified' : 'pending') : 'locked',
-      percent: percentBySlot.get(slot) ?? null,
+      percent: shares.byKey.get(entry.key) ?? null,
     });
   });
   for (const award of held) {
@@ -104,7 +113,7 @@ export function buildCatalogLines(
       summary: award.summary,
       rarity: award.rarity,
       state: award.verified ? 'verified' : 'pending',
-      percent: null,
+      percent: shares.byKey.get(award.key) ?? null,
     });
   }
   for (const slot of masked) {
@@ -113,7 +122,7 @@ export function buildCatalogLines(
       summary: achievements.HIDDEN_SUMMARY,
       rarity: slot.rarity,
       state: 'masked',
-      percent: percentBySlot.get(slot.slot) ?? null,
+      percent: shares.bySlot.get(slot.slot) ?? null,
     });
   }
   // Stable: unlocked first, then locked, then classified, each in catalog order.

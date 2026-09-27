@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Plus, Sparkles } from 'lucide-react';
-import { achievements, can, listMembers } from '@jave/core';
-import { Button, LinkTabs, Mono, PageHeader } from '@jave/ui';
+import { achievements, can } from '@jave/core';
+import { Button, cx, LinkTabs, Mono, PageHeader, Stat } from '@jave/ui';
 import { NextLink } from '@/components/next-link';
 import { AwardControls } from '@/components/achievements/award-controls';
 import { CatalogGrid } from '@/components/achievements/catalog-grid';
@@ -9,15 +9,19 @@ import { DefinitionDialog, EMPTY_DEFINITION } from '@/components/achievements/de
 import { DefinitionTable } from '@/components/achievements/definition-table';
 import { PendingAwards } from '@/components/achievements/pending-awards';
 import { ConfirmActionDialog } from '@/components/forms/confirm-action-dialog';
-import { firstParam, type SearchParams } from '@/lib/search-params';
-import { requireConsoleContext, type UserContext } from '@/server/context';
+import { firstParam, offsetParam, type SearchParams } from '@/lib/search-params';
+import { requireConsoleContext } from '@/server/context';
+import { awardOptions, loadRarity, ruleEventOptions } from '@/server/data/achievements';
+import { searchPresentMembers } from '@/server/data/member-search';
 import { facetOptions } from '@/server/data/missions';
 import { loadViewer } from '@/server/data/viewer';
 import {
   awardAction,
   createDefinitionAction,
   deleteDefinitionAction,
+  memberAwardsAction,
   revokeAction,
+  searchAwardableMembersAction,
   seedStartersAction,
   updateDefinitionAction,
   verifyAwardAction,
@@ -25,33 +29,8 @@ import {
 
 export const metadata: Metadata = { title: 'Achievements' };
 
-/** Handles suggested in the award dialog (it accepts any handle). */
-const HANDLE_SUGGESTIONS = 100;
-
-/** Share of active members per active achievement, keyed by key (masked entries have none). */
-async function holderPercents(ctx: UserContext): Promise<Map<string, number> | null> {
-  if (!can(ctx, 'canViewMembers')) return null;
-  const stats = await achievements.getAchievementRarityStats(ctx);
-  return new Map(
-    stats.achievements.flatMap((stat) => (stat.masked ? [] : [[stat.key, stat.percent] as const])),
-  );
-}
-
-async function awardOptions(ctx: UserContext) {
-  const catalog = await achievements.getAchievementCatalog(ctx);
-  return catalog.flatMap((entry) =>
-    entry.masked ? [] : [{ value: entry.key, label: `${entry.title} · ${entry.rarity}` }],
-  );
-}
-
-async function memberHandles(ctx: UserContext): Promise<string[]> {
-  const page = await listMembers(ctx, {
-    guildStatus: 'present',
-    sort: 'name',
-    limit: HANDLE_SUGGESTIONS,
-  });
-  return page.items.map((member) => member.handle);
-}
+/** Pending awards per page. */
+const PENDING_PAGE_SIZE = 25;
 
 export default async function AchievementsPage({
   searchParams,
@@ -59,17 +38,49 @@ export default async function AchievementsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { ctx } = await requireConsoleContext();
+  const params = await searchParams;
   const manage = can(ctx, 'canManageAchievements');
   const award = can(ctx, 'canAwardAchievements');
-  const tab = award && firstParam((await searchParams).tab) === 'pending' ? 'pending' : 'catalog';
-  const [viewer, percents, pending, facets, options, handles] = await Promise.all([
-    loadViewer(ctx),
-    holderPercents(ctx),
-    award ? achievements.listPendingAchievementAwards(ctx, { limit: 100 }) : null,
-    manage ? facetOptions(ctx) : Promise.resolve([]),
-    award ? awardOptions(ctx) : Promise.resolve([]),
-    award ? memberHandles(ctx) : Promise.resolve([]),
-  ]);
+  const tab = award && firstParam(params.tab) === 'pending' ? 'pending' : 'catalog';
+  const [viewer, rarity, pending, catalog, definitions, facets, options, initialMembers] =
+    await Promise.all([
+      loadViewer(ctx),
+      loadRarity(ctx),
+      award
+        ? achievements.listPendingAchievementAwards(ctx, {
+            limit: PENDING_PAGE_SIZE,
+            offset: tab === 'pending' ? offsetParam(params.offset) : 0,
+          })
+        : null,
+      achievements.getAchievementCatalog(ctx),
+      manage ? achievements.listAchievementDefinitions(ctx) : null,
+      manage ? facetOptions(ctx) : [],
+      award ? awardOptions(ctx) : [],
+      award ? searchPresentMembers(ctx, '') : [],
+    ]);
+  const events = manage ? ruleEventOptions() : [];
+  const tiles =
+    award && rarity && pending
+      ? [
+          {
+            label: 'ACHIEVEMENTS',
+            value: catalog.length,
+            hint: definitions ? `Active · ${definitions.length} defined` : 'Active in the catalog',
+          },
+          { label: 'UNLOCKS', value: rarity.unlocks, hint: 'Held by active members' },
+          {
+            label: 'ACTIVE MEMBERS',
+            value: rarity.activeMembers,
+            hint: 'Every share is of these',
+          },
+          {
+            label: 'PENDING',
+            value: pending.total,
+            hint: 'Awaiting a second person',
+            href: '/achievements?tab=pending',
+          },
+        ]
+      : [];
 
   return (
     <div className="space-y-8">
@@ -83,7 +94,9 @@ export default async function AchievementsPage({
               {award ? (
                 <AwardControls
                   options={options}
-                  handles={handles}
+                  search={searchAwardableMembersAction}
+                  initial={initialMembers}
+                  lookup={memberAwardsAction}
                   awardAction={awardAction}
                   revokeAction={revokeAction}
                 />
@@ -93,7 +106,7 @@ export default async function AchievementsPage({
                   <ConfirmActionDialog
                     eyebrow="ACHIEVEMENTS"
                     title="Install the starter catalog"
-                    description="Adds the thirteen starter achievements that are missing. Existing keys stay exactly as edited; history is evaluated in the background without announcements."
+                    description={`Adds the starter achievements that are missing (${achievements.STARTER_ACHIEVEMENTS.length} in the set). Existing keys stay exactly as edited; history is evaluated in the background without announcements.`}
                     confirmLabel="Install starters"
                     action={seedStartersAction}
                     trigger={
@@ -106,6 +119,7 @@ export default async function AchievementsPage({
                     mode="create"
                     values={EMPTY_DEFINITION}
                     facets={facets}
+                    events={events}
                     action={createDefinitionAction}
                     trigger={
                       <Button variant="primary" iconLeft={Plus} data-testid="new-achievement">
@@ -119,6 +133,25 @@ export default async function AchievementsPage({
           ) : null
         }
       />
+
+      {tiles.length > 0 ? (
+        <section
+          aria-label="Achievement readouts"
+          className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+        >
+          {tiles.map((tile) => (
+            <Stat
+              key={tile.label}
+              label={tile.label}
+              value={tile.value}
+              hint={tile.hint}
+              href={tile.href}
+              linkComponent={NextLink}
+              className={cx(tile.value === 0 && '[&_.type-numeral]:text-fg-subtle')}
+            />
+          ))}
+        </section>
+      ) : null}
 
       {award ? (
         <LinkTabs
@@ -142,20 +175,17 @@ export default async function AchievementsPage({
 
       {tab === 'pending' && pending ? (
         <PendingAwards page={pending} timeZone={viewer.timeZone} verifyAction={verifyAwardAction} />
-      ) : manage ? (
+      ) : definitions ? (
         <DefinitionTable
-          definitions={await achievements.listAchievementDefinitions(ctx)}
-          percents={percents}
+          definitions={definitions}
+          shares={rarity?.byKey ?? null}
           facets={facets}
+          events={events}
           updateAction={updateDefinitionAction}
           deleteAction={deleteDefinitionAction}
         />
       ) : (
-        <CatalogGrid
-          catalog={await achievements.getAchievementCatalog(ctx)}
-          percents={percents}
-          timeZone={viewer.timeZone}
-        />
+        <CatalogGrid catalog={catalog} shares={rarity?.byKey ?? null} timeZone={viewer.timeZone} />
       )}
     </div>
   );

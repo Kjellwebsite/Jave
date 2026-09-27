@@ -19,6 +19,8 @@ export interface OwnAssignmentActionsProps {
   team: boolean;
   /** Prefill after a rejection. */
   previousSubmission: string | null;
+  /** Staff viewers manage the mission on this page: their own actions stay secondary. */
+  secondary?: boolean;
   acceptAction: FormAction;
   submitAction: FormAction;
   abandonAction: FormAction;
@@ -34,11 +36,13 @@ export function OwnAssignmentActions({
   evidenceRequired,
   team,
   previousSubmission,
+  secondary = false,
   acceptAction,
   submitAction,
   abandonAction,
 }: OwnAssignmentActionsProps) {
   const hidden = { missionId };
+  const emphasis = secondary ? 'secondary' : 'primary';
   return (
     <div className="flex flex-wrap gap-2">
       {canAccept ? (
@@ -50,7 +54,7 @@ export function OwnAssignmentActions({
           action={acceptAction}
           hidden={hidden}
           trigger={
-            <Button variant="primary" data-testid="accept-mission">
+            <Button variant={emphasis} data-testid="accept-mission">
               Accept
             </Button>
           }
@@ -69,7 +73,7 @@ export function OwnAssignmentActions({
           action={submitAction}
           hidden={hidden}
           trigger={
-            <Button variant="primary" data-testid="submit-mission">
+            <Button variant={emphasis} data-testid="submit-mission">
               {previousSubmission ? 'Resubmit' : 'Submit'}
             </Button>
           }

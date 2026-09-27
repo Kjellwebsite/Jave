@@ -267,6 +267,7 @@ Full reference: [docs/commands/achievements.md](../commands/achievements.md).
   panel's AWARD / REVOKE modals, and verify pending awards from its VERIFY select. Job
   handlers post and retract the unlock card (`discord.achievements.announce|retract`).
 - **Dashboard** (`/achievements`): the catalog for everyone; definitions table with the
-  criteria builder, starter seeding and delete for `canManageAchievements`; manual award,
-  revoke and the **Pending verification** queue (`listPendingAchievementAwards`) for
-  `canAwardAchievements`.
+  criteria builder (outcomes from `ACHIEVEMENT_EVENT_TYPES`), holders and share, starter
+  seeding and delete for `canManageAchievements`; readouts, manual award and revoke (member
+  picker, then what the member lacks or holds) and the **Pending verification** queue
+  (`listPendingAchievementAwards`) for `canAwardAchievements`.

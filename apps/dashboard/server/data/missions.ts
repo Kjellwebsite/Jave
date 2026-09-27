@@ -1,5 +1,5 @@
 import 'server-only';
-import { achievements, can, listMembers, loadCatalog, type ServiceContext } from '@jave/core';
+import { achievements, can, loadCatalog, type missions, type ServiceContext } from '@jave/core';
 
 export interface Option {
   value: string;
@@ -27,10 +27,18 @@ export async function facetLabels(ctx: ServiceContext): Promise<Map<string, stri
   return new Map(catalog.facets.map((facet) => [facet.key, facet.label]));
 }
 
-/** Active achievements a mission can grant. Mission staff are achievement staff: nothing is masked. */
-export async function rewardOptions(ctx: ServiceContext): Promise<Option[]> {
+/**
+ * Achievements a mission can grant: the active catalog (mission staff are
+ * achievement staff, so nothing is masked). The mission's current reward is
+ * kept as an option even when it was deactivated since, so saving the form
+ * never drops it silently.
+ */
+export async function rewardOptions(
+  ctx: ServiceContext,
+  current: missions.MissionReward | null = null,
+): Promise<Option[]> {
   const catalog = await achievements.getAchievementCatalog(ctx);
-  return catalog.flatMap((entry) =>
+  const options = catalog.flatMap((entry) =>
     entry.masked
       ? []
       : [
@@ -40,37 +48,11 @@ export async function rewardOptions(ctx: ServiceContext): Promise<Option[]> {
           },
         ],
   );
-}
-
-/** How many members the assign dialog offers at most (searchable client-side). */
-export const ASSIGN_CANDIDATES_LIMIT = 100;
-
-export interface AssignCandidate {
-  memberId: string;
-  displayName: string;
-  handle: string;
-}
-
-/**
- * Members staff may assign: present in the guild and in good standing
- * (canViewMembers, which every mission manager holds). The mission service
- * re-checks each one and reports anyone it skips.
- */
-export async function assignCandidates(
-  ctx: ServiceContext,
-  exclude: ReadonlySet<string>,
-): Promise<AssignCandidate[]> {
-  const page = await listMembers(ctx, {
-    guildStatus: 'present',
-    standing: 'good',
-    sort: 'name',
-    limit: ASSIGN_CANDIDATES_LIMIT,
-  });
-  return page.items
-    .filter((member) => !exclude.has(member.id))
-    .map((member) => ({
-      memberId: member.id,
-      displayName: member.displayName,
-      handle: member.handle,
-    }));
+  if (current && !current.hidden && !options.some((option) => option.value === current.key)) {
+    options.unshift({
+      value: current.key,
+      label: `${current.title} · ${current.rarity} · inactive`,
+    });
+  }
+  return options;
 }

@@ -15,9 +15,10 @@ import {
   TableRow,
 } from '@jave/ui';
 import {
+  type HolderShare,
   RARITY_LABELS,
   RARITY_TONE,
-  type RuleEventKey,
+  type RuleEventOption,
   ruleText,
   type RuleView,
 } from '@/lib/achievement-labels';
@@ -44,7 +45,7 @@ function formValues(definition: Definition): DefinitionValues {
     rarity: definition.rarity,
     visibility: definition.visibility,
     ruleType: rule?.type === 'event_count' ? 'event_count' : 'manual',
-    event: rule?.type === 'event_count' ? (rule.event as RuleEventKey) : EMPTY_DEFINITION.event,
+    event: rule?.type === 'event_count' ? rule.event : EMPTY_DEFINITION.event,
     threshold: rule?.type === 'event_count' ? rule.threshold : EMPTY_DEFINITION.threshold,
     requiresVerification: definition.requiresVerification,
     facetKey: definition.facetKey,
@@ -53,17 +54,30 @@ function formValues(definition: Definition): DefinitionValues {
   };
 }
 
+/** "12 · 4.1%": holders and their share of active members; "0" when nobody; "—" when inactive. */
+function HeldBy({ share }: { share: HolderShare | undefined }) {
+  if (!share) return <Mono dim>—</Mono>;
+  if (share.holders === 0) return <Mono dim>0</Mono>;
+  return (
+    <Mono>
+      {share.holders} · {share.percent}%
+    </Mono>
+  );
+}
+
 /** Catalog management: every definition with its rule, reach and state. */
 export function DefinitionTable({
   definitions,
-  percents,
+  shares,
   facets,
+  events,
   updateAction,
   deleteAction,
 }: {
   definitions: readonly Definition[];
-  percents: ReadonlyMap<string, number> | null;
+  shares: ReadonlyMap<string, HolderShare> | null;
   facets: readonly { value: string; label: string }[];
+  events: readonly RuleEventOption[];
   updateAction: FormAction;
   deleteAction: FormAction;
 }) {
@@ -71,7 +85,7 @@ export function DefinitionTable({
   return (
     <Panel
       title="Catalog"
-      description={`${definitions.length} defined · ${active} active. Hidden achievements are masked for members until unlocked.`}
+      description={`${definitions.length} defined · ${active} active. Hidden achievements are masked for members until unlocked. Held by: holders · share of active members.`}
       flush
     >
       {definitions.length === 0 ? (
@@ -95,7 +109,7 @@ export function DefinitionTable({
           </TableHead>
           <TableBody>
             {definitions.map((definition) => {
-              const percent = percents?.get(definition.key);
+              const share = shares?.get(definition.key);
               return (
                 <TableRow key={definition.key} data-definition={definition.key}>
                   <TableCell>
@@ -114,6 +128,9 @@ export function DefinitionTable({
                       <span className="text-small text-fg-muted md:hidden">
                         {ruleText(storedRule(definition))}
                       </span>
+                      <Badge tone={RARITY_TONE[definition.rarity]} className="sm:hidden">
+                        {RARITY_LABELS[definition.rarity]}
+                      </Badge>
                     </span>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
@@ -130,9 +147,7 @@ export function DefinitionTable({
                     </Badge>
                   </TableCell>
                   <TableCell className="hidden lg:table-cell text-right">
-                    <Mono dim={!percent}>
-                      {percent === undefined ? '—' : percent === 0 ? '0%' : `${percent}%`}
-                    </Mono>
+                    <HeldBy share={share} />
                   </TableCell>
                   <TableCell className="text-right">
                     <span className="inline-flex gap-1">
@@ -140,6 +155,7 @@ export function DefinitionTable({
                         mode="edit"
                         values={formValues(definition)}
                         facets={facets}
+                        events={events}
                         action={updateAction}
                         trigger={
                           <Button size="sm" variant="ghost" data-testid={`edit-${definition.key}`}>

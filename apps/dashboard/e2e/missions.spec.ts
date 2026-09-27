@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 import { capture } from './feature-capture';
-import { signInAs } from './fixtures';
+import { type Persona, signInAs } from './fixtures';
+import { MISSION_FIXTURES } from './missions-seed';
 
 /**
  * Missions end to end: staff create and publish, members accept and submit
@@ -13,6 +14,20 @@ const BRIEF =
   'Bring up the ground station link to the lab cubesat and log one full pass.\nEvidence: the pass log.';
 let missionPath = '';
 let draftPath = '';
+
+/** Sign in as another persona in the same test: /login redirects a signed-in user. */
+async function switchTo(page: Page, persona: Persona): Promise<void> {
+  await page.context().clearCookies();
+  await signInAs(page, persona);
+}
+
+/** A seeded mission's page, found through the staff list. */
+async function seededMissionPath(page: Page, title: string): Promise<string> {
+  await page.goto('/missions');
+  await page.getByRole('link', { name: new RegExp(title) }).click();
+  await page.waitForURL(/\/missions\/[0-9a-f-]{36}$/);
+  return new URL(page.url()).pathname;
+}
 
 async function createMission(page: Page, title: string): Promise<string> {
   await page.goto('/missions');
@@ -64,7 +79,7 @@ test('staff create a draft, see validation, and publish it', async ({ page }) =>
 
 test('members accept and submit with evidence; drafts stay invisible', async ({ page }) => {
   for (const persona of ['verified', 'member'] as const) {
-    await signInAs(page, persona);
+    await switchTo(page, persona);
     await page.goto('/missions');
     await expect(page.getByText('Telemetry archive audit')).toHaveCount(0);
     await page.getByRole('link', { name: new RegExp(TITLE) }).click();
@@ -103,7 +118,10 @@ test('BREAK: members get no staff surface and no drafts', async ({ page }) => {
   await expect(page.getByText('ACCESS RESTRICTED')).toBeVisible();
   await page.goto(draftPath);
   await expect(page.getByText('NOT FOUND', { exact: true })).toBeVisible();
+  await page.goto('/missions');
   await expect(page.getByText('Telemetry archive audit')).toHaveCount(0);
+  await expect(page.getByText(MISSION_FIXTURES.draft)).toHaveCount(0);
+  await expect(page.getByText(MISSION_FIXTURES.bench)).toBeVisible();
   await page.goto(missionPath);
   await expect(page.getByTestId('publish-mission')).toHaveCount(0);
   await expect(page.getByTestId('assign-members')).toHaveCount(0);
@@ -117,8 +135,17 @@ test('staff assign members and review the queue', async ({ page }) => {
 
   await page.getByTestId('assign-members').click();
   const assign = page.getByRole('dialog', { name: 'Assign members' });
+  // Nobody picked: the service's refusal shows inline and the dialog stays open.
+  await assign.getByRole('button', { name: 'Assign' }).click();
+  await expect(assign.getByRole('alert').first()).toContainText('Choose at least one member');
+  // Holders are marked, not offered again.
+  await assign.getByRole('searchbox', { name: 'Search members' }).fill('dev verified');
+  await expect(assign.getByRole('list', { name: 'Matching members' })).toContainText(
+    'Awaiting review',
+  );
   await assign.getByRole('searchbox', { name: 'Search members' }).fill('mara');
   await assign.getByLabel(/Mara Voss/).check();
+  await expect(assign.getByRole('list', { name: 'Selected members' })).toContainText('Mara Voss');
   await assign.getByRole('button', { name: 'Assign' }).click();
   await expect(page.getByText(/1 ASSIGNED — members are notified/)).toBeVisible();
   await expect(page.locator('[data-assignment="mara"]')).toContainText('ASSIGNED');
@@ -142,14 +169,22 @@ test('staff assign members and review the queue', async ({ page }) => {
 });
 
 test('visual gauntlet', async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(300_000);
   await signInAs(page, 'operations');
+  const bench = await seededMissionPath(page, MISSION_FIXTURES.bench);
   await capture(page, 'missions', '/missions');
   await capture(page, 'missions-new', '/missions/new');
-  await capture(page, 'missions-detail', missionPath);
-  await capture(page, 'missions-review', `${missionPath}?tab=review`);
+  await capture(page, 'missions-detail', bench);
+  await capture(page, 'missions-review', `${bench}?tab=review`);
+  await capture(page, 'missions-assign', bench, async (view) => {
+    await view.getByTestId('assign-members').click();
+    const dialog = view.getByRole('dialog', { name: 'Assign members' });
+    await dialog.getByRole('searchbox', { name: 'Search members' }).fill('a');
+    await expect(dialog.getByRole('list', { name: 'Matching members' })).toContainText('Mara Voss');
+    await dialog.getByLabel(/Jun Park/).check();
+  });
   await capture(page, 'missions-empty', '/missions?status=archived');
-  await signInAs(page, 'verified');
+  await switchTo(page, 'verified');
   await capture(page, 'missions-member', '/missions');
   await capture(page, 'missions-member-detail', missionPath);
 });

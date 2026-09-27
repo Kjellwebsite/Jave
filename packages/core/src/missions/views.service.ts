@@ -385,7 +385,10 @@ export interface ReviewQueueItem {
   isOwn: boolean;
 }
 
-/** Submissions awaiting review, oldest first, one entry per unit (team or individual). */
+/**
+ * Submissions awaiting review, oldest first, one entry per unit (team or
+ * individual): the whole queue, or one mission's (`missionId`).
+ */
 export async function listSubmissionsForReview(
   ctx: ServiceContext,
   input: z.input<typeof reviewQueueSchema> = {},
@@ -403,7 +406,12 @@ export async function listSubmissionsForReview(
     .from(missionAssignments)
     .innerJoin(missions, eq(missions.id, missionAssignments.missionId))
     .innerJoin(members, eq(members.id, missionAssignments.memberId))
-    .where(eq(missionAssignments.status, 'submitted'))
+    .where(
+      and(
+        eq(missionAssignments.status, 'submitted'),
+        query.missionId ? eq(missionAssignments.missionId, query.missionId) : undefined,
+      ),
+    )
     .orderBy(asc(missionAssignments.submittedAt), asc(missionAssignments.id))
     .limit(REVIEW_QUEUE_SCAN_LIMIT);
   // The reviewer's own units, whatever their own assignment's state (an abandoned teammate

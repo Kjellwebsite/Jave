@@ -26,7 +26,7 @@ import { NextLink } from '../next-link';
 
 function slotsText(item: missions.OpenMissionItem): string {
   if (item.type === 'team') return 'Teams formed by staff';
-  if (item.slotsLeft === null) return 'Open slots';
+  if (item.slotsLeft === null) return 'Open to every member';
   return item.slotsLeft === 0 ? 'Full' : `${item.slotsLeft} of ${item.maxAssignees} slots left`;
 }
 

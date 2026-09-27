@@ -3,7 +3,7 @@ import { achievements, loadCatalog, missions, ValidationError } from '@jave/core
 import type { HandlerContext, ReplyPayload } from '../../interactions/types';
 import { customId } from '../../interactions/custom-id';
 import { button, field, panel, row, stringSelect, success } from '../../ui/components';
-import { plainText } from '../../ui/format';
+import { plainText, userText } from '../../ui/format';
 import { GLYPH, LIMITS } from '../../ui/theme';
 import { missionHeadline, MISSIONS_NS, rewardTitle, TYPE_LABEL } from './render';
 import { ensureManager } from './staff-access';
@@ -18,6 +18,7 @@ import { detailPayload } from './views';
 /** Select value for "none": never a valid facet or achievement key. */
 export const NONE_VALUE = '-';
 const OPTION_TEXT_MAX = 100;
+const FACET_LABEL_MAX = 64;
 /** One option is reserved for "none". */
 const CHOICES_MAX = LIMITS.selectOptions - 1;
 
@@ -76,12 +77,12 @@ async function rewardOptions(h: HandlerContext, current: string | null) {
 function settingsEmbed(mission: missions.MissionSummary, facetLabel: string | null): APIEmbed {
   return panel({
     kicker: `MISSION ${mission.number} ${GLYPH.dot} SETTINGS`,
-    title: plainText(mission.title, missions.TITLE_MAX),
+    title: userText(mission.title, missions.TITLE_MAX),
     description: 'Changes apply immediately. A posted card follows them.',
     fields: [
       field('Type', TYPE_LABEL[mission.type], true),
-      field('Capability', facetLabel ?? GLYPH.unknown, true),
-      field('Reward', rewardTitle(mission.reward) ?? GLYPH.unknown, true),
+      field('Capability', facetLabel ? userText(facetLabel, FACET_LABEL_MAX) : GLYPH.unknown, true),
+      field('Reward', userText(rewardTitle(mission.reward)) || GLYPH.unknown, true),
       field('Evidence', mission.evidenceRequired ? 'Required' : 'Optional', true),
       field(
         'Self-assign',

@@ -359,6 +359,20 @@ describe('missions — member flows', () => {
       modalSelect: { type: ['build'] },
     });
     expect(created.interaction.lastText()).toContain('ACCESS RESTRICTED');
+    for (const [action, fields] of [
+      ['assign_opts', { team: 'alpha', hours: '24' }],
+      ['edit', { title: 'Taken over', brief: BRIEF, hours: '', deadline: '', slots: '' }],
+    ] as const) {
+      pace();
+      const forged = await bot.run({
+        kind: 'modal',
+        name: customId('missions', action, mission.id),
+        user: member.user,
+        modalText: fields,
+      });
+      expect(forged.interaction.lastText()).toContain('ACCESS RESTRICTED');
+      expect(forged.interaction.lastPayload()?.components ?? []).toEqual([]);
+    }
     pace();
     const review = await run(member.user, 'review');
     expect(review.interaction.lastText()).toContain('ACCESS RESTRICTED');
@@ -372,6 +386,7 @@ describe('missions — member flows', () => {
       .where(eq(missionsTable.id, mission.id));
     expect(stored?.status).toBe('open');
     expect(stored?.evidenceRequired).toBe(false);
+    expect(stored?.title).toBe(mission.title);
     expect(await bot.kit.db.select().from(missionsTable)).toHaveLength(1);
   });
 });

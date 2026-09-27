@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactElement, useId, useRef, useState } from 'react';
+import { type ReactElement, useId, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,9 +14,8 @@ import {
 import {
   RARITY_LABELS,
   type RarityKey,
-  RULE_EVENT_LABELS,
+  type RuleEventOption,
   RULE_TYPE_LABELS,
-  type RuleEventKey,
   type RuleTypeKey,
   VISIBILITY_LABELS,
   type VisibilityKey,
@@ -46,7 +45,8 @@ export interface DefinitionValues {
   rarity: RarityKey;
   visibility: VisibilityKey;
   ruleType: RuleTypeKey;
-  event: RuleEventKey;
+  /** A catalog event type; the builder offers only the core allow-list. */
+  event: string;
   threshold: number;
   requiresVerification: boolean;
   facetKey: string | null;
@@ -71,13 +71,25 @@ export const EMPTY_DEFINITION: DefinitionValues = {
   ordinal: 0,
 };
 
-/** Events a member triggers alone count once only; the service enforces the same rule. */
-const FIRST_STEP_EVENTS: ReadonlySet<RuleEventKey> = new Set(['project.created']);
-
-function CriteriaBuilder({ values }: { values: DefinitionValues }) {
+/**
+ * The rule: manual, or "count this verified outcome N times". Outcomes are
+ * the core allow-list, passed in by the server; events a member triggers
+ * alone (first steps) count once only. The service enforces the same rules.
+ */
+function CriteriaBuilder({
+  values,
+  events,
+}: {
+  values: DefinitionValues;
+  events: readonly RuleEventOption[];
+}) {
   const [ruleType, setRuleType] = useState<RuleTypeKey>(values.ruleType);
-  const [event, setEvent] = useState<RuleEventKey>(values.event);
-  const firstStep = FIRST_STEP_EVENTS.has(event);
+  const [event, setEvent] = useState<string>(
+    events.some((option) => option.value === values.event)
+      ? values.event
+      : (events[0]?.value ?? values.event),
+  );
+  const firstStep = events.some((option) => option.value === event && option.firstStep);
   return (
     <fieldset className="min-w-0 space-y-4 rounded-md border border-line-subtle p-4">
       <legend className="type-eyebrow px-1 text-fg-subtle">RULE</legend>
@@ -99,8 +111,8 @@ function CriteriaBuilder({ values }: { values: DefinitionValues }) {
             <NativeSelect
               name="event"
               value={event}
-              onChange={(change) => setEvent(change.target.value as RuleEventKey)}
-              options={optionsFrom(RULE_EVENT_LABELS)}
+              onChange={(change) => setEvent(change.target.value)}
+              options={events.map((option) => ({ value: option.value, label: option.label }))}
             />
           </FormField>
           <FormField
@@ -140,23 +152,25 @@ export function DefinitionDialog({
   mode,
   values,
   facets,
+  events,
   action,
 }: {
   trigger: ReactElement;
   mode: 'create' | 'edit';
   values: DefinitionValues;
   facets: readonly { value: string; label: string }[];
+  events: readonly RuleEventOption[];
   action: FormAction;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState(0);
   const toast = useToast();
-  const lastMessage = useRef('');
-  // Dialogs need JavaScript anyway: wrapping the Server Action lets success close it with a toast.
-  const tracked: FormAction = async (state, data) => {
+  // The toast is raised by the call itself, not by an effect in the form: it
+  // still appears if the revalidated page no longer renders this dialog.
+  const announced: FormAction = async (state, data) => {
     const result = await action(state, data);
-    if (result.status === 'success') lastMessage.current = result.message;
+    if (result.status === 'success') toast({ text: result.message, tone: 'success' });
     return result;
   };
   return (
@@ -180,12 +194,9 @@ export function DefinitionDialog({
       >
         <ActionForm
           key={session}
-          action={tracked}
+          action={announced}
           submitLabel={mode === 'create' ? 'Create achievement' : 'Save achievement'}
-          onSuccess={() => {
-            setOpen(false);
-            toast({ text: lastMessage.current, tone: 'success' });
-          }}
+          onSuccess={() => setOpen(false)}
           aria-label={mode === 'create' ? 'New achievement' : 'Edit achievement'}
         >
           {mode === 'create' ? (
@@ -251,7 +262,7 @@ export function DefinitionDialog({
               defaultValue={values.description}
             />
           </FormField>
-          <CriteriaBuilder values={values} />
+          <CriteriaBuilder values={values} events={events} />
           <div className="grid gap-4 sm:grid-cols-3">
             <FormField name="rarity" label="Rarity">
               <NativeSelect

@@ -1,6 +1,6 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import { capture } from './feature-capture';
-import { signInAs } from './fixtures';
+import { type Persona, signInAs } from './fixtures';
 
 /**
  * Achievements end to end: the starter catalog, the criteria builder,
@@ -34,10 +34,27 @@ async function defineAchievement(
   return dialog;
 }
 
-async function award(page: Page, handle: string, key: string, reason: string) {
+/** Sign in as another persona in the same test: /login redirects a signed-in user. */
+async function switchTo(page: Page, persona: Persona): Promise<void> {
+  await page.context().clearCookies();
+  await signInAs(page, persona);
+}
+
+/** Search the dialog's member picker and pick one member by display name. */
+async function pickMember(dialog: Locator, query: string, name: string) {
+  await dialog.getByRole('searchbox', { name: 'Search members' }).fill(query);
+  await dialog
+    .getByRole('list', { name: 'Matching members' })
+    .getByRole('button', { name: new RegExp(name) })
+    .click();
+  await expect(dialog.getByRole('list', { name: 'Selected members' })).toContainText(name);
+}
+
+async function award(page: Page, query: string, name: string, key: string, reason: string) {
   await page.getByTestId('award-achievement').click();
   const dialog = page.getByRole('dialog', { name: 'Award achievement' });
-  await dialog.getByLabel('Member').fill(handle);
+  await pickMember(dialog, query, name);
+  await expect(dialog.getByLabel('Achievement')).toBeEnabled();
   await dialog.getByLabel('Achievement').selectOption(key);
   await dialog.getByLabel('Reason').fill(reason);
   await dialog.getByRole('button', { name: 'Award' }).click();
@@ -112,24 +129,31 @@ test('operations award by hand; the award waits for a second person', async ({ p
   await signInAs(page, 'operations');
   await page.goto('/achievements');
   await expect(page.getByTestId('new-achievement')).toHaveCount(0);
-  await award(page, '@mara', 'mentor', 'Mentored the autumn build cohort.');
+  await award(page, 'mara', 'Mara Voss', 'mentor', 'Mentored the autumn build cohort.');
   await expect(
     page.getByText(/ACHIEVEMENT AWARDED — MENTOR — Mara Voss\. Pending verification/),
   ).toBeVisible();
-  await award(page, '@sana', 'mentor', 'Ran the research reading group.');
+  await award(page, 'sana', 'Sana Okafor', 'mentor', 'Ran the research reading group.');
   await expect(page.getByText(/ACHIEVEMENT AWARDED — MENTOR — Sana Okafor\./)).toBeVisible();
 
-  const unknown = await award(page, '@nobody_here', 'mentor', 'Nobody by that handle.');
-  await expect(unknown.getByRole('alert').first()).toContainText('No member with that handle.');
-  await unknown.getByRole('button', { name: 'Cancel' }).click();
+  // A member already holding it is not offered the same achievement again.
+  await page.getByTestId('award-achievement').click();
+  const again = page.getByRole('dialog', { name: 'Award achievement' });
+  await pickMember(again, 'mara', 'Mara Voss');
+  await expect(again.getByLabel('Achievement').locator('option[value="mentor"]')).toHaveCount(0);
+  // Nobody picked: the refusal shows inline and the dialog stays open.
+  await again.getByRole('button', { name: /Remove Mara Voss/ }).click();
+  await again.getByLabel('Reason').fill('Submitted without a member.');
+  await again.getByRole('button', { name: 'Award' }).click();
+  await expect(again.getByRole('alert').first()).toContainText('Choose a member.');
+  await again.getByRole('button', { name: 'Cancel' }).click();
 
+  // Revoke lists only what the member holds.
   await page.getByTestId('revoke-achievement').click();
   const revoke = page.getByRole('dialog', { name: 'Revoke achievement' });
-  await revoke.getByLabel('Member').fill('@priya');
-  await revoke.getByLabel('Achievement').selectOption('keystone');
-  await revoke.getByLabel('Reason').fill('She never held it.');
-  await revoke.getByRole('button', { name: 'Revoke' }).click();
-  await expect(revoke.getByRole('alert').first()).toContainText(/not found/i);
+  await pickMember(revoke, 'jun', 'Jun Park');
+  await expect(revoke.getByText('They hold no achievements.')).toBeVisible();
+  await expect(revoke.getByLabel('Achievement')).toBeDisabled();
   await revoke.getByRole('button', { name: 'Cancel' }).click();
 
   await page.getByRole('link', { name: /Pending verification/ }).click();
@@ -170,6 +194,12 @@ test('visual gauntlet', async ({ page }) => {
   await signInAs(page, 'core');
   await capture(page, 'achievements', '/achievements');
   await capture(page, 'achievements-pending', '/achievements?tab=pending');
-  await signInAs(page, 'member');
+  await capture(page, 'achievements-award', '/achievements', async (view) => {
+    await view.getByTestId('award-achievement').click();
+    const dialog = view.getByRole('dialog', { name: 'Award achievement' });
+    await pickMember(dialog, 'elena', 'Elena Duarte');
+    await expect(dialog.getByLabel('Achievement')).toBeEnabled();
+  });
+  await switchTo(page, 'member');
   await capture(page, 'achievements-member', '/achievements');
 });

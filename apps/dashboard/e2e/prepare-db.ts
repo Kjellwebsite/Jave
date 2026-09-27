@@ -5,6 +5,8 @@
 import { spawnSync } from 'node:child_process';
 import postgres from 'postgres';
 import { databaseEnvSchema, parseEnv } from '@jave/config';
+import { seedMissionFixtures } from './missions-seed';
+import { seedModerationFixturesAt } from './moderation-seed';
 import { seedDashboardFixtures } from './seed';
 import { seedTicketFixtures } from './tickets-seed';
 
@@ -32,6 +34,9 @@ async function main(): Promise<void> {
   if (migrate.status !== 0) throw new Error('migration failed');
   await seedDashboardFixtures(DATABASE_URL);
   await seedTicketFixtures(DATABASE_URL);
+  await seedMissionFixtures(DATABASE_URL);
+  // Last: its quarantine refuses the quarantined member's writes in earlier fixtures.
+  await seedModerationFixturesAt(DATABASE_URL);
   console.log(`e2e database "${name}" ready`);
 }
 

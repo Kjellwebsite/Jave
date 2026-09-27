@@ -71,8 +71,3 @@ export const DEFINITION_FORM_FIELDS = [
   'facetKey',
   'ordinal',
 ] as const;
-
-/** Member reference typed by staff: "@mara", "mara" or a pasted "Mara". */
-export function handleFrom(data: FormData): string {
-  return formString(data, 'handle').trim().replace(/^@/, '').toLowerCase();
-}

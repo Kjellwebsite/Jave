@@ -28,8 +28,10 @@ export const VISIBILITY_LABELS = {
 export type VisibilityKey = keyof typeof VISIBILITY_LABELS;
 
 /**
- * The events a rule may count (the core allow-list), described as the verified
- * outcome they record. Kept in the same order as ACHIEVEMENT_EVENT_TYPES.
+ * The verified outcome each allow-listed event records, for the criteria
+ * builder. The options themselves come from the core allow-list
+ * (ACHIEVEMENT_EVENT_TYPES); an event added there before it is labelled here
+ * shows its type name.
  */
 export const RULE_EVENT_LABELS = {
   'application.accepted': 'Application accepted',
@@ -46,6 +48,19 @@ export const RULE_EVENT_LABELS = {
 
 export type RuleEventKey = keyof typeof RULE_EVENT_LABELS;
 
+/** "Mission verified" for `mission.completed`; the type name for an unlabelled event. */
+export function ruleEventLabel(event: string): string {
+  return Object.hasOwn(RULE_EVENT_LABELS, event) ? RULE_EVENT_LABELS[event as RuleEventKey] : event;
+}
+
+/** One outcome the criteria builder offers. */
+export interface RuleEventOption {
+  value: string;
+  label: string;
+  /** A member triggers it alone: a rule on it counts once only. */
+  firstStep: boolean;
+}
+
 export const RULE_TYPE_LABELS = {
   manual: 'Manual — awarded by staff',
   event_count: 'Rule — count verified outcomes',
@@ -60,8 +75,28 @@ export type RuleView =
 export function ruleText(criteria: RuleView | null): string {
   if (!criteria) return 'Inert rule';
   if (criteria.type === 'manual') return 'Manual';
-  const label = Object.hasOwn(RULE_EVENT_LABELS, criteria.event)
-    ? RULE_EVENT_LABELS[criteria.event as RuleEventKey]
-    : criteria.event;
-  return `${label} × ${criteria.threshold}`;
+  return `${ruleEventLabel(criteria.event)} × ${criteria.threshold}`;
 }
+
+/** How many active members hold an achievement, and their share of all active members. */
+export interface HolderShare {
+  holders: number;
+  /** Percent, one decimal. */
+  percent: number;
+}
+
+/** An achievement as a select lists it: key and "Title · rarity". */
+export interface AchievementOption {
+  value: string;
+  label: string;
+}
+
+/** A member's active award, as the award and revoke dialogs list it. */
+export interface HeldAwardView {
+  key: string;
+  title: string;
+  verified: boolean;
+}
+
+export type HeldAwardsResult =
+  { status: 'ok'; held: HeldAwardView[] } | { status: 'error'; message: string };

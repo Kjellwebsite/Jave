@@ -6,14 +6,16 @@
  */
 import { notInArray } from 'drizzle-orm';
 import {
+  createContext,
   findUserByDiscordId,
   HOUR,
   moderation,
   resolveUserActor,
   type ServiceContext,
+  systemActor,
   withActor,
 } from '@jave/core';
-import { notifications } from '@jave/database';
+import { createDatabase, notifications } from '@jave/database';
 
 /** Dev personas (server/auth/dev-personas.ts) and fixture members (seed.ts), by Discord ID. */
 const PEOPLE = {
@@ -145,4 +147,20 @@ export async function seedModerationFixtures(system: ServiceContext): Promise<vo
   });
 
   await system.db.delete(notifications).where(notInArray(notifications.id, before));
+}
+
+/**
+ * Seeds the moderation fixtures on their own connection. Run it after every
+ * other fixture: the quarantine it applies (Priya) refuses her later writes,
+ * such as the ticket the ticket fixtures open for her.
+ */
+export async function seedModerationFixturesAt(databaseUrl: string): Promise<void> {
+  const database = createDatabase(databaseUrl, { max: 2, applicationName: 'jave-e2e-moderation' });
+  try {
+    await seedModerationFixtures(
+      createContext({ db: database.db, actor: systemActor('e2e-moderation-seed') }),
+    );
+  } finally {
+    await database.close();
+  }
 }

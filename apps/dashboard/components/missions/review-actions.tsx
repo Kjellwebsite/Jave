@@ -31,7 +31,7 @@ export function ReviewActions({
         action={verifyAction}
         hidden={hidden}
         trigger={
-          <Button size="sm" variant="primary" data-testid={`verify-${assignmentId}`}>
+          <Button size="sm" variant="secondary" data-testid={`verify-${assignmentId}`}>
             Verify
           </Button>
         }

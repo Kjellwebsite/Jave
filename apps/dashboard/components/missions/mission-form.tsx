@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, useId, useState } from 'react';
-import { Checkbox, Input, Mono, NativeSelect, Switch, Textarea } from '@jave/ui';
+import { Input, Mono, NativeSelect, Switch, Textarea } from '@jave/ui';
 import { MISSION_TYPE_LABELS, type MissionTypeKey, toUtcInputValue } from '@/lib/mission-labels';
 import { optionsFrom } from '@/lib/member-labels';
 import { ActionForm, type FormAction } from '../forms/action-form';
@@ -178,7 +178,7 @@ export function MissionForm({
           label="Evidence required"
           description="Submissions must carry a titled http(s) link."
         />
-        <Checkbox
+        <Switch
           id={`${id}-self`}
           name="selfAssignable"
           defaultChecked={values.selfAssignable && !team}

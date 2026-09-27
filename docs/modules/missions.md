@@ -197,8 +197,9 @@ announce (editing its own message).
 - `getMissionDetail(ctx, { missionId })` — counts for everyone, the viewer's own
   assignment, and `assignments` with identities for mission staff only.
 - `getMemberMissionHistory(ctx, { memberId, limit })`.
-- `listSubmissionsForReview(ctx, { limit, offset })` — one entry per unit (team
-  or individual), oldest first, flagged `isOwn` when the reviewer is in the unit.
+- `listSubmissionsForReview(ctx, { missionId?, limit, offset })` — one entry per unit
+  (team or individual), oldest first, flagged `isOwn` when the reviewer is in the unit;
+  `missionId` narrows it to one mission (the dashboard's per-mission queue).
 
 ## Input limits
 
@@ -238,7 +239,7 @@ refused. Unknown fields are refused (`strict`).
 Full reference: [docs/commands/missions.md](../commands/missions.md).
 
 - **Discord** (`apps/bot/src/features/missions`): `/mission list | view | accept | submit |
-  mine | abandon` for members and `/mission create | publish | assign | review` for staff,
+mine | abandon` for members and `/mission create | publish | assign | review` for staff,
   driven by buttons, selects and modals (ACCEPT on cards and lists, type filter, submission
   modal, user-select assignment, VERIFY / REJECT with feedback modals, a SETTINGS panel for
   capability, reward, type, evidence and self-assignment). Job handlers post and refresh
@@ -246,7 +247,7 @@ Full reference: [docs/commands/missions.md](../commands/missions.md).
 - **Dashboard**: `/missions` (staff tabs by status with counts; members see open missions
   and their own work), `/missions/new` and `/missions/[id]/edit` (the mission form),
   `/missions/[id]` (facts, own assignment actions, staff lifecycle, assignments with the
-  assign dialog, and this mission's review queue).
+  assign dialog and its server-side member search, and this mission's review queue).
 - `listMissions` (staff listing in every state, with holding, awaiting-review counts and
   per-status totals) serves the dashboard; `scheduleSlotsRefresh` keeps a capped mission's
   card current when its roster changes (assign, self-assign, abandon, deadline expiry).

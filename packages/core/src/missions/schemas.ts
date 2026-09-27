@@ -149,7 +149,8 @@ export const memberHistorySchema = z
   })
   .strict();
 
-export const reviewQueueSchema = pageSchema.strict();
+/** The whole queue, or one mission's part of it (`missionId`). */
+export const reviewQueueSchema = pageSchema.extend({ missionId: z.uuid().optional() }).strict();
 
 export const listMissionsSchema = pageSchema
   .extend({

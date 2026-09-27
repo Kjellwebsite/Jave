@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { achievements } from '@jave/core';
-import { criteriaFrom, definitionFields, handleFrom } from './achievement-form';
-import { RULE_EVENT_LABELS, ruleText } from './achievement-labels';
+import { ruleEventOptions } from '@/server/data/achievements';
+import { criteriaFrom, definitionFields } from './achievement-form';
+import { RULE_EVENT_LABELS, ruleEventLabel, ruleText } from './achievement-labels';
+import { type MemberOption, toggleSelection } from './member-search';
 import { INVALID_DATE, missionFormInput, parseUtcInput } from './mission-form';
-import { holdingLabel, toUtcInputValue } from './mission-labels';
+import { holdingLabel, rewardLabel, slotsLabel, toUtcInputValue } from './mission-labels';
 import { NAV_GROUPS, visibleNav } from './nav';
 
 function form(entries: Record<string, string | string[]>): FormData {
@@ -51,9 +53,22 @@ describe('mission form', () => {
     expect(Number.isNaN(input.maxAssignees)).toBe(true);
   });
 
-  it('labels holdings with and without a cap', () => {
+  it('labels holdings and slots with and without a cap', () => {
     expect(holdingLabel(3, 10)).toBe('3 of 10');
     expect(holdingLabel(0, null)).toBe('0 · no cap');
+    expect(slotsLabel(3, 10)).toBe('7 of 10 left');
+    expect(slotsLabel(10, 10)).toBe('Full · 10 of 10');
+    expect(slotsLabel(4, null)).toBe('No cap · 4 taking part');
+  });
+
+  it('labels rewards, masking a hidden one to its rarity', () => {
+    expect(rewardLabel(null)).toBe('—');
+    expect(rewardLabel({ hidden: false, key: 'builder', title: 'Builder', rarity: 'rare' })).toBe(
+      'Builder · rare',
+    );
+    expect(rewardLabel({ hidden: true, rarity: 'exceptional' })).toBe(
+      'Hidden achievement · exceptional',
+    );
   });
 });
 
@@ -70,8 +85,19 @@ describe('achievement definition form', () => {
     expect(ruleText(rule)).toBe('Mission verified × 10');
   });
 
-  it('offers exactly the core allow-list of events', () => {
-    expect(Object.keys(RULE_EVENT_LABELS)).toEqual([...achievements.ACHIEVEMENT_EVENT_TYPES]);
+  it('offers exactly the core allow-list of events, each labelled, first steps flagged', () => {
+    const options = ruleEventOptions();
+    expect(options.map((option) => option.value)).toEqual([
+      ...achievements.ACHIEVEMENT_EVENT_TYPES,
+    ]);
+    expect(Object.keys(RULE_EVENT_LABELS).sort()).toEqual(
+      [...achievements.ACHIEVEMENT_EVENT_TYPES].sort(),
+    );
+    for (const option of options) expect(option.label).not.toBe(option.value);
+    expect(options.filter((option) => option.firstStep).map((option) => option.value)).toEqual([
+      ...achievements.FIRST_STEP_ONLY_EVENTS,
+    ]);
+    expect(ruleEventLabel('member.joined')).toBe('member.joined');
   });
 
   it('BREAK: farmable or forged rules are refused by the service schema', () => {
@@ -101,10 +127,22 @@ describe('achievement definition form', () => {
       facetKey: null,
     });
   });
+});
 
-  it('normalizes typed handles', () => {
-    expect(handleFrom(form({ handle: ' @Mara ' }))).toBe('mara');
-    expect(handleFrom(form({}))).toBe('');
+describe('member picker selection', () => {
+  const mara: MemberOption = { memberId: 'a', displayName: 'Mara Voss', handle: 'mara' };
+  const jun: MemberOption = { memberId: 'b', displayName: 'Jun Park', handle: 'jun' };
+  const sana: MemberOption = { memberId: 'c', displayName: 'Sana Okafor', handle: 'sana' };
+
+  it('toggles members in and out, keeping the order of picks', () => {
+    const picked = toggleSelection(toggleSelection([], mara, 3), jun, 3);
+    expect(picked.map((member) => member.handle)).toEqual(['mara', 'jun']);
+    expect(toggleSelection(picked, mara, 3).map((member) => member.handle)).toEqual(['jun']);
+  });
+
+  it('BREAK: refuses a pick past the cap instead of dropping an earlier one', () => {
+    const full = toggleSelection(toggleSelection([], mara, 2), jun, 2);
+    expect(toggleSelection(full, sana, 2).map((member) => member.handle)).toEqual(['mara', 'jun']);
   });
 });
 

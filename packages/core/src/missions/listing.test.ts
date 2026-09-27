@@ -13,6 +13,7 @@ import {
   createMission,
   DISCORD_MISSION_REFRESH_CARD_JOB,
   listMissions,
+  listSubmissionsForReview,
   markMissionAnnounced,
   selfAssignMission,
   submitMission,
@@ -117,6 +118,54 @@ describe('mission staff listing', () => {
       listMissions(kit.as(ops), { status: 'deleted' as 'open', limit: 5 }),
     ).rejects.toThrow();
     await expect(listMissions(kit.as(ops), { limit: 10_000 })).rejects.toThrow();
+  });
+});
+
+describe('mission review queue filter', () => {
+  let kit: TestKit;
+  let ops: UserActor;
+
+  beforeEach(async () => {
+    kit = await createTestKit();
+    ops = await kit.member({ roles: ['operations'] });
+  });
+  afterEach(async () => {
+    await kit.close();
+  });
+
+  async function submitTo(missionId: string) {
+    const member = await kit.member();
+    const assignment = await selfAssignMission(kit.as(member), { missionId });
+    await submitMission(kit.as(member), { assignmentId: assignment.id, submission: 'Done.' });
+    return assignment;
+  }
+
+  it('narrows the queue to one mission, oldest first', async () => {
+    const first = await openMission(kit, ops, { title: 'First mission' });
+    const second = await openMission(kit, ops, { title: 'Second mission' });
+    const a = await submitTo(first.id);
+    kit.clock.advance(HOUR);
+    await submitTo(second.id);
+    kit.clock.advance(HOUR);
+    const c = await submitTo(first.id);
+
+    const all = await listSubmissionsForReview(kit.as(ops));
+    expect(all.total).toBe(3);
+    const only = await listSubmissionsForReview(kit.as(ops), { missionId: first.id });
+    expect(only.total).toBe(2);
+    expect(only.items.map((item) => item.assignmentId)).toEqual([a.id, c.id]);
+    expect(only.items.every((item) => item.missionId === first.id)).toBe(true);
+  });
+
+  it('BREAK: a forged mission id is refused, and members cannot read the queue', async () => {
+    await expect(
+      listSubmissionsForReview(kit.as(ops), { missionId: "1' or '1'='1" }),
+    ).rejects.toThrow();
+    const member = await kit.member({ roles: ['verified'] });
+    const mission = await openMission(kit, ops);
+    await expect(
+      listSubmissionsForReview(kit.as(member), { missionId: mission.id }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
   });
 });
 

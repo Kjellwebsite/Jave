@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import { can, isUuid, missions } from '@jave/core';
 import { Callout, Card, Icon, PageHeader, buttonStyles } from '@jave/ui';
 import { MissionForm } from '@/components/missions/mission-form';
+import { MissionLifecycle } from '@/components/missions/mission-lifecycle';
 import { RestrictedPage } from '@/components/restricted-page';
 import { requireConsoleContext } from '@/server/context';
 import { facetOptions, rewardOptions } from '@/server/data/missions';
@@ -24,7 +25,10 @@ export default async function EditMissionPage({ params }: { params: Promise<{ id
   const loaded = await guarded(() => missions.getMissionDetail(ctx, { missionId: id }));
   if (!loaded.ok) notFound();
   const { mission } = loaded.value;
-  const [facets, rewards] = await Promise.all([facetOptions(ctx), rewardOptions(ctx)]);
+  const [facets, rewards] = await Promise.all([
+    facetOptions(ctx),
+    rewardOptions(ctx, mission.reward),
+  ]);
   const back = (
     <Link href={`/missions/${mission.id}`} className={buttonStyles({ variant: 'ghost' })}>
       <Icon icon={ArrowLeft} size="sm" />
@@ -44,30 +48,33 @@ export default async function EditMissionPage({ params }: { params: Promise<{ id
           Archived missions are final and cannot be edited.
         </Callout>
       ) : (
-        <Card className="max-w-3xl">
-          <MissionForm
-            action={updateMissionAction}
-            submitLabel="Save mission"
-            typeLocked={mission.status !== 'draft'}
-            facets={facets}
-            rewards={rewards}
-            values={{
-              missionId: mission.id,
-              title: mission.title,
-              brief: mission.brief,
-              type: mission.type,
-              facetKey: mission.facetKey,
-              evidenceRequired: mission.evidenceRequired,
-              rewardAchievementKey:
-                mission.reward && !mission.reward.hidden ? mission.reward.key : null,
-              rewardNote: mission.rewardNote,
-              maxAssignees: mission.maxAssignees,
-              selfAssignable: mission.selfAssignable,
-              deadlineAt: mission.deadlineAt,
-              durationHours: mission.durationHours,
-            }}
-          />
-        </Card>
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,48rem)_minmax(0,20rem)]">
+          <Card>
+            <MissionForm
+              action={updateMissionAction}
+              submitLabel="Save mission"
+              typeLocked={mission.status !== 'draft'}
+              facets={facets}
+              rewards={rewards}
+              values={{
+                missionId: mission.id,
+                title: mission.title,
+                brief: mission.brief,
+                type: mission.type,
+                facetKey: mission.facetKey,
+                evidenceRequired: mission.evidenceRequired,
+                rewardAchievementKey:
+                  mission.reward && !mission.reward.hidden ? mission.reward.key : null,
+                rewardNote: mission.rewardNote,
+                maxAssignees: mission.maxAssignees,
+                selfAssignable: mission.selfAssignable,
+                deadlineAt: mission.deadlineAt,
+                durationHours: mission.durationHours,
+              }}
+            />
+          </Card>
+          <MissionLifecycle />
+        </div>
       )}
     </div>
   );

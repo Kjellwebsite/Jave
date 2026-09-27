@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { auditLogs, evidence, missionAssignments, missions as missionsTable } from '@jave/database';
+import {
+  auditLogs,
+  evidence,
+  missionAssignments,
+  missions as missionsTable,
+  notificationDeliveries,
+  notifications,
+} from '@jave/database';
 import { achievements, missions } from '@jave/core';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
 import type { InteractionUser } from '../../interactions/types';
@@ -266,6 +273,47 @@ describe('missions — staff flows', () => {
     });
     const rows = await assignmentsOf(team.id);
     expect(rows.map((row) => row.teamKey)).toEqual(['alpha', 'alpha']);
+  });
+
+  it('BREAK: forged team keys and hours in the picker id change nothing; closed DMs change nothing', async () => {
+    const mission = await openMission(bot, ops.actor, { type: 'team', title: 'Relay build' });
+    const a = await bot.member({ roles: ['verified'], username: 'mara' });
+    for (const forged of [
+      customId('missions', 'assign_pick', mission.id, 'Evil Key!', '-'),
+      customId('missions', 'assign_pick', mission.id, 'alpha', 999_999),
+    ]) {
+      const picked = await bot.run({
+        kind: 'select',
+        name: forged,
+        user: ops.user,
+        values: [a.user.id],
+      });
+      expect(picked.interaction.lastText()).toContain('INVALID INPUT');
+    }
+    expect(await assignmentsOf(mission.id)).toHaveLength(0);
+
+    bot.gateway.closedDms.add(a.user.id);
+    const assigned = await bot.run({
+      kind: 'select',
+      name: customId('missions', 'assign_pick', mission.id, 'alpha', '-'),
+      user: ops.user,
+      values: [a.user.id],
+    });
+    expect(assigned.interaction.lastText()).toContain('1 ASSIGNED');
+    await bot.drain();
+    const [notice] = await bot.kit.db
+      .select({ status: notificationDeliveries.status })
+      .from(notificationDeliveries)
+      .innerJoin(notifications, eq(notifications.id, notificationDeliveries.notificationId))
+      .where(
+        and(
+          eq(notifications.recipientUserId, a.actor.userId),
+          eq(notificationDeliveries.channel, 'discord_dm'),
+        ),
+      );
+    expect(notice?.status).toBe('skipped');
+    expect(bot.gateway.dms).toHaveLength(0);
+    expect((await assignmentsOf(mission.id)).map((row) => row.status)).toEqual(['assigned']);
   });
 
   it('reviews the queue: VERIFY with optional feedback, REJECT with required feedback', async () => {

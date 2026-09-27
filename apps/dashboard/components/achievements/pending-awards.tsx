@@ -5,6 +5,7 @@ import {
   Badge,
   EmptyState,
   Mono,
+  Pagination,
   Panel,
   Table,
   TableBody,
@@ -14,8 +15,10 @@ import {
   TableRow,
 } from '@jave/ui';
 import { RARITY_LABELS, RARITY_TONE } from '@/lib/achievement-labels';
+import { toQueryString } from '@/lib/search-params';
 import { formatTimestamp } from '@/lib/time';
 import type { FormAction } from '../forms/action-form';
+import { NextLink } from '../next-link';
 import { VerifyAwardButton } from './award-controls';
 
 /** Awards waiting for a second person, oldest first. */
@@ -76,7 +79,7 @@ export function PendingAwards({
                     {formatTimestamp(item.awardedAt, timeZone)}
                   </Mono>
                   <span className="block text-small text-fg-subtle">
-                    {item.awardedByName ? `by ${item.awardedByName}` : 'by a rule'}
+                    {item.awardedByName ? `by ${item.awardedByName}` : 'automatic'}
                     {item.note ? ` — ${item.note}` : ''}
                   </span>
                 </TableCell>
@@ -99,6 +102,19 @@ export function PendingAwards({
           </TableBody>
         </Table>
       )}
+      {page.total > page.limit ? (
+        <div className="border-t border-line-subtle px-5 py-3">
+          <Pagination
+            offset={page.offset}
+            limit={page.limit}
+            total={page.total}
+            linkComponent={NextLink}
+            hrefForOffset={(next) =>
+              `/achievements${toQueryString({ tab: 'pending', offset: next || undefined })}`
+            }
+          />
+        </div>
+      ) : null}
     </Panel>
   );
 }

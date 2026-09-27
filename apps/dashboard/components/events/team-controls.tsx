@@ -77,10 +77,13 @@ export function GenerateBracketDialog({
   eventId,
   teams,
   action,
+  triggerHidden = false,
 }: {
   eventId: string;
   teams: number;
   action: FormAction;
+  /** Keep the dialog mounted but offer no button (the bracket exists). */
+  triggerHidden?: boolean;
 }) {
   return (
     <ConfirmActionDialog
@@ -91,7 +94,12 @@ export function GenerateBracketDialog({
       action={action}
       hidden={{ eventId }}
       trigger={
-        <Button variant="primary" iconLeft={Swords} disabled={teams < 2}>
+        <Button
+          variant="primary"
+          iconLeft={Swords}
+          disabled={teams < 2}
+          className={triggerHidden ? 'hidden' : undefined}
+        >
           Generate bracket
         </Button>
       }

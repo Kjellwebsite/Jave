@@ -63,7 +63,11 @@ export interface BracketTabProps {
   reportAction: FormAction;
 }
 
-/** The single-elimination bracket; staff generate it and record results. */
+/**
+ * The single-elimination bracket; staff generate it and record results. The
+ * staff dialogs stay mounted while their button hides (generating removes the
+ * empty state, a result closes its match), so the outcome is still announced.
+ */
 export async function BracketTab({
   ctx,
   event,
@@ -75,46 +79,51 @@ export async function BracketTab({
     calendar.getBracket(ctx, { eventId: event.id }),
     calendar.listTeams(ctx, { eventId: event.id }),
   ]);
-  if (bracket.state === 'none') {
-    const canGenerate = staff && isOpen(event);
-    return (
-      <Card padding="none">
-        <EmptyState
-          icon={Swords}
-          title="NO BRACKET YET"
-          description={
-            canGenerate
-              ? `Generate a single-elimination bracket from the ${teams.length} ${teams.length === 1 ? 'team' : 'teams'}. At least two are needed.`
-              : 'The bracket appears here once staff generate it.'
-          }
-          action={
-            canGenerate ? (
-              <GenerateBracketDialog
-                eventId={event.id}
-                teams={teams.length}
-                action={generateAction}
-              />
-            ) : undefined
-          }
-        />
-      </Card>
-    );
-  }
+  const canGenerate = staff && isOpen(event);
   // Results can still be recorded after the evening ends; only a cancellation freezes them.
-  const canReport = staff && event.status !== 'cancelled' && bracket.state === 'in_progress';
+  const canReport = staff && event.status !== 'cancelled';
   return (
     <div className="space-y-5">
+      {canGenerate ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-small text-fg-subtle">
+            {bracket.state === 'none'
+              ? `Single elimination from ${teams.length} ${teams.length === 1 ? 'team' : 'teams'}. At least two are needed.`
+              : 'Results are final once recorded. The final completes the tournament.'}
+          </p>
+          <GenerateBracketDialog
+            eventId={event.id}
+            teams={teams.length}
+            action={generateAction}
+            triggerHidden={bracket.state !== 'none'}
+          />
+        </div>
+      ) : null}
       {bracket.champion ? (
         <Callout tone="success" title="TOURNAMENT COMPLETE">
           Champion — {bracket.champion.name}.
         </Callout>
       ) : null}
-      <Card>
-        <BracketView
-          bracket={bracket}
-          report={canReport ? { action: reportAction, scoreMax: calendar.MAX_MATCH_SCORE } : null}
-        />
-      </Card>
+      {bracket.state === 'none' ? (
+        <Card padding="none">
+          <EmptyState
+            icon={Swords}
+            title="NO BRACKET YET"
+            description={
+              canGenerate
+                ? 'Draw or create teams first, then generate the bracket. Teams lock once it exists.'
+                : 'The bracket appears here once staff generate it.'
+            }
+          />
+        </Card>
+      ) : (
+        <Card>
+          <BracketView
+            bracket={bracket}
+            report={canReport ? { action: reportAction, scoreMax: calendar.MAX_MATCH_SCORE } : null}
+          />
+        </Card>
+      )}
     </div>
   );
 }

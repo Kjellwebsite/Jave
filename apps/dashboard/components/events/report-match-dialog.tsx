@@ -12,6 +12,8 @@ export interface ReportMatchDialogProps {
   teamB: string;
   scoreMax: number;
   action: FormAction;
+  /** Keep the dialog mounted but offer no button (the match is not ready or is decided). */
+  triggerHidden?: boolean;
 }
 
 /** Staff: record a match result. Final once recorded; the winner advances at once. */
@@ -22,6 +24,7 @@ export function ReportMatchDialog({
   teamB,
   scoreMax,
   action,
+  triggerHidden = false,
 }: ReportMatchDialogProps) {
   const scoreDigits = String(scoreMax).length;
   return (
@@ -33,7 +36,12 @@ export function ReportMatchDialog({
       action={action}
       hidden={{ matchId }}
       trigger={
-        <Button size="sm" variant="secondary" data-testid="report-match">
+        <Button
+          size="sm"
+          variant="secondary"
+          data-testid="report-match"
+          className={triggerHidden ? 'hidden' : undefined}
+        >
           Report
         </Button>
       }

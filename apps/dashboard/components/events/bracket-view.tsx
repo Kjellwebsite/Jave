@@ -69,6 +69,8 @@ function MatchCard({
   const decided = match.status === 'completed' || match.status === 'bye';
   const placeholder = match.status === 'bye' ? 'Bye' : 'To be decided';
   const label = `${roundName}, match ${match.position + 1}`;
+  const reportable =
+    report !== null && match.status === 'ready' && match.teamA !== null && match.teamB !== null;
   return (
     <li
       aria-label={label}
@@ -79,24 +81,27 @@ function MatchCard({
         <Mono dim className="text-[11px]">
           M{match.position + 1}
         </Mono>
-        {match.status === 'ready' ? (
-          report && match.teamA && match.teamB ? (
+        <div className="flex items-center gap-2">
+          {reportable ? null : match.status === 'ready' ? (
+            <Badge tone="info">Ready</Badge>
+          ) : match.status === 'bye' ? (
+            <Badge>Bye</Badge>
+          ) : match.status === 'pending' ? (
+            <span className="type-eyebrow text-[10px] text-fg-subtle">Waiting</span>
+          ) : null}
+          {report ? (
+            // Mounted for every match so a recorded result can still be announced.
             <ReportMatchDialog
               matchId={match.id}
               roundName={roundName}
-              teamA={match.teamA.name}
-              teamB={match.teamB.name}
+              teamA={match.teamA?.name ?? 'Team A'}
+              teamB={match.teamB?.name ?? 'Team B'}
               scoreMax={report.scoreMax}
               action={report.action}
+              triggerHidden={!reportable}
             />
-          ) : (
-            <Badge tone="info">Ready</Badge>
-          )
-        ) : match.status === 'bye' ? (
-          <Badge>Bye</Badge>
-        ) : match.status === 'pending' ? (
-          <span className="type-eyebrow text-[10px] text-fg-subtle">Waiting</span>
-        ) : null}
+          ) : null}
+        </div>
       </div>
       <div className="divide-y divide-line-subtle">
         <TeamRow

@@ -160,23 +160,31 @@ describe('content security policy', () => {
 
 describe('navigation', () => {
   it('shows each entry only with its capability and drops empty groups', () => {
+    // Invariants rather than exact lists: every workstream adds its own pages.
     const member = visibleNav(NAV_GROUPS, ['canViewMembers']);
-    expect(member.map((group) => group.label)).toEqual(['OVERVIEW', 'PEOPLE']);
+    expect(member.map((group) => group.label)).toEqual(
+      expect.arrayContaining(['OVERVIEW', 'PEOPLE']),
+    );
+    expect(member.map((group) => group.label)).not.toContain('SYSTEM');
     const founder = visibleNav(NAV_GROUPS, [
       'canViewMembers',
       'canViewAuditLogs',
       'canViewSettings',
     ]);
-    expect(founder.flatMap((group) => group.items.map((item) => item.href))).toEqual([
+    expect(founder.flatMap((group) => group.items.map((item) => item.href))).toEqual(
+      expect.arrayContaining(['/overview', '/members', '/ranking', '/audit', '/settings']),
+    );
+    const signedIn = visibleNav(NAV_GROUPS, []);
+    expect(signedIn.flatMap((group) => group.items.map((item) => item.href))).toContain(
       '/overview',
+    );
+    for (const group of signedIn) {
+      expect(group.items.length).toBeGreaterThan(0);
+      for (const item of group.items) expect(item.capability).toBeNull();
+    }
+    expect(signedIn.flatMap((group) => group.items.map((item) => item.href))).not.toContain(
       '/members',
-      '/ranking',
-      '/audit',
-      '/settings',
-    ]);
-    expect(
-      visibleNav(NAV_GROUPS, []).flatMap((group) => group.items.map((item) => item.href)),
-    ).toEqual(['/overview']);
+    );
   });
 
   it('resolves page context from nested paths', () => {

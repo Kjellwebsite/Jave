@@ -389,7 +389,9 @@ describe('achievements feature', () => {
       expect(verified.interaction.responses[0]?.type).toBe('update');
       expect(verified.interaction.lastText()).toContain('1 AWARD VERIFIED');
       // User-provided values are escaped before they are echoed.
-      expect(verified.interaction.lastText()).toContain('✕ NONEXISTENT\\_KEY — Achievement not found.');
+      expect(verified.interaction.lastText()).toContain(
+        '✕ NONEXISTENT\\_KEY — Achievement not found.',
+      );
     });
 
     it('BREAK: members pressing staff buttons or forging staff modals change nothing', async () => {
@@ -405,6 +407,13 @@ describe('achievements feature', () => {
         expect(pressed.interaction.lastText()).toContain('ACCESS RESTRICTED');
         expect(pressed.interaction.responses.some((r) => r.type === 'modal')).toBe(false);
       }
+      const picked = await bot.run({
+        kind: 'select',
+        name: customId('achievements', 'verify_pick', memberId),
+        user: intruder.user,
+        values: ['team_leader'],
+      });
+      expect(picked.interaction.lastText()).toContain('ACCESS RESTRICTED');
       const forged = await bot.run({
         kind: 'modal',
         name: customId('achievements', 'award', intruder.actor.memberId!),

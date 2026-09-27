@@ -1,10 +1,12 @@
 import {
+  Award,
   Bell,
   ChartNoAxesColumn,
   LayoutGrid,
   type LucideIcon,
   ScrollText,
   Settings2,
+  Target,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -37,9 +39,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { href: '/members', label: 'Members', icon: Users, capability: 'canViewMembers' },
       { href: '/ranking', label: 'Ranking', icon: ChartNoAxesColumn, capability: 'canViewMembers' },
+      { href: '/achievements', label: 'Achievements', icon: Award, capability: null },
     ],
   },
-  { label: 'OPERATIONS', items: [] },
+  {
+    label: 'OPERATIONS',
+    items: [{ href: '/missions', label: 'Missions', icon: Target, capability: null }],
+  },
   { label: 'SUPPORT & SAFETY', items: [] },
   { label: 'INTELLIGENCE', items: [] },
   {

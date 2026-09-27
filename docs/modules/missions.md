@@ -232,3 +232,21 @@ refused. Unknown fields are refused (`strict`).
 - The locking between submissions and archiving cannot be exercised under
   PGlite, which runs one transaction at a time. A test asserts that the lock is
   taken (the mission row's `xmax` inside the submitting transaction).
+
+## Surfaces
+
+Full reference: [docs/commands/missions.md](../commands/missions.md).
+
+- **Discord** (`apps/bot/src/features/missions`): `/mission list | view | accept | submit |
+  mine | abandon` for members and `/mission create | publish | assign | review` for staff,
+  driven by buttons, selects and modals (ACCEPT on cards and lists, type filter, submission
+  modal, user-select assignment, VERIFY / REJECT with feedback modals, a SETTINGS panel for
+  capability, reward, type, evidence and self-assignment). Job handlers post and refresh
+  the mission card (`discord.missions.announce|refresh_card`).
+- **Dashboard**: `/missions` (staff tabs by status with counts; members see open missions
+  and their own work), `/missions/new` and `/missions/[id]/edit` (the mission form),
+  `/missions/[id]` (facts, own assignment actions, staff lifecycle, assignments with the
+  assign dialog, and this mission's review queue).
+- `listMissions` (staff listing in every state, with holding, awaiting-review counts and
+  per-status totals) serves the dashboard; `scheduleSlotsRefresh` keeps a capped mission's
+  card current when its roster changes (assign, self-assign, abandon, deadline expiry).

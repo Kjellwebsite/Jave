@@ -11,7 +11,7 @@ import {
   useState,
 } from 'react';
 import { Button, Dialog, DialogClose, DialogContent, DialogTrigger } from '@jave/ui';
-import { IDLE_STATE } from '@/lib/action-state';
+import { type ActionState, IDLE_STATE } from '@/lib/action-state';
 import { useToast } from '../toast';
 import { ActionFeedback, ActionStateProvider, type FormAction } from './action-form';
 
@@ -35,7 +35,9 @@ interface ConfirmFormProps extends Pick<
   'confirmLabel' | 'tone' | 'action' | 'hidden' | 'children'
 > {
   onPendingChange: (pending: boolean) => void;
-  onSuccess: (message: string) => void;
+  onSuccess: () => void;
+  /** Announces the result; called as the action resolves (see ConfirmForm). */
+  announce: (message: string) => void;
 }
 
 function ConfirmForm({
@@ -46,12 +48,23 @@ function ConfirmForm({
   children,
   onPendingChange,
   onSuccess,
+  announce,
 }: ConfirmFormProps) {
-  const [state, dispatch, pending] = useActionState(action, IDLE_STATE);
-  const callbacks = useRef({ onPendingChange, onSuccess });
+  const callbacks = useRef({ onPendingChange, onSuccess, announce });
+  // Announce as the action resolves, not in an effect: a successful action often
+  // revalidates the page and removes this dialog's trigger (a table row, a status
+  // button) in the same render, and the effect would never run.
+  const [state, dispatch, pending] = useActionState(
+    async (previous: ActionState, data: FormData): Promise<ActionState> => {
+      const result = await action(previous, data);
+      if (result.status === 'success') callbacks.current.announce(result.message);
+      return result;
+    },
+    IDLE_STATE,
+  );
 
   useEffect(() => {
-    callbacks.current = { onPendingChange, onSuccess };
+    callbacks.current = { onPendingChange, onSuccess, announce };
   });
 
   useEffect(() => {
@@ -59,7 +72,7 @@ function ConfirmForm({
   }, [pending]);
 
   useEffect(() => {
-    if (state.status === 'success') callbacks.current.onSuccess(state.message);
+    if (state.status === 'success') callbacks.current.onSuccess();
   }, [state]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -131,10 +144,8 @@ export function ConfirmActionDialog({
           key={session}
           {...form}
           onPendingChange={setPending}
-          onSuccess={(message) => {
-            setOpen(false);
-            toast(message);
-          }}
+          onSuccess={() => setOpen(false)}
+          announce={toast}
         />
       </DialogContent>
     </Dialog>

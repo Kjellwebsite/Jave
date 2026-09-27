@@ -255,3 +255,18 @@ Manage Messages).
   exercised under PGlite, which runs one transaction at a time; the tests cover
   the sequential behaviour.
 - Revoking does not decrement anything: counts are over immutable events.
+
+## Surfaces
+
+Full reference: [docs/commands/achievements.md](../commands/achievements.md).
+
+- **Discord** (`apps/bot/src/features/achievements`): `/achievements view [member] [share]`
+  and the **JVLN Achievements** user context menu render the catalog through one member
+  (unlocked, pending, locked, masked; rarity; share of active members). Staff award and
+  revoke with `/achievements award|revoke` (autocomplete, required reason) or from the
+  panel's AWARD / REVOKE modals, and verify pending awards from its VERIFY select. Job
+  handlers post and retract the unlock card (`discord.achievements.announce|retract`).
+- **Dashboard** (`/achievements`): the catalog for everyone; definitions table with the
+  criteria builder, starter seeding and delete for `canManageAchievements`; manual award,
+  revoke and the **Pending verification** queue (`listPendingAchievementAwards`) for
+  `canAwardAchievements`.

@@ -15,6 +15,8 @@ export const FIELD_EVIDENCE_TITLE = 'evidence_title';
 export const FIELD_EVIDENCE_URL = 'evidence_url';
 /** Discord text inputs hold at most 4000 characters. */
 const TEXT_INPUT_MAX = 4000;
+/** Core refuses longer evidence links. */
+const EVIDENCE_URL_MAX = 2048;
 const LABEL_DESCRIPTION_MAX = 100;
 
 // ── Accept ──────────────────────────────────────────────────────────────────
@@ -41,6 +43,20 @@ export async function acceptMission(h: HandlerContext, missionId: string): Promi
 
 // ── Submit ──────────────────────────────────────────────────────────────────
 
+/** The submission field; after a rejection it starts from the returned text. */
+function submissionInput(own: missions.OwnAssignmentView): TextInputBuilder {
+  const input = new TextInputBuilder()
+    .setCustomId(FIELD_SUBMISSION)
+    .setStyle(TextInputStyle.Paragraph)
+    .setMinLength(missions.SUBMISSION_MIN)
+    .setMaxLength(Math.min(missions.SUBMISSION_MAX, TEXT_INPUT_MAX))
+    .setRequired(true);
+  // Discord refuses an empty prefilled value: set one only when there is text to resume.
+  if (own.status === 'rejected' && own.submission)
+    input.setValue(own.submission.slice(0, TEXT_INPUT_MAX));
+  return input;
+}
+
 export function submissionModal(
   detail: missions.MissionDetail,
   own: missions.OwnAssignmentView,
@@ -54,20 +70,14 @@ export function submissionModal(
     : 'What you did, what it shows, what you learned.';
   return new ModalBuilder()
     .setCustomId(customId(MISSIONS_NS, 'submit', mission.id))
-    .setTitle(plainText(`SUBMIT ${mission.number} — ${mission.title.toUpperCase()}`, LIMITS.modalTitle))
+    .setTitle(
+      plainText(`SUBMIT ${mission.number} — ${mission.title.toUpperCase()}`, LIMITS.modalTitle),
+    )
     .addLabelComponents(
       new LabelBuilder()
         .setLabel('Submission')
         .setDescription(plainText(submissionHint, LABEL_DESCRIPTION_MAX))
-        .setTextInputComponent(
-          new TextInputBuilder()
-            .setCustomId(FIELD_SUBMISSION)
-            .setStyle(TextInputStyle.Paragraph)
-            .setMinLength(missions.SUBMISSION_MIN)
-            .setMaxLength(Math.min(missions.SUBMISSION_MAX, TEXT_INPUT_MAX))
-            .setRequired(true)
-            .setValue(own.status === 'rejected' && own.submission ? own.submission.slice(0, TEXT_INPUT_MAX) : ''),
-        ),
+        .setTextInputComponent(submissionInput(own)),
       new LabelBuilder()
         .setLabel('Evidence title')
         .setDescription(evidenceHint)
@@ -86,7 +96,7 @@ export function submissionModal(
             .setCustomId(FIELD_EVIDENCE_URL)
             .setStyle(TextInputStyle.Short)
             .setPlaceholder('https://')
-            .setMaxLength(TEXT_INPUT_MAX)
+            .setMaxLength(EVIDENCE_URL_MAX)
             .setRequired(mission.evidenceRequired),
         ),
     )
@@ -120,7 +130,10 @@ export async function openSubmission(h: HandlerContext, missionId: string): Prom
 }
 
 /** Evidence is a title and an http(s) link together, or nothing. */
-export function evidenceFrom(title: string, url: string): { title: string; url: string } | undefined {
+export function evidenceFrom(
+  title: string,
+  url: string,
+): { title: string; url: string } | undefined {
   const t = title.trim();
   const u = url.trim();
   if (!t && !u) return undefined;
@@ -153,17 +166,34 @@ export async function chooseSubmission(h: HandlerContext): Promise<void> {
   const [only] = items;
   if (!only) {
     await h.respond({
-      embeds: [panel({ title: 'NOTHING TO SUBMIT', description: 'No accepted mission is waiting for your work. `/mission mine` shows where things stand.' })],
+      embeds: [
+        panel({
+          title: 'NOTHING TO SUBMIT',
+          description:
+            'No accepted mission is waiting for your work. `/mission mine` shows where things stand.',
+        }),
+      ],
       ephemeral: true,
     });
     return;
   }
   if (items.length === 1) {
-    await h.interaction.showModal(submissionModal(await missions.getMissionDetail(h.ctx, { missionId: only.mission.id }), only.assignment));
+    await h.interaction.showModal(
+      submissionModal(
+        await missions.getMissionDetail(h.ctx, { missionId: only.mission.id }),
+        only.assignment,
+      ),
+    );
     return;
   }
   await h.respond({
-    embeds: [panel({ kicker: 'JVLN MISSIONS', title: 'Submit work', description: 'Choose the mission this submission is for.' })],
+    embeds: [
+      panel({
+        kicker: 'JVLN MISSIONS',
+        title: 'Submit work',
+        description: 'Choose the mission this submission is for.',
+      }),
+    ],
     components: [
       row(
         stringSelect(
@@ -210,7 +240,10 @@ export async function abandon(h: HandlerContext, missionId: string): Promise<voi
   await missions.abandonMission(h.ctx, { assignmentId: own.id });
   await h.interaction.update({
     embeds: [
-      success('Mission abandoned', `${missionHeadline(detail.mission.number, detail.mission.title)}. Staff can reassign you if needed.`),
+      success(
+        'Mission abandoned',
+        `${missionHeadline(detail.mission.number, detail.mission.title)}. Staff can reassign you if needed.`,
+      ),
     ],
     components: [],
   });

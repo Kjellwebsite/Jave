@@ -4,7 +4,7 @@ import type { HandlerContext, ReplyPayload } from '../../interactions/types';
 import { customId } from '../../interactions/custom-id';
 import { button, field, linkButton, panel, row, stringSelect } from '../../ui/components';
 import { discordTime, plainText, userText } from '../../ui/format';
-import { COLORS, GLYPH, LIMITS } from '../../ui/theme';
+import { GLYPH, LIMITS } from '../../ui/theme';
 import { facetLabelOf } from './data';
 import {
   ASSIGNMENT_GLYPH,
@@ -16,8 +16,6 @@ import {
   ownAssignmentField,
   rewardTitle,
   slotsOf,
-  STATUS_LABEL,
-  SUBMISSION_PREVIEW_MAX,
   TYPE_LABEL,
   type MissionType,
 } from './render';
@@ -42,19 +40,18 @@ function selectOptionFor(item: { id: string; number: string; title: string; type
 
 // ── Open missions ───────────────────────────────────────────────────────────
 
-function canTakeFromList(item: missions.OpenMissionItem): boolean {
-  return (
-    item.myAssignment === null &&
-    item.selfAssignable &&
-    item.type !== 'team' &&
-    item.slotsLeft !== 0
-  );
+/** ACCEPT on a list row: take a self-assignable mission, or accept a staff assignment. */
+function canAcceptFromList(item: missions.OpenMissionItem): boolean {
+  if (item.myAssignment) return item.myAssignment.status === 'assigned';
+  return item.selfAssignable && item.type !== 'team' && item.slotsLeft !== 0;
 }
 
 function openLine(item: missions.OpenMissionItem): string {
   const facts = [
     `\`${TYPE_LABEL[item.type]}\``,
-    item.type === 'team' ? 'teams by staff' : slotsOf(item.slotsLeft, item.maxAssignees).toLowerCase(),
+    item.type === 'team'
+      ? 'teams by staff'
+      : slotsOf(item.slotsLeft, item.maxAssignees).toLowerCase(),
     item.deadlineAt ? `closes ${discordTime(item.deadlineAt, 'R')}` : null,
     item.reward ? `reward ${userText(rewardTitle(item.reward), 80)}` : null,
     item.myAssignment
@@ -89,11 +86,19 @@ export async function openListPayload(
   ];
   if (page.items.length > 0) {
     components.push(
-      row(stringSelect(customId(MISSIONS_NS, 'open'), 'Open a mission', page.items.map(selectOptionFor))),
+      row(
+        stringSelect(
+          customId(MISSIONS_NS, 'open'),
+          'Open a mission',
+          page.items.map(selectOptionFor),
+        ),
+      ),
     );
     const accept = page.items
-      .filter(canTakeFromList)
-      .map((item) => button(`Accept ${item.number}`, missions.missionAcceptCustomId(item.id), 'primary'));
+      .filter(canAcceptFromList)
+      .map((item) =>
+        button(`Accept ${item.number}`, missions.missionAcceptCustomId(item.id), 'primary'),
+      );
     if (accept.length > 0) components.push(row(...accept));
   }
   if (page.total > LIST_PAGE_SIZE) {
@@ -101,8 +106,18 @@ export async function openListPayload(
     const next = page.offset + LIST_PAGE_SIZE;
     components.push(
       row(
-        button('Previous', customId(MISSIONS_NS, 'list', filterValue, previous), 'secondary', page.offset === 0),
-        button('Next', customId(MISSIONS_NS, 'list', filterValue, next), 'secondary', next >= page.total),
+        button(
+          'Previous',
+          customId(MISSIONS_NS, 'list', filterValue, previous),
+          'secondary',
+          page.offset === 0,
+        ),
+        button(
+          'Next',
+          customId(MISSIONS_NS, 'list', filterValue, next),
+          'secondary',
+          next >= page.total,
+        ),
       ),
     );
   }
@@ -160,7 +175,11 @@ export async function minePayload(h: HandlerContext, scope: MineScope): Promise<
       stringSelect(
         customId(MISSIONS_NS, 'mine'),
         'Show',
-        MINE_SCOPES.map((value) => ({ label: SCOPE_LABEL[value], value, default: value === scope })),
+        MINE_SCOPES.map((value) => ({
+          label: SCOPE_LABEL[value],
+          value,
+          default: value === scope,
+        })),
       ),
     ),
   ];
@@ -186,7 +205,10 @@ export async function minePayload(h: HandlerContext, scope: MineScope): Promise<
             : scope === 'completed'
               ? 'No verified missions yet.'
               : 'Nothing in progress. `/mission list` shows open missions.',
-        footer: items.length > shown.length ? `Showing ${shown.length} of ${items.length}. The dashboard lists all.` : undefined,
+        footer:
+          items.length > shown.length
+            ? `Showing ${shown.length} of ${items.length}. The dashboard lists all.`
+            : undefined,
       }),
     ],
     components,
@@ -215,7 +237,13 @@ function memberButtons(detail: missions.MissionDetail): APIButtonComponent[] {
     missions.canTransitionAssignment(own.status, 'submitted') &&
     own.attempts < missions.MAX_SUBMISSION_ATTEMPTS;
   if (submittable)
-    buttons.push(button(own.status === 'rejected' ? 'Resubmit' : 'Submit', customId(MISSIONS_NS, 'submit', mission.id), 'primary'));
+    buttons.push(
+      button(
+        own.status === 'rejected' ? 'Resubmit' : 'Submit',
+        customId(MISSIONS_NS, 'submit', mission.id),
+        'primary',
+      ),
+    );
   if (missions.canTransitionAssignment(own.status, 'abandoned'))
     buttons.push(button('Abandon', customId(MISSIONS_NS, 'abandon', mission.id), 'danger'));
   return buttons;
@@ -223,24 +251,42 @@ function memberButtons(detail: missions.MissionDetail): APIButtonComponent[] {
 
 function staffButtons(h: HandlerContext, detail: missions.MissionDetail): APIButtonComponent[] {
   const { mission } = detail;
+  const id = mission.id;
   const buttons: APIButtonComponent[] = [];
   if (can(h.ctx, 'canManageMissions')) {
-    const id = mission.id;
-    if (mission.status === 'draft') buttons.push(button('Publish', customId(MISSIONS_NS, 'publish', id), 'success'));
+    if (mission.status === 'draft')
+      buttons.push(button('Publish', customId(MISSIONS_NS, 'publish', id), 'success'));
     if (mission.status === 'open') {
-      buttons.push(button('Assign', customId(MISSIONS_NS, 'assign', id)));
+      buttons.push(button('Assign', customId(MISSIONS_NS, 'assign', id), 'success'));
       buttons.push(button('Close', customId(MISSIONS_NS, 'close', id)));
     }
-    if (mission.status === 'closed') buttons.push(button('Reopen', customId(MISSIONS_NS, 'reopen', id)));
+    if (mission.status === 'closed')
+      buttons.push(button('Reopen', customId(MISSIONS_NS, 'reopen', id)));
+    if (mission.status !== 'archived') {
+      buttons.push(button('Edit', customId(MISSIONS_NS, 'edit', id)));
+      buttons.push(button('Settings', customId(MISSIONS_NS, 'settings', id)));
+    }
     if (missions.canTransitionMission(mission.status, 'archived'))
       buttons.push(button('Archive', customId(MISSIONS_NS, 'archive', id), 'danger'));
   }
   const awaiting = detail.assignments?.filter((a) => a.status === 'submitted').length ?? 0;
   if (awaiting > 0 && can(h.ctx, 'canVerifyMissions'))
-    buttons.push(button(`Review (${awaiting})`, customId(MISSIONS_NS, 'review', 0)));
+    buttons.push(button(`Review queue (${awaiting})`, customId(MISSIONS_NS, 'review', 0)));
   const url = dashboardMissionUrl(h.ctx.config.publicUrl, mission.id);
   if (url && buttons.length > 0) buttons.push(linkButton('Dashboard', url));
   return buttons;
+}
+
+/** Discord holds at most five buttons per row. */
+export const BUTTONS_PER_ROW = 5;
+
+export function buttonRows(
+  buttons: readonly APIButtonComponent[],
+): NonNullable<ReplyPayload['components']> {
+  const rows: NonNullable<ReplyPayload['components']> = [];
+  for (let start = 0; start < buttons.length; start += BUTTONS_PER_ROW)
+    rows.push(row(...buttons.slice(start, start + BUTTONS_PER_ROW)));
+  return rows;
 }
 
 function rosterLine(assignments: readonly missions.StaffAssignmentView[]): string {
@@ -279,97 +325,10 @@ export async function detailPayload(
   if (detail.myAssignment) fields.push(ownAssignmentField(detail.myAssignment));
   if (detail.assignments) fields.push(field('Roster (staff)', rosterLine(detail.assignments)));
   embed.fields = fields;
-  const components: NonNullable<ReplyPayload['components']> = [];
-  const own = memberButtons(detail);
-  if (own.length > 0) components.push(row(...own));
-  const staff = staffButtons(h, detail);
-  if (staff.length > 0) components.push(row(...staff));
+  const components = [...buttonRows(memberButtons(detail)), ...buttonRows(staffButtons(h, detail))];
   return {
     embeds: notice ? [notice, embed] : [embed],
     components,
     ephemeral: true,
   };
 }
-
-// ── Review queue ────────────────────────────────────────────────────────────
-
-function evidenceUrl(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-function reviewEmbed(item: missions.ReviewQueueItem, position: number, total: number): APIEmbed {
-  const unit = item.teamKey
-    ? `Team \`${item.teamKey}\` ${GLYPH.dot} ${item.members.map((m) => userText(m.displayName, 64)).join(', ')}`
-    : item.members.map((m) => `${userText(m.displayName, 64)} ${GLYPH.dot} @${userText(m.handle, 64)}`).join(', ');
-  const fields = [
-    field(item.teamKey ? 'Team' : 'Member', unit),
-    field('Submitted', item.submittedAt ? discordTime(item.submittedAt, 'R') : GLYPH.unknown, true),
-    field('Attempt', `${item.attempts} of ${missions.MAX_SUBMISSION_ATTEMPTS}`, true),
-  ];
-  if (item.evidenceTitle || item.evidenceUrl) {
-    fields.push(
-      field(
-        'Evidence',
-        [item.evidenceTitle ? userText(item.evidenceTitle, 200) : null, item.evidenceUrl ? userText(item.evidenceUrl, 300) : null]
-          .filter(Boolean)
-          .join('\n'),
-      ),
-    );
-  }
-  if (item.isOwn)
-    fields.push(field('Not yours to review', 'You are part of this unit. Another reviewer must decide it.'));
-  return panel({
-    kicker: `REVIEW QUEUE ${GLYPH.dot} ${position} OF ${total}`,
-    title: missionHeadline(item.missionNumber, item.missionTitle),
-    description: item.submission ? userText(item.submission, SUBMISSION_PREVIEW_MAX) : 'No text submitted.',
-    color: item.isOwn ? COLORS.steel : COLORS.chrome,
-    fields,
-  });
-}
-
-/** One submission from the review queue, oldest first, with VERIFY / REJECT. */
-export async function reviewPayload(
-  h: HandlerContext,
-  requestedOffset: number,
-  notice?: APIEmbed,
-): Promise<ReplyPayload> {
-  let page = await missions.listSubmissionsForReview(h.ctx, { limit: 1, offset: requestedOffset });
-  if (page.items.length === 0 && page.total > 0)
-    page = await missions.listSubmissionsForReview(h.ctx, { limit: 1, offset: page.total - 1 });
-  const [item] = page.items;
-  if (!item) {
-    const clear = panel({
-      kicker: 'REVIEW QUEUE',
-      title: 'Queue clear',
-      description: 'No submissions await review.',
-      color: COLORS.success,
-    });
-    return { embeds: notice ? [notice, clear] : [clear], components: [], ephemeral: true };
-  }
-  const offset = page.offset;
-  const buttons: APIButtonComponent[] = [];
-  if (!item.isOwn) {
-    buttons.push(button('Verify', customId(MISSIONS_NS, 'verify', item.assignmentId, offset), 'success'));
-    buttons.push(button('Reject', customId(MISSIONS_NS, 'reject', item.assignmentId, offset), 'danger'));
-  }
-  const url = evidenceUrl(item.evidenceUrl);
-  if (url) buttons.push(linkButton('Open evidence', url));
-  const navigation = [
-    button('Previous', customId(MISSIONS_NS, 'review', Math.max(0, offset - 1)), 'secondary', offset === 0),
-    button('Next', customId(MISSIONS_NS, 'review', offset + 1), 'secondary', offset + 1 >= page.total),
-  ];
-  const embed = reviewEmbed(item, offset + 1, page.total);
-  return {
-    embeds: notice ? [notice, embed] : [embed],
-    components: [row(...buttons), row(...navigation)].filter((r) => r.components.length > 0),
-    ephemeral: true,
-  };
-}
-
-export { STATUS_LABEL };

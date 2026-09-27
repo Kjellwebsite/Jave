@@ -512,9 +512,10 @@ export async function listMissions(
           .groupBy(missionAssignments.missionId),
   ]);
   const pendingByMission = new Map(pending.map((row) => [row.missionId, row.value]));
-  const statusCounts = Object.fromEntries(
-    MISSION_STATUSES.map((status) => [status, 0]),
-  ) as Record<MissionStatus, number>;
+  const statusCounts = Object.fromEntries(MISSION_STATUSES.map((status) => [status, 0])) as Record<
+    MissionStatus,
+    number
+  >;
   for (const row of statusRows) statusCounts[row.status] = row.value;
   return {
     items: rows.map(({ mission, reward }) => {

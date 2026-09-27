@@ -4,6 +4,8 @@ import { DiscordActionError } from '../../discord/gateway';
 import type { BotServices } from '../../runtime';
 import { renderAnnouncement } from './render';
 
+const DUPLICATE_REASON = 'Duplicate achievement card';
+
 /** Discord answers these when the message or its channel no longer exists. */
 const GONE_CODES = new Set<number | string>([
   RESTJSONErrorCodes.UnknownMessage,
@@ -22,21 +24,22 @@ export function asJobError(error: unknown): unknown {
 }
 
 /**
- * Delete a card this job just posted but may not keep. A failure here leaves
- * a duplicate card behind, so it is logged with the ids for cleanup.
+ * Delete a card a job just posted but may not keep. A failure here leaves a
+ * duplicate card behind, so it is logged with the ids for cleanup.
  */
-async function deletePosted(
+export async function deletePosted(
   services: BotServices,
   channelId: string,
   messageId: string,
+  reason: string,
 ): Promise<void> {
   try {
-    await services.gateway.deleteMessage(channelId, messageId, 'Duplicate achievement card');
+    await services.gateway.deleteMessage(channelId, messageId, reason);
   } catch (error) {
     if (isGone(error)) return;
     services.logger.error(
       { err: error, channelId, messageId },
-      'could not delete a duplicate achievement card',
+      'could not delete a duplicate card',
     );
   }
 }
@@ -73,13 +76,15 @@ export function announceAchievementHandler(services: BotServices): JobHandler {
       }));
     } catch (error) {
       // Nothing was stored: remove the card so the retry starts from a clean slate.
-      await deletePosted(services, channelId, messageId);
+      await deletePosted(services, channelId, messageId, DUPLICATE_REASON);
       throw error;
     }
     if (!stored) {
-      await deletePosted(services, channelId, messageId);
+      await deletePosted(services, channelId, messageId, DUPLICATE_REASON);
       return { skipped: 'already announced' };
     }
+    // A revocation that landed while the card was posting queued its retraction with the report.
+    await services.runJobsNow(ctx.effects.jobIds);
     return { messageId };
   };
 }

@@ -178,7 +178,10 @@ export function renderCatalogPanel(input: CatalogPanelInput): ReplyPayload {
     title: userText(input.memberName, NAME_MAX),
     description: `${header}\n\n${body}${more}`,
     color: COLORS.chrome,
-    footer: pages > 1 && !input.shared ? `${CATALOG_LEGEND}\nPage ${page + 1} of ${pages}` : CATALOG_LEGEND,
+    footer:
+      pages > 1 && !input.shared
+        ? `${CATALOG_LEGEND}\nPage ${page + 1} of ${pages}`
+        : CATALOG_LEGEND,
   });
   const components: NonNullable<ReplyPayload['components']> = [];
   if (!input.shared && pages > 1) {

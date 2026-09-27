@@ -56,7 +56,10 @@ export async function achievementAutocomplete(h: HandlerContext): Promise<void> 
       entry.active ? null : 'INACTIVE',
     ].filter(Boolean);
     choices.push({
-      name: plainText(`${entry.title.toUpperCase()} ${GLYPH.dot} ${flags.join(` ${GLYPH.dot} `)}`, 100),
+      name: plainText(
+        `${entry.title.toUpperCase()} ${GLYPH.dot} ${flags.join(` ${GLYPH.dot} `)}`,
+        100,
+      ),
       value: entry.key,
     });
     if (choices.length >= LIMITS.autocompleteChoices) break;
@@ -69,9 +72,9 @@ export async function achievementAutocomplete(h: HandlerContext): Promise<void> 
 async function award(h: HandlerContext, memberId: string, key: string, reason: string) {
   const record = await achievements.awardAchievement(h.ctx, { memberId, key, reason });
   const [definition, name] = await Promise.all([
-    achievements.getAchievementCatalog(h.ctx).then((catalog) =>
-      catalog.find((entry) => !entry.masked && entry.key === key),
-    ),
+    achievements
+      .getAchievementCatalog(h.ctx)
+      .then((catalog) => catalog.find((entry) => !entry.masked && entry.key === key)),
     memberName(h, memberId),
   ]);
   const title = definition && !definition.masked ? definition.title : key;
@@ -81,10 +84,7 @@ async function award(h: HandlerContext, memberId: string, key: string, reason: s
       : 'Pending verification by a second staff member.';
   await h.respond({
     embeds: [
-      success(
-        'Achievement awarded',
-        `${nameOf(title)} — ${userText(name, NAME_MAX)}.\n${pending}`,
-      ),
+      success('Achievement awarded', `${nameOf(title)} — ${userText(name, NAME_MAX)}.\n${pending}`),
     ],
     ephemeral: true,
   });
@@ -109,7 +109,8 @@ function commandTarget(h: HandlerContext) {
   const target = h.interaction.options.user('member');
   const key = h.interaction.options.string(FIELD_ACHIEVEMENT);
   const reason = h.interaction.options.string(FIELD_REASON);
-  if (!target || !key || !reason) throw new ValidationError('Choose a member, an achievement and a reason.');
+  if (!target || !key || !reason)
+    throw new ValidationError('Choose a member, an achievement and a reason.');
   return { target, key: key.trim(), reason };
 }
 
@@ -159,7 +160,10 @@ export function achievementModal(
   return new ModalBuilder()
     .setCustomId(customId(ACHIEVEMENTS_NS, action, memberId))
     .setTitle(
-      plainText(`${action === 'award' ? 'AWARD' : 'REVOKE'} — ${memberDisplayName.toUpperCase()}`, LIMITS.modalTitle),
+      plainText(
+        `${action === 'award' ? 'AWARD' : 'REVOKE'} — ${memberDisplayName.toUpperCase()}`,
+        LIMITS.modalTitle,
+      ),
     )
     .addLabelComponents(
       new LabelBuilder()
@@ -208,11 +212,21 @@ export async function openAwardModal(h: HandlerContext, memberId: string): Promi
   const options: ModalOption[] = [];
   for (const entry of catalog) {
     if (entry.masked || heldKeys.has(entry.key)) continue;
-    options.push({ key: entry.key, title: entry.title, summary: entry.summary, rarity: entry.rarity });
+    options.push({
+      key: entry.key,
+      title: entry.title,
+      summary: entry.summary,
+      rarity: entry.rarity,
+    });
   }
   if (options.length === 0) {
     return h.respond({
-      embeds: [panel({ title: 'NOTHING TO AWARD', description: 'This member holds every active achievement.' })],
+      embeds: [
+        panel({
+          title: 'NOTHING TO AWARD',
+          description: 'This member holds every active achievement.',
+        }),
+      ],
       ephemeral: true,
     });
   }
@@ -225,7 +239,9 @@ export async function openRevokeModal(h: HandlerContext, memberId: string): Prom
   const [held, name] = await Promise.all([heldAwards(h, memberId), memberName(h, memberId)]);
   if (held.length === 0) {
     return h.respond({
-      embeds: [panel({ title: 'NOTHING TO REVOKE', description: 'This member holds no achievements.' })],
+      embeds: [
+        panel({ title: 'NOTHING TO REVOKE', description: 'This member holds no achievements.' }),
+      ],
       ephemeral: true,
     });
   }
@@ -253,7 +269,12 @@ export async function openVerifySelect(h: HandlerContext, memberId: string): Pro
   const pending = held.filter((entry) => !entry.verified).slice(0, LIMITS.selectOptions);
   if (pending.length === 0) {
     return h.respond({
-      embeds: [panel({ title: 'NOTHING TO VERIFY', description: 'Every award of this member is verified.' })],
+      embeds: [
+        panel({
+          title: 'NOTHING TO VERIFY',
+          description: 'Every award of this member is verified.',
+        }),
+      ],
       ephemeral: true,
     });
   }
@@ -293,6 +314,7 @@ export async function verifyChosen(
   memberId: string,
   keys: readonly string[],
 ): Promise<void> {
+  if (!requireAwarder(h)) return h.respond(restricted(AWARDER_ONLY));
   if (keys.length === 0) throw new ValidationError('Choose at least one award.');
   const unique = [...new Set(keys)].slice(0, LIMITS.selectOptions);
   const held = await heldAwards(h, memberId);
@@ -313,7 +335,10 @@ export async function verifyChosen(
   const name = userText(await memberName(h, memberId), NAME_MAX);
   const embed =
     verified > 0
-      ? success(`${verified} award${verified === 1 ? '' : 's'} verified`, `${name}\n${lines.join('\n')}`)
+      ? success(
+          `${verified} award${verified === 1 ? '' : 's'} verified`,
+          `${name}\n${lines.join('\n')}`,
+        )
       : failure('Nothing verified', `${name}\n${lines.join('\n')}`);
   await h.interaction.update({ embeds: [embed], components: [] });
 }

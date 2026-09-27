@@ -1,8 +1,4 @@
-import {
-  ApplicationCommandType,
-  ContextMenuCommandBuilder,
-  SlashCommandBuilder,
-} from 'discord.js';
+import { ApplicationCommandType, ContextMenuCommandBuilder, SlashCommandBuilder } from 'discord.js';
 import {
   achievements,
   can,

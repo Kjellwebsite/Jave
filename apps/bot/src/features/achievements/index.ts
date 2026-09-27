@@ -6,7 +6,13 @@ import { achievementsCommand, achievementsContextCommand, memberCatalogPayload }
 import { resolveMemberId } from './data';
 import { announceAchievementHandler, retractAchievementHandler } from './jobs';
 import { ACHIEVEMENTS_NS } from './render';
-import { openAwardModal, openRevokeModal, openVerifySelect, submitAchievementModal, verifyChosen } from './staff';
+import {
+  openAwardModal,
+  openRevokeModal,
+  openVerifySelect,
+  submitAchievementModal,
+  verifyChosen,
+} from './staff';
 
 async function expired(h: HandlerContext): Promise<void> {
   requireUser(h.ctx);

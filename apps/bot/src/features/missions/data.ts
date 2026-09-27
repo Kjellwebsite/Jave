@@ -7,6 +7,7 @@ import {
   ValidationError,
 } from '@jave/core';
 import type { HandlerContext } from '../../interactions/types';
+import { SELECT_MAX_VALUES } from '../../ui/components';
 
 /** A mission picked in a slash command option (autocomplete values are mission ids). */
 export function missionFromOption(h: HandlerContext, name = 'mission'): string {
@@ -65,9 +66,12 @@ export async function resolveAssignees(
   h: HandlerContext,
   discordIds: readonly string[],
 ): Promise<ResolvedAssignees> {
+  const picked = [...new Set(discordIds)];
+  // A real user select sends at most 25 ids; anything longer is forged.
+  if (picked.length > SELECT_MAX_VALUES) throw new ValidationError('Pick at most 25 members.');
   const memberIds: string[] = [];
   const unknown: string[] = [];
-  for (const discordId of new Set(discordIds)) {
+  for (const discordId of picked) {
     const member = await findMemberByDiscordId(h.ctx, discordId);
     if (member) memberIds.push(member.id);
     else unknown.push(discordId);
@@ -90,7 +94,8 @@ export function decodeAssignOptions(args: readonly string[]): {
   const parsedHours = Number(hours);
   return {
     teamKey: team && team !== NOT_GIVEN ? team : null,
-    durationHours: hours && hours !== NOT_GIVEN && Number.isInteger(parsedHours) ? parsedHours : null,
+    durationHours:
+      hours && hours !== NOT_GIVEN && Number.isInteger(parsedHours) ? parsedHours : null,
   };
 }
 

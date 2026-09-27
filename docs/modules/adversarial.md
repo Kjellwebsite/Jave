@@ -166,7 +166,8 @@ The operative briefing always contains the guardrails, the operating rules and
 the **stop-word protocol** (`STOP_PROTOCOL`): the operative pressing the RED FLAG
 button or typing `RED FLAG` anywhere in the server — or staff raising it — ends
 the exercise immediately. Participants are never told the stop word; their use
-of it alerts managers instead (`stopWordTyped`, below).
+of it alerts managers instead (`stopWordTyped`, below), and the operative pauses
+until staff check in.
 
 ## Scoring
 
@@ -336,6 +337,6 @@ Full reference: [docs/commands/adversarial.md](../commands/adversarial.md).
   and saving changes it.
 - The operative is still bound by the verbatim standard prohibition "Stop
   immediately when anyone says RED FLAG." When a participant uses the words, JAVE
-  keeps the exercise running and alerts managers; the operative judges, and the
-  briefing tells them to raise RED FLAG themselves when unsure. The operative
-  typing the words as vocabulary always stops the exercise.
+  keeps the exercise running and alerts managers; the briefing tells the operative
+  to pause at once, wait for staff, and raise RED FLAG themselves when unsure. The
+  operative typing the words as vocabulary always stops the exercise.

@@ -16,7 +16,8 @@ export const OPERATIVE_ACTIONS = {
   fireTrigger: 'fire',
 } as const;
 
-const TRIGGER_LABEL_MAX = 100;
+/** Discord caps select option labels at 100 characters. */
+export const TRIGGER_LABEL_MAX = 100;
 
 /**
  * The controls under an operative's briefing — in `/trial briefing` and in the

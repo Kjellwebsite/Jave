@@ -409,9 +409,9 @@ view | apply | withdraw | submit | status | briefing | manage`, `/team`, the
   staff control panel (state-dependent controls, each confirmed; random / manual
   selection; balanced / random assignment with a seed; the scheduled-start
   _passed_ prompt; quick evaluation for rubrics of ≤ 4 criteria), and one job
-  handler per `discord.trials.*` contract. Refresh and the staff modals update the
-  message they came from instead of stacking copies; public cards and team-channel
-  posts are never edited by a member's press.
+  handler per `discord.trials.*` contract. Refresh, the withdrawal result and every
+  staff control, screen and modal replace the private message they came from instead
+  of stacking copies; a public card or team-channel post is never edited by a press.
 - **Dashboard** (`apps/dashboard/app/(console)/trials`): `/trials` (states,
   readouts, countdowns), `/trials/new` (from a template or custom, rubric editor
   with weights), `/trials/templates` (CRUD, starters), `/trials/[id]` with Overview,

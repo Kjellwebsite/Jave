@@ -64,7 +64,7 @@ async function concernedRoles(
 /**
  * Participants are never told the stop word, so their use of it is not a
  * call to stop: managers are alerted (once per exercise) to check in with the
- * operative, who is bound to stop when anyone says it. Deliberately not
+ * operative, who pauses when anyone says it (STOP_PROTOCOL). Deliberately not
  * audited: an audit row written the moment a participant typed the words
  * would tell a staff member competing in the trial (the audit log is readable
  * with canViewAuditLogs) that their team hosts a role.
@@ -76,7 +76,7 @@ async function alertMention(ctx: ServiceContext, role: RoleRecord): Promise<void
     trialId: role.trialId,
     fact: MENTION_FACT,
     title: `STOP WORD IN CHAT — TRIAL #${trial.number}`,
-    body: `Someone other than the operative typed ${STOP_WORD} in the team channel. The exercise is still running: participants are never told the stop word, so it may be ordinary vocabulary. Check in with the operative, then stop the exercise or let it run. Later mentions in this exercise are not re-sent.`,
+    body: `Someone other than the operative typed ${STOP_WORD} in the team channel. The exercise is still running; the operative is briefed to pause until staff check in. Participants are never told the stop word, so it may be ordinary vocabulary. Check in with the operative, then stop the exercise or let it resume. Later mentions in this exercise are not re-sent.`,
   });
 }
 

@@ -57,10 +57,10 @@ words) in server messages and hands the author and channel (a thread's parent) t
 | anyone else — participants, evaluators, staff competing in the trial | the team channel (active) | Nothing stops. Managers get one **STOP WORD IN CHAT** alert per exercise to check in with the operative. Not audited (a row at that moment would be a tell for staff competing in the trial). |
 
 Participants are never told the stop word, so in a trial like _Red Flag Hunt_ their
-"found a red flag" is vocabulary, not a stop call; the operative's briefing says so and
-tells them to raise RED FLAG themselves when in doubt. Nothing is ever posted in the
-channel. Direct messages to JAVE are not read (no DM intent): the RED FLAG button rides
-along with the briefing DM instead.
+"found a red flag" is vocabulary, not a stop call; the operative's briefing says so,
+tells them to pause until staff check in, and to raise RED FLAG themselves when in
+doubt. Nothing is ever posted in the channel. Direct messages to JAVE are not read (no
+DM intent): the RED FLAG button rides along with the briefing DM instead.
 
 ### Job handlers (`discord.adversarial.*`)
 

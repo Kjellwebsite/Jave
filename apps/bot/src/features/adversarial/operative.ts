@@ -3,11 +3,11 @@ import type { ComponentHandler, HandlerContext, ReplyPayload } from '../../inter
 import { panel } from '../../ui/components';
 import { userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
-import { ADVERSARIAL_NS, OPERATIVE_ACTIONS } from './controls';
+import { ADVERSARIAL_NS, OPERATIVE_ACTIONS, TRIGGER_LABEL_MAX } from './controls';
 import { briefingMessages, SANDBOX_MARK } from './render';
 
-const TRIGGER_LABEL_MAX = 100;
-const RED_FLAG_NOTE = 'Raised by the operative from Discord.';
+/** Where the stop came from; core records who pressed it (the operative, or staff). */
+const RED_FLAG_NOTE = 'Pressed in Discord.';
 
 /**
  * The single answer for "no briefing": identical for a member who never had

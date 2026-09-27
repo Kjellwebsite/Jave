@@ -6,6 +6,7 @@ import { clip, discordTime, userText } from '../../ui/format';
 import { COLORS, GLYPH, LIMITS } from '../../ui/theme';
 import { MEMBER_ACTIONS, type PickPurpose, REFERENCE, trialsId } from './ids';
 import { applyModal, submitModal } from './modals';
+import { fromPrivateMessage, presentInPlace } from './present';
 import { deadlineLine } from './render/cards';
 import { ONGOING_STATUSES, PARTICIPANT_LABEL, STATUS_LABEL } from './render/labels';
 import {
@@ -48,15 +49,17 @@ export async function showTrial(h: HandlerContext, trialId: string): Promise<voi
 }
 
 /**
- * Refresh (or open) the trial from the member's own ephemeral message: the
- * live view replaces that message instead of stacking a copy; the brief and
- * rubric follow only when they are not already below it.
+ * Refresh (or open) the trial from the member's own private message: the live
+ * view replaces that message instead of stacking a copy; the brief and rubric
+ * follow only when they are not already below it. A press on any message
+ * others can see gets a new private view instead — it never edits that message.
  */
 export async function openTrialInPlace(
   h: HandlerContext,
   trialId: string,
   referenceShown: boolean,
 ): Promise<void> {
+  if (!fromPrivateMessage(h)) return showTrial(h, trialId);
   const view = await trials.getTrialForParticipant(h.ctx, { trialId });
   const [live, ...reference] = participantReplies(view, { referenceShown });
   await h.interaction.update(live!);
@@ -359,10 +362,15 @@ export async function confirmWithdraw(h: HandlerContext, trialId: string): Promi
   });
 }
 
+/** The result replaces the confirmation, so its CONFIRM button cannot be pressed again. */
 export async function executeWithdraw(h: HandlerContext, trialId: string): Promise<void> {
   await trials.withdraw(h.ctx, { trialId });
   const view = await trials.getTrialForParticipant(h.ctx, { trialId });
-  await h.respond({ embeds: [success('Withdrawn', trialTitle(view))], ephemeral: true });
+  await presentInPlace(h, {
+    embeds: [success('Withdrawn', trialTitle(view))],
+    components: [row(openInPlaceButton('View trial', trialId))],
+    ephemeral: true,
+  });
 }
 
 /** Trials where the member's team can submit now. */

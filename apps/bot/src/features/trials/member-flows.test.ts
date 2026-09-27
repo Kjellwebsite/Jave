@@ -199,6 +199,9 @@ describe('trials: member flows', SUITE, () => {
       user: applicant!.user,
     });
     expect(confirm.interaction.lastText()).toContain('WITHDRAWN');
+    // The result replaces the confirmation: its CONFIRM button is gone, the view is one press away.
+    expect(confirm.interaction.responses.map((r) => r.type)).toEqual(['update']);
+    expect(customIds(confirm.interaction)).toEqual([`trials:open:${trialId}:0`]);
     expect(await participantStatus(bot, trialId, applicant!)).toBe('withdrawn');
 
     const nothing = await bot.run({
@@ -446,6 +449,22 @@ describe('trials: member flows', SUITE, () => {
     const posts = JSON.stringify(bot.gateway.callsTo('sendMessage').map((call) => call.args[1]));
     expect(posts).toContain(`trials:view:${trialId}`);
     expect(posts).not.toContain('trials:open:');
+
+    // Were an in-place control ever pressed on a message others can see, it answers
+    // privately with a new view and never edits that message.
+    const onPublic = await bot.run({
+      kind: 'button',
+      name: customId('trials', 'open', trialId, '1'),
+      user: players[0]!.user,
+      sourceMessage: { ephemeral: false },
+    });
+    const publicTypes = onPublic.interaction.responses.map((r) => r.type);
+    expect(publicTypes[0]).toBe('reply');
+    expect(publicTypes).not.toContain('update');
+    expect(onPublic.interaction.responses.every((r) => 'payload' in r && r.payload.ephemeral)).toBe(
+      true,
+    );
+    expect(everything(onPublic.interaction)).toContain('Ship a working tool');
 
     // A forged or stale in-place press is re-authorized like any other.
     const [outsider] = await people(bot, 1, ['member']);

@@ -158,6 +158,12 @@ test.describe('trial staff (founder)', () => {
       .click();
     await expect(toast(page, 'SUBMISSIONS CLOSED — 0 of 3 teams submitted.')).toBeVisible();
     await expect(page.locator('[data-status="evaluating"]').first()).toBeVisible();
+
+    // BREAK: with no submission there is nothing to score — the service refuses a team that
+    // never submitted and each of its members, so no Score control is offered at all.
+    await page.goto(`${path}?tab=evaluation`);
+    await expect(page.getByText('No submission — INCOMPLETE. Nothing to score.')).toHaveCount(3);
+    await expect(page.locator('[data-testid^="score-"]')).toHaveCount(0);
   });
 
   test('a team is scored with a live weighted total; results publish; a rank is applied', async ({
@@ -286,6 +292,14 @@ test.describe('adversarial control room (two people)', () => {
 
     await role.getByTestId('record-observation').click();
     const observe = page.getByRole('dialog', { name: 'Record observation' });
+    // BREAK: only what the service accepts is offered — the approved trigger, not the pending
+    // one; the operative's teammate, never the operative (Ada Kestrel).
+    const linkable = observe.getByLabel('Trigger');
+    await expect(linkable.locator('option', { hasText: 'Urgent request' })).toHaveCount(1);
+    await expect(linkable.locator('option', { hasText: 'Brief change' })).toHaveCount(0);
+    const subjects = observe.getByLabel('Participant');
+    await expect(subjects.locator('option')).toHaveCount(2);
+    await expect(subjects.locator('option', { hasText: 'Ada Kestrel' })).toHaveCount(0);
     await observe.getByLabel('Outcome').selectOption('reported');
     await observe
       .getByLabel('What happened')

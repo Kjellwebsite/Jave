@@ -132,6 +132,7 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
       : null;
   const modal = interaction.isModalSubmit() ? (interaction as ModalSubmitInteraction) : null;
   const modalOnMessage = modal?.isFromMessage() ? modal : null;
+  const source = component?.message ?? modalOnMessage?.message ?? null;
   const memberRoles = interaction.inCachedGuild()
     ? interaction.member.roles.cache.map((r) => r.id)
     : [];
@@ -191,7 +192,7 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
       await requireRepliable().editReply(options);
     },
     followUp: async (payload) => void (await requireRepliable().followUp(toReplyOptions(payload))),
-    fromMessage: component !== null || modalOnMessage !== null,
+    sourceMessage: source ? { ephemeral: source.flags.has(MessageFlags.Ephemeral) } : null,
     update: async (payload) => {
       const { flags: _flags, ...options } = toReplyOptions(payload);
       if (component) await component.update(options);

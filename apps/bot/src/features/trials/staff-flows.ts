@@ -13,6 +13,7 @@ import {
   QUICK_EVALUATION_MAX_CRITERIA,
   randomSelectionModal,
 } from './modals';
+import { presentInPlace } from './present';
 import { formatScore } from './render/labels';
 import { safeLink } from './render/member';
 import { assignmentNotice, confirmCopy, controlPanel, type StaffAbilities } from './render/staff';
@@ -65,18 +66,17 @@ async function panelPayload(
 }
 
 /**
- * Replace the panel in place when the interaction came from it (a button, a
- * select, or a modal opened from one); otherwise answer with a fresh one.
- * Staff controls only ever sit on ephemeral panels, so this never edits a
- * public message.
+ * Show the panel: in place of the private message the press came from (the
+ * panel itself, one of its screens, or a modal opened from one), otherwise as
+ * a new private message.
  */
-async function presentPanel(h: HandlerContext, payload: ReplyPayload): Promise<void> {
-  if (h.interaction.fromMessage) await h.interaction.update(payload);
-  else await h.respond(payload);
+async function showPanel(h: HandlerContext, trialId: string, notice?: APIEmbed): Promise<void> {
+  await presentInPlace(h, await panelPayload(h, trialId, notice));
 }
 
-async function showPanel(h: HandlerContext, trialId: string, notice?: APIEmbed): Promise<void> {
-  await presentPanel(h, await panelPayload(h, trialId, notice));
+/** Back to the control panel from one of its screens. */
+function backToPanel(trialId: string) {
+  return button('Back', trialsId(STAFF_ACTIONS.panel, trialId));
 }
 
 /** /trial manage without a trial: a picker of every trial, running ones first. */
@@ -142,7 +142,7 @@ export async function askConfirmation(
     operation === 'cancel'
       ? trialsId(STAFF_ACTIONS.cancel, trialId)
       : trialsId(STAFF_ACTIONS.run, runAs, trialId);
-  await h.interaction.update({
+  await presentInPlace(h, {
     embeds: [
       panel({
         kicker: `CONFIRM ${GLYPH.dot} ${view.ref}`,
@@ -151,12 +151,7 @@ export async function askConfirmation(
         color: copy.style === 'danger' ? COLORS.danger : COLORS.warning,
       }),
     ],
-    components: [
-      row(
-        button(copy.confirmLabel, confirmId, copy.style),
-        button('Back', trialsId(STAFF_ACTIONS.panel, trialId)),
-      ),
-    ],
+    components: [row(button(copy.confirmLabel, confirmId, copy.style), backToPanel(trialId))],
     ephemeral: true,
   });
 }
@@ -278,7 +273,7 @@ export async function submitAssignment(h: HandlerContext, trialId: string): Prom
     seed: modal.text(FIELDS.seed).trim() || undefined,
   });
   const view = await trials.getTrialForStaff(h.ctx, { trialId });
-  await presentPanel(
+  await presentInPlace(
     h,
     controlPanel(view, abilities(h), {
       dashboardUrl: dashboardUrl(h, trialId),
@@ -318,14 +313,21 @@ export async function submitCancellation(h: HandlerContext, trialId: string): Pr
 
 // ─── Manual selection ────────────────────────────────────────────────────────
 
+/** The manual selection screen, in place of the panel; picking returns to the panel. */
 export async function offerManualSelection(h: HandlerContext, trialId: string): Promise<void> {
   const view = await trials.getTrialForStaff(h.ctx, { trialId });
   const pool = view.participants.filter((p) => SELECTION_POOL.includes(p.status));
   if (pool.length === 0) {
-    await h.respond({
-      embeds: [panel({ kicker: view.ref, title: 'No applicants yet', color: COLORS.steel })],
-      ephemeral: true,
-    });
+    await showPanel(
+      h,
+      trialId,
+      panel({
+        kicker: `SELECTION ${GLYPH.dot} ${view.ref}`,
+        title: 'No applicants yet',
+        description: 'Nobody applied, or every applicant withdrew.',
+        color: COLORS.steel,
+      }),
+    );
     return;
   }
   const options: APISelectMenuOption[] = pool.slice(0, LIMITS.selectOptions).map((p) => ({
@@ -338,7 +340,7 @@ export async function offerManualSelection(h: HandlerContext, trialId: string): 
     pool.length > LIMITS.selectOptions
       ? `\n${pool.length} applicants — only the first ${LIMITS.selectOptions} fit here. Use random selection or the dashboard.`
       : '';
-  await h.respond({
+  await presentInPlace(h, {
     embeds: [
       panel({
         kicker: `SELECTION ${GLYPH.dot} ${view.ref}`,
@@ -354,6 +356,7 @@ export async function offerManualSelection(h: HandlerContext, trialId: string): 
           max: options.length,
         }),
       ),
+      row(backToPanel(trialId)),
     ],
     ephemeral: true,
   });
@@ -381,27 +384,62 @@ function submittedTeams(view: StaffView) {
   return view.teams.filter((team) => team.submissions.length > 0);
 }
 
+/**
+ * The quick evaluation screen: a select of the teams that submitted (latest
+ * version, LATE flag, the viewer's own score), with the last result on top.
+ * It stays in place so an evaluator can score team after team.
+ */
+function evaluationScreen(h: HandlerContext, view: StaffView, notice?: APIEmbed): ReplyPayload {
+  const me = requireUser(h.ctx).userId;
+  const options: APISelectMenuOption[] = submittedTeams(view)
+    .slice(0, LIMITS.selectOptions)
+    .map((team) => {
+      const mine = team.evaluations.find((e) => e.memberId === null && e.evaluatorUserId === me);
+      const latest = team.submissions[0]!;
+      return {
+        label: clip(team.name, PARTICIPANT_LABEL_MAX),
+        value: team.id,
+        description: clip(
+          `v${latest.version}${latest.isLate ? ' LATE' : ''} · ${mine ? `your score ${formatScore(mine.overallScore)}` : 'not scored by you'}`,
+          PARTICIPANT_LABEL_MAX,
+        ),
+      };
+    });
+  const screen = panel({
+    kicker: `EVALUATION ${GLYPH.dot} ${view.ref}`,
+    title: 'Choose a team',
+    description:
+      'Score every criterion 0–10. Late work is flagged; judge it — there is no automatic penalty.',
+    color: COLORS.base,
+  });
+  return {
+    embeds: notice ? [notice, screen] : [screen],
+    components: [
+      row(stringSelect(trialsId(STAFF_ACTIONS.evaluateTeam, view.id), 'Team to score', options)),
+      row(backToPanel(view.id)),
+    ],
+    ephemeral: true,
+  };
+}
+
 export async function offerEvaluation(h: HandlerContext, trialId: string): Promise<void> {
   const view = await trials.getTrialForStaff(h.ctx, { trialId });
-  const me = requireUser(h.ctx).userId;
-  const teams = submittedTeams(view);
-  if (teams.length === 0) {
-    await h.respond({
-      embeds: [
-        panel({
-          kicker: view.ref,
-          title: 'Nothing to evaluate',
-          description: 'No team submitted.',
-          color: COLORS.steel,
-        }),
-      ],
-      ephemeral: true,
-    });
+  if (submittedTeams(view).length === 0) {
+    await showPanel(
+      h,
+      trialId,
+      panel({
+        kicker: `EVALUATION ${GLYPH.dot} ${view.ref}`,
+        title: 'Nothing to evaluate',
+        description: 'No team submitted. Teams without a submission are INCOMPLETE.',
+        color: COLORS.steel,
+      }),
+    );
     return;
   }
-  const url = dashboardUrl(h, trialId);
   if (view.rubric.length > QUICK_EVALUATION_MAX_CRITERIA) {
-    await h.respond({
+    const url = dashboardUrl(h, trialId);
+    await presentInPlace(h, {
       embeds: [
         panel({
           kicker: `EVALUATION ${GLYPH.dot} ${view.ref}`,
@@ -410,38 +448,17 @@ export async function offerEvaluation(h: HandlerContext, trialId: string): Promi
           color: COLORS.base,
         }),
       ],
-      components: url ? [row(linkButton('Open evaluation', `${url}?tab=evaluation`))] : undefined,
+      components: [
+        row(
+          ...(url ? [linkButton('Open evaluation', `${url}?tab=evaluation`)] : []),
+          backToPanel(trialId),
+        ),
+      ],
       ephemeral: true,
     });
     return;
   }
-  const options: APISelectMenuOption[] = teams.slice(0, LIMITS.selectOptions).map((team) => {
-    const mine = team.evaluations.find((e) => e.memberId === null && e.evaluatorUserId === me);
-    const latest = team.submissions[0]!;
-    return {
-      label: clip(team.name, PARTICIPANT_LABEL_MAX),
-      value: team.id,
-      description: clip(
-        `v${latest.version}${latest.isLate ? ' LATE' : ''} · ${mine ? `your score ${formatScore(mine.overallScore)}` : 'not scored by you'}`,
-        PARTICIPANT_LABEL_MAX,
-      ),
-    };
-  });
-  await h.respond({
-    embeds: [
-      panel({
-        kicker: `EVALUATION ${GLYPH.dot} ${view.ref}`,
-        title: 'Choose a team',
-        description:
-          'Score every criterion 0–10. Late work is flagged; judge it — there is no automatic penalty.',
-        color: COLORS.base,
-      }),
-    ],
-    components: [
-      row(stringSelect(trialsId(STAFF_ACTIONS.evaluateTeam, trialId), 'Team to score', options)),
-    ],
-    ephemeral: true,
-  });
+  await presentInPlace(h, evaluationScreen(h, view));
 }
 
 export async function openEvaluationModal(h: HandlerContext, trialId: string): Promise<void> {
@@ -488,14 +505,16 @@ export async function submitEvaluation(
     notes: notes || undefined,
   });
   const team = view.teams.find((candidate) => candidate.id === teamId);
-  await h.respond({
-    embeds: [
+  // The team select shows the new score; the next team is one pick away.
+  await presentInPlace(
+    h,
+    evaluationScreen(
+      h,
+      await trials.getTrialForStaff(h.ctx, { trialId }),
       success(
         'Evaluation recorded',
         `${userText(team?.name ?? 'Team', NAME_MAX)} ${GLYPH.dot} ${formatScore(receipt.overallScore)} weighted.\nRe-scoring replaces your earlier evaluation of this team.`,
       ),
-    ],
-    components: [row(button('Control panel', trialsId(STAFF_ACTIONS.panel, trialId)))],
-    ephemeral: true,
-  });
+    ),
+  );
 }

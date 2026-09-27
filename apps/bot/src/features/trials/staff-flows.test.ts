@@ -128,7 +128,7 @@ describe('trials: staff control panel', SUITE, () => {
       name: customId('trials', 'sel-random', trialId),
       user: manager!.user,
       modalText: { count: '3', seed: 'draw-1' },
-      fromMessage: true,
+      sourceMessage: { ephemeral: true },
     });
     // Opened from the panel: the panel itself is replaced, never stacked.
     expect(drawn.interaction.responses.map((r) => r.type)).toEqual(['update']);
@@ -140,6 +140,9 @@ describe('trials: staff control panel', SUITE, () => {
       name: customId('trials', 'sel-manual', trialId),
       user: manager!.user,
     });
+    // The selection screen replaces the panel (BACK returns); picking brings the panel back.
+    expect(manual.interaction.responses.map((r) => r.type)).toEqual(['update']);
+    expect(labels(manual.interaction)).toContain('BACK');
     const select = (manual.interaction.lastPayload()!.components as Components)[0]!.components[0]!;
     expect(select.custom_id).toBe(`trials:sel-pick:${trialId}`);
     const picked = await bot.run({
@@ -148,7 +151,9 @@ describe('trials: staff control panel', SUITE, () => {
       values: players.map((p) => p.actor.memberId!),
       user: manager!.user,
     });
+    expect(picked.interaction.responses.map((r) => r.type)).toEqual(['update']);
     expect(picked.interaction.lastText()).toContain('4 selected');
+    expect(labels(picked.interaction)).toContain('ASSIGN TEAMS');
 
     const assignModal = await bot.run({
       kind: 'button',
@@ -192,7 +197,7 @@ describe('trials: staff control panel', SUITE, () => {
       name: customId('trials', 'extend', trialId),
       user: manager!.user,
       modalText: { minutes: '30', reason: 'Venue power cut for twenty minutes.' },
-      fromMessage: true,
+      sourceMessage: { ephemeral: true },
     });
     expect(extend.interaction.responses.map((r) => r.type)).toEqual(['update']);
     expect(extend.interaction.lastText()).toContain('DEADLINE EXTENDED');
@@ -202,7 +207,7 @@ describe('trials: staff control panel', SUITE, () => {
       name: customId('trials', 'extend', trialId),
       user: manager!.user,
       modalText: { minutes: 'soon', reason: 'Venue power cut for twenty minutes.' },
-      fromMessage: true,
+      sourceMessage: { ephemeral: true },
     });
     expect(refused.interaction.responses.map((r) => r.type)).toEqual(['reply']);
     expect(refused.interaction.lastText()).toContain('whole number');
@@ -269,7 +274,10 @@ describe('trials: staff control panel', SUITE, () => {
       name: customId('trials', 'eval', trialId),
       user: evaluator!.user,
     });
+    // The evaluation screen replaces the panel, with BACK to it.
+    expect(offer.interaction.responses.map((r) => r.type)).toEqual(['update']);
     expect(offer.interaction.lastText()).toContain('CHOOSE A TEAM');
+    expect(labels(offer.interaction)).toContain('BACK');
     const chosen = await bot.run({
       kind: 'select',
       name: customId('trials', 'eval-team', trialId),
@@ -299,9 +307,17 @@ describe('trials: staff control panel', SUITE, () => {
       name: modal.custom_id,
       user: evaluator!.user,
       modalText: { 'score-0': '8', 'score-1': '6', notes: 'Shipped, thin on users.' },
+      sourceMessage: { ephemeral: true },
     });
+    // The screen the modal came from is replaced: the result on top, the new score in the
+    // select, the next team one pick away — never a stack of receipts.
+    expect(scored.interaction.responses.map((r) => r.type)).toEqual(['update']);
     expect(scored.interaction.lastText()).toContain('EVALUATION RECORDED');
     expect(scored.interaction.lastText()).toContain('7.50 / 10');
+    expect(JSON.stringify(scored.interaction.lastPayload()!.components)).toContain(
+      'your score 7.50 / 10',
+    );
+    expect(labels(scored.interaction)).toContain('BACK');
 
     // Re-opening pre-fills the evaluator's earlier scores.
     const reopen = await bot.run({
@@ -324,6 +340,51 @@ describe('trials: staff control panel', SUITE, () => {
     expect(published.interaction.lastText()).toContain('RESULTS PUBLISHED');
     expect(published.interaction.lastText()).toContain('Rank consequences are applied separately');
     expect(await statusOf(bot, trialId)).toBe('completed');
+  });
+
+  it('with no submission there is nothing to evaluate: the panel says so in place', async () => {
+    const [manager] = await people(bot, 1, ['operations']);
+    const players = await people(bot, 2);
+    const { trialId } = await activeTrial(bot, manager!, players);
+    await trials.closeSubmissions(as(bot, manager!), { trialId });
+    const offer = await bot.run({
+      kind: 'button',
+      name: customId('trials', 'eval', trialId),
+      user: manager!.user,
+    });
+    expect(offer.interaction.responses.map((r) => r.type)).toEqual(['update']);
+    expect(offer.interaction.lastText()).toContain('NOTHING TO EVALUATE');
+    expect(offer.interaction.lastText()).toContain('TRIAL CONTROL');
+    expect(labels(offer.interaction)).toContain('PUBLISH RESULTS');
+  });
+
+  it('BREAK: a control pressed on a message others can see never edits that message', async () => {
+    const [manager] = await people(bot, 1, ['operations']);
+    const players = await people(bot, 2);
+    const { trialId } = await assignedTrial(bot, manager!, players);
+    const onPublic = { sourceMessage: { ephemeral: false } } as const;
+    for (const name of [
+      customId('trials', 'panel', trialId),
+      customId('trials', 'ask', 'start', trialId),
+      customId('trials', 'sel-manual', trialId),
+    ]) {
+      const pressed = await bot.run({ kind: 'button', name, user: manager!.user, ...onPublic });
+      expect(
+        pressed.interaction.responses.map((r) => r.type),
+        name,
+      ).toEqual(['reply']);
+      expect(pressed.interaction.lastPayload()!.ephemeral, name).toBe(true);
+    }
+    const reassigned = await bot.run({
+      kind: 'modal',
+      name: customId('trials', 'assign', trialId),
+      user: manager!.user,
+      modalText: { teamSize: '', seed: 'again' },
+      modalSelect: { strategy: ['balanced'] },
+      ...onPublic,
+    });
+    expect(reassigned.interaction.responses.map((r) => r.type)).toEqual(['reply']);
+    expect(reassigned.interaction.lastPayload()!.ephemeral).toBe(true);
   });
 
   it('rubrics over four criteria are scored in the dashboard', async () => {

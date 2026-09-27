@@ -17,6 +17,7 @@ import {
 import {
   APPLICATION_FIELD_LIMITS,
   decideSchema,
+  EVIDENCE_LINK_SEPARATOR,
   hasNoControlChars,
   isSafeHttpUrl,
   reviewSchema,
@@ -294,6 +295,24 @@ describe('application input schemas', () => {
     expect(() => parseInput(updateDraftSchema, { evidenceLinks: links.join('\n') })).toThrow(
       /at most 10/,
     );
+  });
+
+  it('BREAK: a link list that outgrows the text cap once encoded is refused', () => {
+    // 20 ASCII characters + 90 Cyrillic ones: 110 typed, 560 once percent-encoded.
+    const slug = 'п'.repeat(90);
+    const link = (i: number) => `https://example.org/${i}${slug}`;
+    const typed = Array.from({ length: 10 }, (_, i) => link(i)).join('\n');
+    expect(typed.length).toBeLessThan(APPLICATION_FIELD_LIMITS.evidenceLinksText);
+    expect(() => parseInput(updateDraftSchema, { evidenceLinks: typed })).toThrow(
+      /at most 4000 characters in total once encoded/,
+    );
+    const fits = Array.from({ length: 7 }, (_, i) => link(i));
+    const parsed = parseInput(updateDraftSchema, { evidenceLinks: fits });
+    // What is stored always fits one modal input or form field, whole.
+    expect(parsed.evidenceLinks?.join(EVIDENCE_LINK_SEPARATOR).length).toBeLessThanOrEqual(
+      APPLICATION_FIELD_LIMITS.evidenceLinksText,
+    );
+    expect(parsed.evidenceLinks?.[0]).toContain('%D0%BF');
   });
 
   it('rejects control characters but keeps newlines and tabs', () => {

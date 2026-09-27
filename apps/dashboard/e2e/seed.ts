@@ -19,6 +19,7 @@ import {
   syncDiscordUser,
   systemActor,
   grantRoleUnchecked,
+  updateMyPreferences,
   withActor,
 } from '@jave/core';
 import {
@@ -57,6 +58,7 @@ interface MemberFixture {
 export const SHOWCASE_HANDLE = 'mara';
 export const GRANT_TARGET_HANDLE = 'jun';
 export const RANK_TARGET_HANDLE = 'ilya';
+export const CORE_PERSONA_TIME_ZONE = 'Asia/Kolkata';
 
 const MEMBERS: readonly MemberFixture[] = [
   {
@@ -174,6 +176,14 @@ const MEMBERS: readonly MemberFixture[] = [
     standing: 'restricted',
   },
   {
+    discordId: '110000000000000022',
+    username: 'sol',
+    displayName: 'Sol Arden',
+    visibility: 'staff',
+    roles: [],
+    joinedDaysAgo: 20,
+  },
+  {
     discordId: '110000000000000021',
     username: 'priya',
     displayName: 'Priya Raman',
@@ -227,6 +237,10 @@ export async function seedDashboardFixtures(databaseUrl: string): Promise<void> 
     }
     const founder = await asMember(system, personaUsers.get('founder')!);
     const operations = await asMember(system, personaUsers.get('operations')!);
+    // A valid zone the runtime does not list (it lists Asia/Calcutta): stored as set elsewhere.
+    await updateMyPreferences(await asMember(system, personaUsers.get('core')!), {
+      timezone: CORE_PERSONA_TIME_ZONE,
+    });
 
     const memberIds = new Map<string, { memberId: string; userId: string }>();
     for (const fixture of MEMBERS) {

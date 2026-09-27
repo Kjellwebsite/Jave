@@ -1,5 +1,5 @@
 {
-  "id": "4a1bad0a-87ae-4c2c-901e-1e2b5718d97e",
+  "id": "8b9a2b9d-6a97-41bb-83f5-f09245af489f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -4242,6 +4242,19 @@
           "primaryKey": false,
           "notNull": true
         },
+        "scenario_title": {
+          "name": "scenario_title",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "technique": {
+          "name": "technique",
+          "type": "adversarial_technique",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
         "guardrails": {
           "name": "guardrails",
           "type": "text",
@@ -4262,6 +4275,13 @@
           "notNull": true,
           "default": "'planned'"
         },
+        "plan_revision": {
+          "name": "plan_revision",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "authorized_by_user_id": {
           "name": "authorized_by_user_id",
           "type": "uuid",
@@ -4280,6 +4300,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "authorization_note": {
+          "name": "authorization_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "briefed_at": {
           "name": "briefed_at",
@@ -4769,6 +4795,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "approved_by_user_id": {
+          "name": "approved_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4827,6 +4865,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "created_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "adversarial_triggers_approved_by_user_id_users_id_fk": {
+          "name": "adversarial_triggers_approved_by_user_id_users_id_fk",
+          "tableFrom": "adversarial_triggers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "approved_by_user_id"
           ],
           "columnsTo": [
             "id"

@@ -120,6 +120,31 @@ export async function requestAuthorization(
   );
 }
 
+/** Ask every other authorizer to approve a trigger added after authorization. */
+export async function requestTriggerApproval(
+  ctx: ServiceContext,
+  input: {
+    roleId: string;
+    triggerId: string;
+    trialId: string;
+    trialNumber: number;
+    excludeUserIds: string[];
+  },
+): Promise<void> {
+  await notifyCapabilityHolders(
+    ctx,
+    'canAuthorizeAdversarial',
+    {
+      type: 'adversarial.staff',
+      title: 'TRIGGER APPROVAL REQUESTED',
+      body: `A new trigger for an adversarial role in Trial #${input.trialNumber} awaits a second person. It reaches the operative only once approved.`,
+      data: { roleId: input.roleId, triggerId: input.triggerId },
+      dedupeKey: `adversarial:${input.roleId}:trigger-approval:${input.triggerId}`,
+    },
+    { excludeUserIds: await staffExclusions(ctx, input.trialId, input.excludeUserIds) },
+  );
+}
+
 /** A single staff member (planner) — skipped if they take part in the trial. */
 export async function notifyStaffUser(
   ctx: ServiceContext,

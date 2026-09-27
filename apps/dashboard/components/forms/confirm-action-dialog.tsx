@@ -145,7 +145,7 @@ export function ConfirmActionDialog({
           {...form}
           onPendingChange={setPending}
           onSuccess={() => setOpen(false)}
-          announce={toast}
+          announce={(message) => toast({ text: message, tone: 'success' })}
         />
       </DialogContent>
     </Dialog>

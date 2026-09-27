@@ -26,14 +26,14 @@ describe('member lists follow profile privacy', () => {
     banned = await kit.member({ roles: ['verified'], username: 'banned' });
     restricted = await kit.member({ roles: ['verified'], username: 'restricted' });
     const set = (actor: UserActor, values: Partial<typeof members.$inferInsert>) =>
-      kit.db.update(members).set(values).where(eq(members.id, actor.memberId));
+      kit.db.update(members).set(values).where(eq(members.id, actor.memberId!));
     await set(hidden, { profileVisibility: 'staff' });
     await set(viewer, { profileVisibility: 'staff' });
     await set(banned, { standing: 'banned' });
     await set(restricted, { standing: 'restricted' });
     for (const actor of [open, hidden, banned, restricted]) {
       await kit.db.insert(memberCapabilities).values({
-        memberId: actor.memberId,
+        memberId: actor.memberId!,
         facetKey: FACET,
         verifiedRank: 'B',
         verifiedAt: kit.clock.now(),

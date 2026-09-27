@@ -102,8 +102,10 @@ export interface TestDatabase {
   backend: TestBackend;
   /** Run raw SQL, several statements allowed (fault injection in tests). */
   exec: (sql: string) => Promise<void>;
-  /** Another handle on the same database that reports every query it runs. */
-  withQueryLog: (logQuery: (query: string) => void) => Database;
+  /** Another handle on the same database that reports every query it runs, with its parameters. */
+  withQueryLog: (logQuery: (query: string, params: unknown[]) => void) => Database;
+  /** Run one statement with positional parameters and return its rows (EXPLAIN, fixtures). */
+  query: (sql: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
   close: () => Promise<void>;
 }
 
@@ -125,6 +127,7 @@ async function createPgliteTestDatabase(): Promise<TestDatabase> {
     },
     withQueryLog: (logQuery) =>
       drizzle(pg, { schema, logger: { logQuery } }) as unknown as Database,
+    query: async (sql, params = []) => (await pg.query<Record<string, unknown>>(sql, params)).rows,
     close: () => pg.close(),
   };
 }
@@ -243,6 +246,11 @@ async function createPostgresTestDatabase(): Promise<TestDatabase> {
       serializeRawDates(client);
       return logged as unknown as Database;
     },
+    query: async (sql, params = []) =>
+      (await client.unsafe(sql, params as postgres.ParameterOrJSON<never>[])) as unknown as Record<
+        string,
+        unknown
+      >[],
     close: async () => {
       if (closed) return;
       closed = true;

@@ -67,7 +67,8 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
         description="Every sensitive action: actor, action, target, time, context, result. Append-only. Secrets are redacted before storage."
         meta={
           <Mono dim>
-            {page.total.toLocaleString('en-US')} {filtered ? 'matching' : 'entries'}
+            {page.total.toLocaleString('en-US')}
+            {page.totalCapped ? '+' : ''} {filtered ? 'matching' : 'entries'}
           </Mono>
         }
       />
@@ -266,6 +267,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
               offset={page.offset}
               limit={page.limit}
               total={page.total}
+              totalIsLowerBound={page.totalCapped}
               linkComponent={NextLink}
               hrefForOffset={(next) =>
                 `/audit${toQueryString({ ...filters.applied, offset: next || undefined })}`

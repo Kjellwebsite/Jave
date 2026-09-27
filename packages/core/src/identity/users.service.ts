@@ -28,6 +28,7 @@ import { authorize } from '../permissions/authorize';
 import { capabilitiesForRoles, RESTRICTED_CAPABILITIES } from '../permissions/capabilities';
 import { highestRole, type OrgRole, ROLE_KEYS } from '../permissions/roles';
 import { avatarUrl, type DiscordProfile, handleFromUsername } from './discord';
+import { viewsPrivateProfiles, visibleProfilesCondition } from './visibility';
 
 export type UserRecord = typeof users.$inferSelect;
 export type MemberRecord = typeof members.$inferSelect;
@@ -334,7 +335,8 @@ export interface MemberListItem {
   roles: OrgRole[];
   primaryRole: OrgRole | null;
   guildStatus: MemberRecord['guildStatus'];
-  standing: MemberRecord['standing'];
+  /** Moderation standing: staff only (canViewPrivateProfiles), otherwise null. */
+  standing: MemberRecord['standing'] | null;
   onboardingState: MemberRecord['onboardingState'];
   joinedGuildAt: Date | null;
   verifiedCapabilities: number;
@@ -346,7 +348,11 @@ export async function listMembers(
 ): Promise<Page<MemberListItem>> {
   await authorize(ctx, 'canViewMembers');
   const q = parseInput(listMembersSchema, input);
+  // Lists follow the same privacy rules as a single profile (getProfile).
+  const staffView = viewsPrivateProfiles(ctx);
   const filters: SQL[] = [isNull(members.deletedAt)];
+  const visible = visibleProfilesCondition(ctx);
+  if (visible) filters.push(visible);
   if (q.search) {
     const pattern = `%${q.search.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
     filters.push(
@@ -358,7 +364,8 @@ export async function listMembers(
     );
   }
   if (q.guildStatus) filters.push(eq(members.guildStatus, q.guildStatus));
-  if (q.standing) filters.push(eq(members.standing, q.standing));
+  // Filtering by standing would reveal it: staff only.
+  if (q.standing && staffView) filters.push(eq(members.standing, q.standing));
   if (q.role) {
     filters.push(
       inArray(
@@ -417,7 +424,7 @@ export async function listMembers(
       roles: row.roles,
       primaryRole: highestRole(row.roles),
       guildStatus: row.guildStatus,
-      standing: row.standing,
+      standing: staffView ? row.standing : null,
       onboardingState: row.onboardingState,
       joinedGuildAt: row.joinedGuildAt,
       verifiedCapabilities: row.verifiedCapabilities,

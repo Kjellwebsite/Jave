@@ -105,6 +105,7 @@ function targetMessage(interaction: MessageContextMenuCommandInteraction): Targe
     embedsText: m.embeds
       .map((e) => [e.title, e.description].filter(Boolean).join('\n'))
       .filter(Boolean),
+    webhookId: m.webhookId,
   };
 }
 
@@ -157,6 +158,7 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
       interaction.isChatInputCommand() || interaction.isAutocomplete()
         ? commandOptions(interaction)
         : EMPTY_OPTIONS,
+    // String selects carry option values; user/role/channel selects carry Discord ids.
     values: interaction.isAnySelectMenu() ? interaction.values : [],
     modal: {
       text: (id) => modal?.fields.getTextInputValue(id) ?? '',

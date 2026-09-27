@@ -21,6 +21,24 @@ import { type ApplicationListItem, type StaffApplicationView, toStaffView } from
 /** Staff read paths. Drafts are never visible here: only submitted applications exist to staff. */
 
 /**
+ * Review counts per application. A separate grouped query: a correlated
+ * subquery in a single-table select renders its outer column unqualified,
+ * which Postgres resolves against the inner table.
+ */
+async function countReviews(
+  ctx: ServiceContext,
+  applicationIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (applicationIds.length === 0) return new Map();
+  const rows = await ctx.db
+    .select({ applicationId: applicationReviews.applicationId, value: count() })
+    .from(applicationReviews)
+    .where(inArray(applicationReviews.applicationId, [...applicationIds]))
+    .groupBy(applicationReviews.applicationId);
+  return new Map(rows.map((row) => [row.applicationId, row.value]));
+}
+
+/**
  * Submitted applications for staff. The caller's own applications are never
  * listed: staff data about them (assignee, review count) stays hidden from
  * the applicant even after a promotion to staff.
@@ -62,7 +80,6 @@ export async function listApplications(
       interviewAt: applications.interviewAt,
       decidedAt: applications.decidedAt,
       updatedAt: applications.updatedAt,
-      reviewCount: sql<number>`(select count(*)::int from ${applicationReviews} where ${applicationReviews.applicationId} = ${applications.id})`,
     })
     .from(applications)
     .where(where)
@@ -70,10 +87,16 @@ export async function listApplications(
     .limit(q.limit)
     .offset(q.offset);
   const [total] = await ctx.db.select({ value: count() }).from(applications).where(where);
-  const people = await loadPeople(
-    ctx,
-    rows.flatMap((row) => [row.userId, row.assignedReviewerUserId]),
-  );
+  const [people, reviewCounts] = await Promise.all([
+    loadPeople(
+      ctx,
+      rows.flatMap((row) => [row.userId, row.assignedReviewerUserId]),
+    ),
+    countReviews(
+      ctx,
+      rows.map((row) => row.id),
+    ),
+  ]);
   return {
     items: rows.map((row) => ({
       id: row.id,
@@ -84,7 +107,7 @@ export async function listApplications(
       assignedReviewer: row.assignedReviewerUserId
         ? (people.get(row.assignedReviewerUserId) ?? null)
         : null,
-      reviewCount: row.reviewCount,
+      reviewCount: reviewCounts.get(row.id) ?? 0,
       submittedAt: row.submittedAt,
       interviewAt: row.interviewAt,
       decidedAt: row.decidedAt,

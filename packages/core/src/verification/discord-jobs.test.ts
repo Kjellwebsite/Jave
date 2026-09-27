@@ -8,6 +8,7 @@ import {
   NotFoundError,
   ValidationError,
 } from '../kernel/errors';
+import { claimJobs } from '../jobs/queue';
 import { systemActor } from '../permissions/actor';
 import {
   assignVerifier,
@@ -23,6 +24,7 @@ import { enableQueueChannel, KIT_SETUP_TIMEOUT_MS, KIT_TEST_OPTIONS } from './te
 import { createFakeQueueChannel, fakeQueueCardHandler } from './testing/fake-queue-card-bot';
 
 const CHANNEL_ID = '223456789012345678';
+const NEW_CHANNEL_ID = '523456789012345678';
 const FIRST_MESSAGE_ID = '323456789012345678';
 const SECOND_MESSAGE_ID = '423456789012345678';
 
@@ -78,6 +80,7 @@ describe('discord.verification.queue_card contract', KIT_TEST_OPTIONS, () => {
       openedBy: 'subject',
       evidenceCount: 0,
       channelId,
+      configuredChannelId: channelId,
       messageId: null,
     });
     expect(card.revision).toMatch(/^[0-9a-f]{16}$/);
@@ -101,6 +104,44 @@ describe('discord.verification.queue_card contract', KIT_TEST_OPTIONS, () => {
     const card = await getQueueCard(worker, requested.id);
     expect(card).toMatchObject({ channelId: CHANNEL_ID, messageId: FIRST_MESSAGE_ID });
     expect(card.revision).toBe(first.revision);
+  });
+
+  it('a card whose channel was replaced is reposted in the configured channel', async () => {
+    await enableQueueChannel(kit, CHANNEL_ID);
+    const subject = await kit.member();
+    const requested = await requestVerification(kit.as(subject), { target: { type: 'identity' } });
+    const worker = kit.as(systemActor('job'));
+    const first = await getQueueCard(worker, requested.id);
+    await markQueueCardPosted(worker, {
+      verificationId: requested.id,
+      channelId: CHANNEL_ID,
+      messageId: FIRST_MESSAGE_ID,
+      previousMessageId: first.messageId,
+      revision: first.revision,
+    });
+    // An admin deletes the queue channel and configures a new one.
+    await enableQueueChannel(kit, NEW_CHANNEL_ID);
+    const stale = await getQueueCard(worker, requested.id);
+    expect(stale).toMatchObject({
+      channelId: CHANNEL_ID,
+      configuredChannelId: NEW_CHANNEL_ID,
+      messageId: FIRST_MESSAGE_ID,
+    });
+    // Where the card lives is not part of what it shows.
+    expect(stale.revision).toBe(first.revision);
+    expect(
+      await markQueueCardPosted(worker, {
+        verificationId: requested.id,
+        channelId: NEW_CHANNEL_ID,
+        messageId: SECOND_MESSAGE_ID,
+        previousMessageId: FIRST_MESSAGE_ID,
+        revision: stale.revision,
+      }),
+    ).toEqual({ recorded: true, stale: false });
+    expect(await getQueueCard(worker, requested.id)).toMatchObject({
+      channelId: NEW_CHANNEL_ID,
+      messageId: SECOND_MESSAGE_ID,
+    });
   });
 
   it('BREAK: two runs that both saw no card cannot both record one (compare-and-set)', async () => {
@@ -200,6 +241,28 @@ describe('discord.verification.queue_card contract', KIT_TEST_OPTIONS, () => {
     const decided = await getQueueCard(kit.as(systemActor('job')), requested.id);
     expect(decided.messageId).toBe(card.messageId);
     expect([...channel.messages.entries()]).toEqual([[decided.messageId, decided.revision]]);
+  });
+
+  it('a change back to the state of a running card job makes it run again', async () => {
+    await enableQueueChannel(kit, CHANNEL_ID);
+    const subject = await kit.member();
+    const ops = await kit.member({ roles: ['operations'] });
+    const requested = await requestVerification(kit.as(subject), { target: { type: 'identity' } });
+    // The first card job (pending, unassigned) is in flight on a worker.
+    const [running] = await claimJobs(kit.db, {
+      workerId: 'bot-1',
+      limit: 1,
+      now: kit.clock.now(),
+      types: [VERIFICATION_QUEUE_CARD_JOB],
+    });
+    expect(running!.dedupeKey).toBe(`verification-card:${requested.id}:pending:none`);
+    await assignVerifier(kit.as(ops), {
+      verificationId: requested.id,
+      verifierMemberId: ops.memberId!,
+    });
+    await assignVerifier(kit.as(ops), { verificationId: requested.id, verifierMemberId: null });
+    const [row] = await kit.db.select().from(jobs).where(eq(jobs.id, running!.id));
+    expect(row).toMatchObject({ status: 'running', rerunRequested: true });
   });
 
   it('enqueues nothing when no channel is configured and no card exists', async () => {

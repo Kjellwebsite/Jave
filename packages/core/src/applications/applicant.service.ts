@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm';
+import type { z } from 'zod';
 import { applications, applicationStatusChanges } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
@@ -18,7 +19,7 @@ import { notify, notifyCapabilityHolders } from '../notifications/notifications.
 import { systemActor } from '../permissions/actor';
 import { requireMember } from '../permissions/authorize';
 import { getSettings } from '../settings/settings.service';
-import { applicantCopy, formatUtc, reviewerCopy } from './copy';
+import { applicantCopy, formatUtc, reviewerCopy, STATUS_WORDS } from './copy';
 import {
   assertEligibleToApply,
   requireApplicant,
@@ -246,13 +247,20 @@ export async function submitApplication(ctx: ServiceContext): Promise<ApplicantA
   });
 }
 
+export type WithdrawInput = z.input<typeof withdrawSchema>;
+
 /**
  * Withdraw the caller's open application from any open state. Withdrawing a
  * submitted application starts a reapply cooldown (see closureCooldownMs).
+ *
+ * The cost depends on the status, so a surface that stated it passes
+ * `expectedApplicationId` and `expectedStatus`: when the application changed
+ * since (a reviewer claimed it, or the draft was submitted elsewhere),
+ * nothing is withdrawn and a ConflictError carries the current status.
  */
 export async function withdrawApplication(
   ctx: ServiceContext,
-  input: { reason?: string } = {},
+  input: WithdrawInput = {},
 ): Promise<ApplicantApplicationView> {
   const actor = requireMember(ctx);
   const data = parseInput(withdrawSchema, input);
@@ -260,6 +268,15 @@ export async function withdrawApplication(
     const app = await findOpenApplication(tx, actor.userId, { forUpdate: true });
     if (!app) throw new NotFoundError('Open application');
     const number = applicationNumber(app);
+    const changed =
+      (data.expectedApplicationId !== undefined && data.expectedApplicationId !== app.id) ||
+      (data.expectedStatus !== undefined && data.expectedStatus !== app.status);
+    if (changed) {
+      throw new ConflictError(
+        `${number} changed since you confirmed: it is now ${STATUS_WORDS[app.status]}. Nothing was withdrawn.`,
+        { applicationId: app.id, status: app.status },
+      );
+    }
     const withdrawn = await transitionApplication(tx, app, 'withdrawn', {
       note: data.reason ?? 'withdrawn by applicant',
       subjectMemberId: actor.memberId,

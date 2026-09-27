@@ -5,3 +5,4 @@ export * from './roles.service';
 export * from './capabilities.service';
 export * from './profile.service';
 export * from './role-resync';
+export * from './visibility';

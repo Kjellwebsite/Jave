@@ -8,7 +8,7 @@ import { DisabledError, InvalidStateError } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { authorize, requireMember, requireUser } from '../permissions/authorize';
 import { actorUserId } from '../permissions/actor';
-import { consumeRateLimit } from '../rate-limit/rate-limit';
+import { consumeRateLimit, peekRateLimit } from '../rate-limit/rate-limit';
 import { getSettings } from '../settings/settings.service';
 import {
   assertActive,
@@ -44,6 +44,39 @@ import { recordSlaOutcome, slaBreachPatch } from './sla-outcome';
 import { resumedStatus } from './state';
 import { type TicketSummary, ticketSummaryFor } from './views';
 
+const openRateKey = (userId: string) => `tickets:open:${userId}`;
+
+/** Who may open a ticket right now, and where its thread goes. */
+async function openPreconditions(ctx: ServiceContext) {
+  const actor = requireMember(ctx);
+  assertRequesterStanding(actor);
+  const settings = await getSettings(ctx, 'tickets');
+  if (!settings.enabled) throw new DisabledError('Tickets');
+  const channels = await getSettings(ctx, 'channels');
+  if (!channels.tickets) {
+    throw new InvalidStateError('Tickets are not set up yet: no ticket channel is configured.');
+  }
+  return { actor, settings, ticketChannelId: channels.tickets };
+}
+
+/**
+ * Read-only preflight for {@link openTicket}: the refusal it would give right
+ * now (standing, feature off, no ticket channel, rate limit, open-ticket
+ * limit), in the same words, without counting against the rate limit or
+ * locking anything. Surfaces call it before showing the form so nobody writes
+ * a message that cannot be filed; openTicket re-checks everything on submit.
+ */
+export async function assertCanOpenTicket(ctx: ServiceContext): Promise<void> {
+  const { actor, settings } = await openPreconditions(ctx);
+  await peekRateLimit(
+    ctx,
+    openRateKey(actor.userId),
+    settings.openRatePerHour,
+    OPEN_RATE_WINDOW_SECONDS,
+  );
+  await assertBelowOpenLimit(ctx, actor.userId, settings.maxOpenPerUser, { lockOpener: false });
+}
+
 /**
  * Open a ticket as yourself. The opening message is stored as the first
  * transcript entry; the private thread is provisioned by the bot.
@@ -53,17 +86,10 @@ export async function openTicket(
   input: OpenTicketInput,
 ): Promise<TicketSummary> {
   const data = parseInput(openTicketSchema, input);
-  const actor = requireMember(ctx);
-  assertRequesterStanding(actor);
-  const settings = await getSettings(ctx, 'tickets');
-  if (!settings.enabled) throw new DisabledError('Tickets');
-  const channels = await getSettings(ctx, 'channels');
-  if (!channels.tickets) {
-    throw new InvalidStateError('Tickets are not set up yet: no ticket channel is configured.');
-  }
+  const { actor, settings, ticketChannelId } = await openPreconditions(ctx);
   await consumeRateLimit(
     ctx,
-    `tickets:open:${actor.userId}`,
+    openRateKey(actor.userId),
     settings.openRatePerHour,
     OPEN_RATE_WINDOW_SECONDS,
   );
@@ -79,7 +105,7 @@ export async function openTicket(
         status: 'open',
         subject: data.subject,
         openerUserId: actor.userId,
-        discordChannelId: channels.tickets,
+        discordChannelId: ticketChannelId,
         slaFirstResponseDueAt: firstResponseDueAt(now, data.priority, settings.slaMinutes),
         lastActivityAt: now,
         createdAt: now,

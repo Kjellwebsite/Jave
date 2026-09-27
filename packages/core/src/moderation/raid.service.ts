@@ -214,7 +214,9 @@ export async function screenJoin(
     }
 
     const hold =
-      !staff && (raidActive || (evaluation.suspicious && settings.quarantineSuspiciousJoins));
+      !staff &&
+      !target.isBot &&
+      (raidActive || (evaluation.suspicious && settings.quarantineSuspiciousJoins));
     if (evaluation.suspicious) {
       const { event } = await createSecurityEvent(tx, {
         userId: user.id,

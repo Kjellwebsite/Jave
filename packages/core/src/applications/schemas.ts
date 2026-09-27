@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { pageSchema } from '../kernel/pagination';
 import { applicationRecommendation } from '@jave/database';
+import { OPEN_STATUSES } from './state-machine';
 
 /**
  * Field caps. Discord modal text inputs cap at 4000 characters; every cap
@@ -107,13 +108,26 @@ export function splitLinkList(text: string): string[] {
     .filter((part) => part.length > 0);
 }
 
+/** The separator a stored link list is shown with (one link per line). */
+export const EVIDENCE_LINK_SEPARATOR = '\n';
+
+/**
+ * Normalizing percent-encodes non-ASCII characters, so a list typed within
+ * the text cap can grow past it. The stored list, one link per line, must
+ * still fit one modal input or form field, or editing it would truncate it.
+ */
 const evidenceLinkList = z
   .array(httpUrl(APPLICATION_FIELD_LIMITS.evidenceLink))
   .max(
     APPLICATION_FIELD_LIMITS.evidenceLinks,
     `at most ${APPLICATION_FIELD_LIMITS.evidenceLinks} evidence links`,
   )
-  .transform((links) => [...new Set(links)]);
+  .transform((links) => [...new Set(links)])
+  .refine(
+    (links) =>
+      links.join(EVIDENCE_LINK_SEPARATOR).length <= APPLICATION_FIELD_LIMITS.evidenceLinksText,
+    `at most ${APPLICATION_FIELD_LIMITS.evidenceLinksText} characters in total once encoded (non-ASCII characters take several)`,
+  );
 
 /** A list of links, or one modal text block of links (one per line). */
 const evidenceLinksInput = z
@@ -178,6 +192,14 @@ export const withdrawSchema = z
       .max(APPLICATION_FIELD_LIMITS.withdrawReason)
       .refine(hasNoControlChars, CONTROL_CHARS_MESSAGE)
       .optional(),
+    /**
+     * Compare-and-set: the application the caller confirmed withdrawing. A
+     * confirmation states a cost that depends on the status, so surfaces pass
+     * both; when either no longer matches, nothing is withdrawn.
+     */
+    expectedApplicationId: z.uuid().optional(),
+    /** The status the confirmed cost was computed for. */
+    expectedStatus: z.enum(OPEN_STATUSES).optional(),
   })
   .strict();
 

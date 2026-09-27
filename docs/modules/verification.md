@@ -187,7 +187,8 @@ Keeps one staff-facing card per verification in
 `settings.channels.verificationQueue` (new optional field). Enqueued in the
 same transaction as the state change on request, assignment, review start,
 decision, revocation and expiry — only when the channel is set or a card
-already exists. Dedupe key: `verification-card:<id>:<status>:<assignee|none>`.
+already exists. Dedupe key: `verification-card:<id>:<status>:<assignee|none>`,
+with `rerunIfRunning` (a same-key change while the job runs re-runs it).
 
 Payload: `{ verificationId: uuid }` (`queueCardJobPayloadSchema`).
 
@@ -196,10 +197,12 @@ The bot must:
 1. Parse the payload; on failure throw `PermanentJobError`.
 2. Call `verification.getQueueCard(ctx, verificationId)` with the worker's system context.
 3. If `channelId` is null, complete without acting.
-4. If `messageId` is set, edit that message in `channelId`; on Unknown Message,
-   post a new one. Otherwise post a new message in `channelId`. When posting,
-   send `nonce` = `vc` + job id with `enforce_nonce: true` so a retried job
-   does not post twice.
+4. If `messageId` is set, edit that message in `channelId`. On Unknown
+   Message or Unknown Channel (the card or its channel was deleted), post a
+   new card in `configuredChannelId` (the queue channel configured now), or
+   complete without acting when that is null. Otherwise post a new message in
+   `channelId`. When posting, send `nonce` = `vc` + job id (+ render index)
+   with `enforce_nonce: true` so a retried job does not post twice.
 5. Render with `panel()`: title `${reference} — ${typeLabel}`, status label,
    subject (display name + handle), target label, claim, evidence count,
    requested/expires timestamps, assigned verifier. `claim`, `targetLabel` and
@@ -207,7 +210,8 @@ The bot must:
    `allowedMentions: { parse: [] }`. Never put evidence URLs or notes on the card.
 6. Report with `verification.markQueueCardPosted(ctx, input)` (system actor
    only). `input` holds `verificationId`, `channelId` and `messageId` (the
-   message now showing the card), plus `previousMessageId` and `revision`:
+   channel and message now showing the card — a reposted card moves there),
+   plus `previousMessageId` and `revision`:
    the `messageId` and `revision` step 2 returned. The callback is a
    compare-and-set on the recorded message id:
    - `recorded: false` — another run's card is on record. If this run posted a
@@ -233,6 +237,29 @@ only its own messages.
 
 No other Discord side effects: subject notices travel through the notification
 system (`notifications.deliver`).
+
+## Surfaces
+
+Full reference: [`docs/commands/verification.md`](../commands/verification.md).
+
+- **Discord** (`apps/bot/src/features/verification`): `/verify request` (type select → your own
+  targets from `listTargetCandidates` → rank for skills → claim + up to 3 new evidence links +
+  a select of your existing evidence; slash
+  options autocomplete the same candidates), `/verify status`, `/verify queue` (verifiers,
+  paginated select → detail with the controls `verificationAccess` allows: START REVIEW, APPROVE /
+  REJECT with a note modal — skill approvals ask for the rank to grant — and REVOKE), and the
+  **Verifications** user context menu. The `discord.verification.queue_card` handler follows the
+  contract above.
+- **Dashboard** (`apps/dashboard`): `/verification` (the queue for verifiers, a member's own
+  requests otherwise) and `/verification/[id]` (claim, evidence, target preview, decide / revoke).
+- **Surface helpers in core**: `listTargetCandidates` (self-only target pickers, capped at 25),
+  `listGrantableRanks` (verifiers: the ranks a skill approval could grant now, above the subject's
+  verified rank) and `verificationAccess` (pure: which controls a viewer can use now, and why
+  not), so surfaces never re-implement the two-person rule, type capabilities or the rank floor.
+- **Evidence**: the Discord request modal takes up to 3 new links plus up to 7 of the member's
+  own existing evidence items (`evidenceIds`, a select), within `MAX_EVIDENCE_PER_VERIFICATION`.
+  The dashboard has no request form; `/verification?subject=me` (linked from `/me`) lists a
+  member's own requests, decided ones included.
 
 ## Schema (`packages/database/src/schema/verification.ts`)
 
@@ -278,10 +305,9 @@ Migration: `drizzle/0001_verification.sql`.
   only check). Revocation handles this (see above), but the dashboard should
   show which verifications cite a piece of evidence.
 - Card jobs dedupe on `<id>:<status>:<assignee>` against pending or running
-  jobs. If a transition returns to the key of a card job that has already
-  reported a fresh card but is not yet marked complete, that enqueue is
-  dropped; the card then lags until the next transition (a window of
-  milliseconds).
+  jobs and are enqueued with `rerunIfRunning`: a transition back to the key
+  of a running card job makes that job run once more when it ends, so the
+  card never lags a change.
 - Every integration test file builds and migrates a fresh PGlite database in
   `beforeEach`; under heavy machine load that can exceed the shared 60 s hook
   timeout, so this module's suites raise it (`KIT_SETUP_TIMEOUT_MS`) and the

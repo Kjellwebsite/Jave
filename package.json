@@ -22,7 +22,7 @@
     "test:e2e": "pnpm --filter @jave/dashboard test:e2e",
     "db:generate": "pnpm --filter @jave/database generate",
     "db:migrate": "pnpm --filter @jave/database migrate",
-    "db:seed": "pnpm --filter @jave/database seed",
+    "db:seed": "pnpm --filter @jave/core seed",
     "db:check": "pnpm --filter @jave/database check",
     "commands:deploy": "pnpm --filter @jave/bot commands:deploy",
     "check": "pnpm typecheck && pnpm lint && pnpm test"

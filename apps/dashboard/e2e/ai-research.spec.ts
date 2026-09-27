@@ -38,7 +38,9 @@ test.describe('JAVE AI console', () => {
       'Mara Voss',
     );
     await expect(
-      page.getByRole('navigation', { name: 'JAVE AI sections' }).getByLabel('2 awaiting your confirmation'),
+      page
+        .getByRole('navigation', { name: 'JAVE AI sections' })
+        .getByLabel('2 awaiting your confirmation'),
     ).toBeVisible();
   });
 
@@ -51,7 +53,9 @@ test.describe('JAVE AI console', () => {
     const confirm = page.getByRole('dialog', { name: 'Create draft mission' });
     await expect(confirm).toContainText('Created as DRAFT');
     await confirm.getByRole('button', { name: 'Create draft mission' }).click();
-    await expect(page.getByText(/MISSION DRAFTED — #\d{4} Decode the CubeSat beacon/)).toBeVisible();
+    await expect(
+      page.getByText(/MISSION DRAFTED — #\d{4} Decode the CubeSat beacon/),
+    ).toBeVisible();
     await expect(mission).toBeHidden();
 
     const announcement = proposal(page, 'Awaiting your confirmation', 'Announcement');
@@ -59,7 +63,9 @@ test.describe('JAVE AI console', () => {
     const reject = page.getByRole('dialog', { name: 'Reject proposal' });
     await reject.getByLabel('Reason').fill('Wait until the brief is final.');
     await reject.getByRole('button', { name: 'Reject proposal' }).click();
-    await expect(page.getByText('PROPOSAL REJECTED — ANNOUNCEMENT. Nothing was executed.')).toBeVisible();
+    await expect(
+      page.getByText('PROPOSAL REJECTED — ANNOUNCEMENT. Nothing was executed.'),
+    ).toBeVisible();
     await expect(page.getByText('NOTHING TO CONFIRM')).toBeVisible();
   });
 
@@ -166,7 +172,9 @@ test.describe('research library', () => {
     await review.getByLabel('Evidence level').selectOption('peer_reviewed');
     await review.getByLabel('Topic').fill('Machine learning');
     await review.getByRole('button', { name: 'Record review' }).click();
-    await expect(page.getByText('REVIEW RECORDED — VERIFIED — evidence: PEER REVIEWED.')).toBeVisible();
+    await expect(
+      page.getByText('REVIEW RECORDED — VERIFIED — evidence: PEER REVIEWED.'),
+    ).toBeVisible();
     await expect(page.getByText('VERIFIED', { exact: true }).first()).toBeVisible();
 
     await page.getByTestId('push-sidus').click();
@@ -178,22 +186,38 @@ test.describe('research library', () => {
     await expect(panelTitled(page, 'Sidus sync')).toContainText('PENDING');
   });
 
-  test('BREAK: stale reviews, own submissions and unknown items are refused', async ({ browser }) => {
+  test('BREAK: stale reviews, own submissions and unknown items are refused', async ({
+    browser,
+  }) => {
     const reviewer = await browser.newPage();
     const second = await browser.newPage();
     await signInAs(reviewer, 'operations');
     await signInAs(second, 'core');
     await openItem(reviewer, SEEDED_PAPERS.sleep);
     await openItem(second, SEEDED_PAPERS.sleep);
-    await second.getByRole('form', { name: 'Review' }).getByLabel('Status').selectOption('reviewed');
-    await second.getByRole('form', { name: 'Review' }).getByLabel('Evidence level').selectOption('observational');
+    await second
+      .getByRole('form', { name: 'Review' })
+      .getByLabel('Status')
+      .selectOption('reviewed');
+    await second
+      .getByRole('form', { name: 'Review' })
+      .getByLabel('Evidence level')
+      .selectOption('observational');
     await second.getByRole('button', { name: 'Record review' }).click();
     await expect(second.getByText(/REVIEW RECORDED — REVIEWED/)).toBeVisible();
     // The first reviewer still has the old version on screen.
-    await reviewer.getByRole('form', { name: 'Review' }).getByLabel('Status').selectOption('verified');
-    await reviewer.getByRole('form', { name: 'Review' }).getByLabel('Evidence level').selectOption('anecdotal');
+    await reviewer
+      .getByRole('form', { name: 'Review' })
+      .getByLabel('Status')
+      .selectOption('verified');
+    await reviewer
+      .getByRole('form', { name: 'Review' })
+      .getByLabel('Evidence level')
+      .selectOption('anecdotal');
     await reviewer.getByRole('button', { name: 'Record review' }).click();
-    await expect(reviewer.getByText('This item changed while you were reviewing it.', { exact: false })).toBeVisible();
+    await expect(
+      reviewer.getByText('This item changed while you were reviewing it.', { exact: false }),
+    ).toBeVisible();
     await reviewer.close();
     await second.close();
 

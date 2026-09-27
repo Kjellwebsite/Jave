@@ -6,7 +6,7 @@ import {
   DisabledProvider,
   MOCK_PROVIDER_NAME,
 } from '@jave/ai';
-import { type ai, research } from '@jave/core';
+import { ai, research, type ServiceContext, type tickets } from '@jave/core';
 import { getRuntime } from './runtime';
 
 /**
@@ -93,6 +93,16 @@ export function getIntegrations(): DashboardIntegrations {
 /** The AI dependencies every `ai.*` call from the dashboard takes. */
 export function getAiDeps(): ai.AiDeps {
   return getIntegrations().ai;
+}
+
+/**
+ * The tickets AI summary extension point for a dashboard request: core's
+ * guarded AI path with this process's provider, as the signed-in member.
+ * Usage: `tickets.summarizeTicket(ctx, ticketId, ticketSummarizerFor(ctx))`.
+ * With AI disabled it refuses with the AI module's own DisabledError.
+ */
+export function ticketSummarizerFor(ctx: ServiceContext): tickets.TicketSummarizer {
+  return ai.ticketSummarizer(ctx, getAiDeps(), 'dashboard');
 }
 
 /**

@@ -74,7 +74,8 @@ function describe(item: Item): string {
   if (item.titleGuessed) lines.push('*Title guessed from the message. Metadata may correct it.*');
   if (item.authors.length > 0) {
     const shown = item.authors.slice(0, AUTHORS_SHOWN).join(', ');
-    const more = item.authors.length > AUTHORS_SHOWN ? ` +${item.authors.length - AUTHORS_SHOWN}` : '';
+    const more =
+      item.authors.length > AUTHORS_SHOWN ? ` +${item.authors.length - AUTHORS_SHOWN}` : '';
     lines.push(userText(`${shown}${more}`, 400));
   }
   const venue = [item.source, item.publishedOn].filter(Boolean).join(` ${GLYPH.dot} `);
@@ -97,7 +98,9 @@ function sidusLine(item: Item): string {
     const when = item.sidusSyncedAt ? ` ${GLYPH.dot} ${discordTime(item.sidusSyncedAt, 'R')}` : '';
     return `${label}${when}`;
   }
-  return item.sidusSyncError ? `${label} ${GLYPH.dot} ${userText(item.sidusSyncError, 200)}` : label;
+  return item.sidusSyncError
+    ? `${label} ${GLYPH.dot} ${userText(item.sidusSyncError, 200)}`
+    : label;
 }
 
 function fields(item: Item, submitterDiscordId: string | null): APIEmbedField[] {
@@ -166,7 +169,9 @@ export function itemCard(
     }),
   ];
   if (notice) {
-    embeds.unshift(panel({ title: notice.title, description: notice.description, color: COLORS.success }));
+    embeds.unshift(
+      panel({ title: notice.title, description: notice.description, color: COLORS.success }),
+    );
   }
   const components = [linkRow(item), actionRow(item, viewer)].filter(
     (component): component is APIActionRowComponent<APIComponentInMessageActionRow> =>

@@ -235,9 +235,15 @@ export default async function ResearchPage({
                               {item.authors.length > 3 ? ' et al.' : ''}
                             </span>
                           ) : null}
-                          {item.doi ? <Mono dim className="text-[12px]">{item.doi}</Mono> : null}
+                          {item.doi ? (
+                            <Mono dim className="text-[12px]">
+                              {item.doi}
+                            </Mono>
+                          ) : null}
                           {!item.doi && item.arxivId ? (
-                            <Mono dim className="text-[12px]">arXiv:{item.arxivId}</Mono>
+                            <Mono dim className="text-[12px]">
+                              arXiv:{item.arxivId}
+                            </Mono>
                           ) : null}
                           {item.topic ? <Badge>{item.topic}</Badge> : null}
                         </span>

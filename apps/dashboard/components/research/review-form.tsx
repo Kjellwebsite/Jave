@@ -38,14 +38,22 @@ const EVIDENCE_OPTIONS = (Object.keys(EVIDENCE_LABELS) as EvidenceLevel[]).map((
 export function ReviewForm({ action, itemId, version, archived, current }: ReviewFormProps) {
   const statuses = archived ? (['needs_review'] as const) : REVIEW_STATUSES;
   return (
-    <ActionForm action={action} submitLabel={archived ? 'Restore for review' : 'Record review'} aria-label="Review">
+    <ActionForm
+      action={action}
+      submitLabel={archived ? 'Restore for review' : 'Record review'}
+      aria-label="Review"
+    >
       <input type="hidden" name="itemId" value={itemId} />
       <input type="hidden" name="expectedVersion" value={String(version)} />
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField
           name="status"
           label="Status"
-          description={archived ? 'Archived items return to NEEDS REVIEW.' : 'VERIFIED needs a known evidence level.'}
+          description={
+            archived
+              ? 'Archived items return to NEEDS REVIEW.'
+              : 'VERIFIED needs a known evidence level.'
+          }
         >
           <NativeSelect
             name="status"
@@ -67,14 +75,29 @@ export function ReviewForm({ action, itemId, version, archived, current }: Revie
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField name="topic" label="Topic">
-          <Input name="topic" maxLength={LIMITS.topic} defaultValue={current.topic ?? ''} autoComplete="off" />
+          <Input
+            name="topic"
+            maxLength={LIMITS.topic}
+            defaultValue={current.topic ?? ''}
+            autoComplete="off"
+          />
         </FormField>
         <FormField name="tags" label="Tags" description="Comma separated, at most 10.">
-          <Input name="tags" maxLength={LIMITS.tags} defaultValue={current.tags.join(', ')} autoComplete="off" />
+          <Input
+            name="tags"
+            maxLength={LIMITS.tags}
+            defaultValue={current.tags.join(', ')}
+            autoComplete="off"
+          />
         </FormField>
       </div>
       <FormField name="summary" label="Summary">
-        <Textarea name="summary" maxLength={LIMITS.summary} rows={4} defaultValue={current.summary ?? ''} />
+        <Textarea
+          name="summary"
+          maxLength={LIMITS.summary}
+          rows={4}
+          defaultValue={current.summary ?? ''}
+        />
       </FormField>
       <FormField name="note" label="Review note" description="Optional. Recorded in the audit log.">
         <Textarea name="note" maxLength={LIMITS.note} rows={2} />

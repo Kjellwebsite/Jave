@@ -35,7 +35,8 @@ describe('AI surfaces: ticket summaries and the request ledger', INTEGRATION_SUI
     kit = await createTicketKit();
     reply = undefined;
     mock = new MockProvider({
-      respond: (req, opts) => (reply ? reply(req, opts) : '- Build fails with OOM.\n- Next: raise memory.'),
+      respond: (req, opts) =>
+        reply ? reply(req, opts) : '- Build fails with OOM.\n- Next: raise memory.',
     });
   }, INTEGRATION_HOOK_TIMEOUT);
   afterEach(async () => {
@@ -130,7 +131,11 @@ describe('AI surfaces: ticket summaries and the request ledger', INTEGRATION_SUI
       const ticket = await openAs(kit, member);
       const ctx = kit.as(mod);
       await expect(
-        summarizeTicket(ctx, ticket.id, ticketSummarizer(ctx, { provider: new DisabledProvider() })),
+        summarizeTicket(
+          ctx,
+          ticket.id,
+          ticketSummarizer(ctx, { provider: new DisabledProvider() }),
+        ),
       ).rejects.toBeInstanceOf(DisabledError);
       await updateSettings(kit.system, 'ai', { dailyRequestsPerUser: 1 });
       await ask(ctx, deps(), { question: 'Spend the only request.' });

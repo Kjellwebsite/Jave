@@ -2,7 +2,14 @@ import type { ComponentHandler, ModalHandler } from '../../interactions/types';
 import type { BotFeature } from '../types';
 import { sidusCommand } from './commands';
 import { ACTION, RESEARCH_NS } from './constants';
-import { openReview, requestSync, requireItemId, showItem, submitReview, unknownControl } from './items';
+import {
+  openReview,
+  requestSync,
+  requireItemId,
+  showItem,
+  submitReview,
+  unknownControl,
+} from './items';
 import { saveToSidusContext } from './save';
 
 /** Buttons and the item select. Ids route; core authorizes the clicking member. */

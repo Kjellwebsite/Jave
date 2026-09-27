@@ -67,7 +67,10 @@ describe('ai wiring: integrations from the environment', () => {
     const cases: [Record<string, string>, RegExp][] = [
       [{ AI_PROVIDER: 'anthropic' }, /AI_API_KEY/],
       [{ AI_PROVIDER: 'openai-compatible', AI_BASE_URL: `http://example.org/?k=${SECRET}` }, /AI_/],
-      [{ SIDUS_API_URL: `http://sidus.example.org/?k=${SECRET}`, SIDUS_API_KEY: SECRET }, /SIDUS_API_URL/],
+      [
+        { SIDUS_API_URL: `http://sidus.example.org/?k=${SECRET}`, SIDUS_API_KEY: SECRET },
+        /SIDUS_API_URL/,
+      ],
     ];
     for (const [extra, variable] of cases) {
       let message = '';

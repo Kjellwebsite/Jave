@@ -61,9 +61,9 @@ describe('parseEnv', () => {
 
   it('accepts the MOCK / DEVELOPMENT ONLY AI provider outside production', () => {
     for (const NODE_ENV of ['development', 'test']) {
-      expect(parseEnv(fullBotEnvSchema, { ...validBot, NODE_ENV, AI_PROVIDER: 'mock' })).toMatchObject(
-        { AI_PROVIDER: 'mock' },
-      );
+      expect(
+        parseEnv(fullBotEnvSchema, { ...validBot, NODE_ENV, AI_PROVIDER: 'mock' }),
+      ).toMatchObject({ AI_PROVIDER: 'mock' });
     }
   });
 

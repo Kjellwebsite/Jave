@@ -75,9 +75,13 @@ export async function seedAiResearchFixtures(databaseUrl: string): Promise<void>
     await ai.brainstorm(verified, answers, { topic: 'Cheap satellite ground stations' });
 
     // Proposals: pending drafts by other staff, for the founder's confirmation queue.
-    await ai.draftTask(operations, { provider: new MockProvider({ respond: () => MISSION_DRAFT }) }, {
-      brief: 'Someone should decode the beacon frames from the last pass.',
-    });
+    await ai.draftTask(
+      operations,
+      { provider: new MockProvider({ respond: () => MISSION_DRAFT }) },
+      {
+        brief: 'Someone should decode the beacon frames from the last pass.',
+      },
+    );
     await ai.draftAnnouncement(
       core,
       { provider: new MockProvider({ respond: () => ANNOUNCEMENT_DRAFT }) },

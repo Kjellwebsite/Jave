@@ -128,7 +128,12 @@ describe('research feature', SUITE, () => {
   describe('/sidus', () => {
     it('recent and search list items; the select opens a card', async () => {
       await saveMessage(member.user);
-      const recent = await bot.run({ kind: 'slash', name: 'sidus', subcommand: 'recent', user: member.user });
+      const recent = await bot.run({
+        kind: 'slash',
+        name: 'sidus',
+        subcommand: 'recent',
+        user: member.user,
+      });
       expect(recent.interaction.lastText()).toContain('RECENT RESEARCH');
       expect(recent.interaction.lastText()).toContain('Array programming with NumPy');
       const [select] = componentIds(recent.interaction);
@@ -221,7 +226,11 @@ describe('research feature', SUITE, () => {
         name: formId,
         user: reviewer.user,
         modalSelect: { status: ['verified'], evidence: ['peer_reviewed'] },
-        modalText: { topic: 'Scientific computing', tags: 'numpy, Python , arrays', note: 'Checked.' },
+        modalText: {
+          topic: 'Scientific computing',
+          tags: 'numpy, Python , arrays',
+          note: 'Checked.',
+        },
       });
       const text = reviewed.interaction.lastText();
       expect(text).toContain('REVIEW RECORDED — VERIFIED');
@@ -327,7 +336,10 @@ describe('research feature', SUITE, () => {
         user: other.user,
       });
       expect(notVerified.interaction.lastText()).toContain('Only VERIFIED items sync');
-      for (const name of [customId('research', 'view', 'nope'), customId('research', 'zap', itemId)]) {
+      for (const name of [
+        customId('research', 'view', 'nope'),
+        customId('research', 'zap', itemId),
+      ]) {
         const junk = await bot.run({ kind: 'button', name, user: member.user });
         expect(junk.interaction.lastText()).toMatch(/Choose an item|EXPIRED/);
       }
@@ -349,9 +361,11 @@ describe('research feature', SUITE, () => {
         const [saved] = await unconfigured.kit.db.select().from(researchItems);
         await research.reviewResearchItem(unconfigured.kit.as(staff.actor), {
           itemId: saved!.id,
-          expectedVersion: (await research.getResearchItem(unconfigured.kit.as(staff.actor), {
-            itemId: saved!.id,
-          })).version,
+          expectedVersion: (
+            await research.getResearchItem(unconfigured.kit.as(staff.actor), {
+              itemId: saved!.id,
+            })
+          ).version,
           status: 'verified',
           evidenceLevel: 'experimental',
         });

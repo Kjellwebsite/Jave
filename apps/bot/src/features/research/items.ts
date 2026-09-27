@@ -86,9 +86,7 @@ function restricted(description: string) {
 }
 
 function reviewModal(item: research.ResearchItemView): ModalPayload {
-  const current = (REVIEW_STATUSES as readonly string[]).includes(item.status)
-    ? item.status
-    : null;
+  const current = (REVIEW_STATUSES as readonly string[]).includes(item.status) ? item.status : null;
   return new ModalBuilder()
     .setCustomId(customId(RESEARCH_NS, ACTION.review, item.id, item.version))
     .setTitle('REVIEW RESEARCH ITEM')
@@ -120,16 +118,14 @@ function reviewModal(item: research.ResearchItemView): ModalPayload {
             })),
           ),
       ),
-      new LabelBuilder()
-        .setLabel('Topic')
-        .setTextInputComponent(
-          new TextInputBuilder()
-            .setCustomId(FIELD.topic)
-            .setStyle(TextInputStyle.Short)
-            .setMaxLength(TOPIC_MAX)
-            .setRequired(false)
-            .setValue(item.topic ?? ''),
-        ),
+      new LabelBuilder().setLabel('Topic').setTextInputComponent(
+        new TextInputBuilder()
+          .setCustomId(FIELD.topic)
+          .setStyle(TextInputStyle.Short)
+          .setMaxLength(TOPIC_MAX)
+          .setRequired(false)
+          .setValue(item.topic ?? ''),
+      ),
       new LabelBuilder()
         .setLabel('Tags')
         .setDescription('Comma separated, at most 10.')

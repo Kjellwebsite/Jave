@@ -94,10 +94,7 @@ export async function archiveResearchAction(_: ActionState, data: FormData): Pro
   );
 }
 
-export async function requestSidusSyncAction(
-  _: ActionState,
-  data: FormData,
-): Promise<ActionState> {
+export async function requestSidusSyncAction(_: ActionState, data: FormData): Promise<ActionState> {
   return runAction('research.sidus_sync', async (ctx) => {
     const itemId = itemIdFrom(data);
     await research.requestSidusSync(ctx, { itemId });

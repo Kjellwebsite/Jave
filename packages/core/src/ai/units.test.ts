@@ -127,7 +127,9 @@ describe('structured output', () => {
 
   it('parses mission drafts, falling back to a safe type and a plain-text brief', () => {
     expect(
-      parseTaskDraft('```json\n{"title":"Ship a CLI","brief":"Build it end to end.","type":"build"}\n```'),
+      parseTaskDraft(
+        '```json\n{"title":"Ship a CLI","brief":"Build it end to end.","type":"build"}\n```',
+      ),
     ).toEqual({ title: 'Ship a CLI', brief: 'Build it end to end.', type: 'build' });
     expect(
       parseTaskDraft('{"title":"T","brief":"Build the thing.","type":"ban_everyone"}'),

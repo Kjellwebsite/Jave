@@ -77,7 +77,10 @@ export default async function ResearchItemPage({ params }: { params: Promise<{ i
     : null;
 
   const reference: Fact[] = [
-    { label: 'DOI', value: item.doi ? <ExternalAnchor href={doiUrl(item.doi)}>{item.doi}</ExternalAnchor> : '—' },
+    {
+      label: 'DOI',
+      value: item.doi ? <ExternalAnchor href={doiUrl(item.doi)}>{item.doi}</ExternalAnchor> : '—',
+    },
     {
       label: 'ARXIV',
       value: item.arxivId ? (
@@ -100,12 +103,20 @@ export default async function ResearchItemPage({ params }: { params: Promise<{ i
     { label: 'PUBLISHED', value: item.publishedOn ? <Mono>{item.publishedOn}</Mono> : '—' },
   ];
   const provenance: Fact[] = [
-    { label: 'SUBMITTED BY', value: names.get(item.submittedByUserId)?.displayName ?? 'Unknown member' },
+    {
+      label: 'SUBMITTED BY',
+      value: names.get(item.submittedByUserId)?.displayName ?? 'Unknown member',
+    },
     { label: 'ADDED', value: <Mono dim>{formatTimestamp(item.createdAt, tz)}</Mono> },
     {
       label: 'ORIGIN',
       value: message ? (
-        <a href={message} target="_blank" rel="noopener noreferrer" className="text-fg underline-offset-4 hover:underline">
+        <a
+          href={message}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-fg underline-offset-4 hover:underline"
+        >
           Discord message
         </a>
       ) : (
@@ -136,7 +147,10 @@ export default async function ResearchItemPage({ params }: { params: Promise<{ i
         />
       ),
     },
-    { label: 'EXTERNAL ID', value: item.sidusExternalId ? <Mono>{item.sidusExternalId}</Mono> : '—' },
+    {
+      label: 'EXTERNAL ID',
+      value: item.sidusExternalId ? <Mono>{item.sidusExternalId}</Mono> : '—',
+    },
     {
       label: 'LAST PUSH',
       value: item.sidusSyncedAt ? <Mono dim>{formatTimestamp(item.sidusSyncedAt, tz)}</Mono> : '—',
@@ -177,7 +191,9 @@ export default async function ResearchItemPage({ params }: { params: Promise<{ i
           </div>
           <ItemActions
             itemId={item.id}
-            canArchive={item.status !== 'archived' && (reviewer || (own && ctx.actor.standing === 'good'))}
+            canArchive={
+              item.status !== 'archived' && (reviewer || (own && ctx.actor.standing === 'good'))
+            }
             canPush={reviewer && !own && item.status === 'verified'}
             archiveAction={archiveResearchAction}
             pushAction={requestSidusSyncAction}
@@ -194,7 +210,9 @@ export default async function ResearchItemPage({ params }: { params: Promise<{ i
         <div className="space-y-6">
           <Panel title="Summary">
             {item.summary ? (
-              <p className="whitespace-pre-wrap text-body leading-relaxed text-fg-muted">{item.summary}</p>
+              <p className="whitespace-pre-wrap text-body leading-relaxed text-fg-muted">
+                {item.summary}
+              </p>
             ) : (
               <p className="text-small text-fg-subtle">No summary yet. Reviewers can add one.</p>
             )}
@@ -221,7 +239,8 @@ export default async function ResearchItemPage({ params }: { params: Promise<{ i
           ) : null}
           {reviewer && own ? (
             <Callout tone="neutral" title="YOUR SUBMISSION">
-              Nobody reviews their own submission. Another reviewer decides its status and evidence level.
+              Nobody reviews their own submission. Another reviewer decides its status and evidence
+              level.
             </Callout>
           ) : null}
         </div>
@@ -229,7 +248,10 @@ export default async function ResearchItemPage({ params }: { params: Promise<{ i
           <Panel title="Reference">
             <FactList facts={reference} />
           </Panel>
-          <Panel title="Sidus sync" description="Only VERIFIED items are pushed. No member identity leaves JAVE.">
+          <Panel
+            title="Sidus sync"
+            description="Only VERIFIED items are pushed. No member identity leaves JAVE."
+          >
             <FactList facts={sidus} />
             {item.sidusSyncError ? (
               <p className="mt-3 text-small text-fg-subtle">{item.sidusSyncError}</p>

@@ -8,7 +8,13 @@ import { customId } from '../../interactions/custom-id';
 import type { FakeInteraction } from '../../testing/fake-interaction';
 import { allFeatures } from '..';
 import { announceNonce } from './announce-job';
-import { type AiHarness, createAiHarness, HARNESS_TIMEOUT_MS, SUITE, targetMessage } from './test-fixtures';
+import {
+  type AiHarness,
+  createAiHarness,
+  HARNESS_TIMEOUT_MS,
+  SUITE,
+  targetMessage,
+} from './test-fixtures';
 
 const ANNOUNCEMENTS_CHANNEL = '600000000000000042';
 const MAX_MESSAGE_CONTEXT_COMMANDS = 15;
@@ -153,7 +159,10 @@ describe('ai feature: proposals, announcements, usage', SUITE, () => {
         announcements: ANNOUNCEMENTS_CHANNEL,
       });
       t.script(
-        JSON.stringify({ title: 'TRIAL WEEK', body: 'Trials open Monday. @everyone read the brief.' }),
+        JSON.stringify({
+          title: 'TRIAL WEEK',
+          body: 'Trials open Monday. @everyone read the brief.',
+        }),
       );
       const draft = await ai.draftAnnouncement(
         t.bot.kit.as(core.actor),
@@ -188,8 +197,15 @@ describe('ai feature: proposals, announcements, usage', SUITE, () => {
     it('is idempotent: a retry after a lost response gets the same message back', async () => {
       const { core, proposalId } = await confirmedAnnouncement();
       // Discord already holds the message from an attempt whose response was lost.
-      t.bot.gateway.nonces.set(`${ANNOUNCEMENTS_CHANNEL}:${announceNonce(proposalId)}`, '700000000000000001');
-      await t.bot.run({ kind: 'button', name: customId('ai', 'confirm', proposalId), user: core.user });
+      t.bot.gateway.nonces.set(
+        `${ANNOUNCEMENTS_CHANNEL}:${announceNonce(proposalId)}`,
+        '700000000000000001',
+      );
+      await t.bot.run({
+        kind: 'button',
+        name: customId('ai', 'confirm', proposalId),
+        user: core.user,
+      });
       await t.bot.drain();
       expect(t.bot.gateway.messages.size).toBe(0);
       const [row] = await proposalRows();
@@ -212,7 +228,11 @@ describe('ai feature: proposals, announcements, usage', SUITE, () => {
         'sendMessageOnce',
         new DiscordActionError('send message failed: Missing Permissions', 50013, true),
       );
-      await t.bot.run({ kind: 'button', name: customId('ai', 'confirm', proposalId), user: core.user });
+      await t.bot.run({
+        kind: 'button',
+        name: customId('ai', 'confirm', proposalId),
+        user: core.user,
+      });
       await t.bot.drain();
       const [row] = await proposalRows();
       expect(row).toMatchObject({ status: 'failed' });
@@ -257,7 +277,12 @@ describe('ai feature: proposals, announcements, usage', SUITE, () => {
   describe('/jave ai-usage and status', () => {
     it('members see their own usage; auditors also see the organization', async () => {
       const member = await t.bot.member({ roles: ['verified'], username: 'lena' });
-      await t.bot.run({ kind: 'slash', name: 'ask', user: member.user, options: { question: 'q' } });
+      await t.bot.run({
+        kind: 'slash',
+        name: 'ask',
+        user: member.user,
+        options: { question: 'q' },
+      });
       const mine = await t.bot.run({
         kind: 'slash',
         name: 'jave',

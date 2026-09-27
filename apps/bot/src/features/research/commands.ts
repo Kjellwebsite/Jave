@@ -1,6 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { research, ValidationError } from '@jave/core';
-import type { AutocompleteChoice, CommandDefinition, HandlerContext } from '../../interactions/types';
+import type {
+  AutocompleteChoice,
+  CommandDefinition,
+  HandlerContext,
+} from '../../interactions/types';
 import { clip } from '../../ui/format';
 import { GLYPH } from '../../ui/theme';
 import { itemList } from './card';
@@ -19,9 +23,10 @@ import { openReview, requireItemId, showItem } from './items';
  * reviewers. Replies are ephemeral: a lookup is personal.
  */
 
-const STATUS_CHOICES = (Object.keys(research.STATUS_LABELS) as ResearchStatus[]).map(
-  (status) => ({ name: research.STATUS_LABELS[status], value: status }),
-);
+const STATUS_CHOICES = (Object.keys(research.STATUS_LABELS) as ResearchStatus[]).map((status) => ({
+  name: research.STATUS_LABELS[status],
+  value: status,
+}));
 
 function statusOption(h: HandlerContext): ResearchStatus | undefined {
   const value = h.interaction.options.string('status');
@@ -35,7 +40,10 @@ async function itemChoices(h: HandlerContext, query: string): Promise<Autocomple
     limit: AUTOCOMPLETE_LIMIT,
   });
   return page.items.map((item) => ({
-    name: clip(`${item.title} ${GLYPH.dot} ${research.STATUS_LABELS[item.status]}`, OPTION_TEXT_MAX),
+    name: clip(
+      `${item.title} ${GLYPH.dot} ${research.STATUS_LABELS[item.status]}`,
+      OPTION_TEXT_MAX,
+    ),
     value: item.id,
   }));
 }
@@ -87,7 +95,10 @@ export const sidusCommand: CommandDefinition = {
             .setMaxLength(SEARCH_MAX),
         )
         .addStringOption((o) =>
-          o.setName('status').setDescription('Only this status').addChoices(...STATUS_CHOICES),
+          o
+            .setName('status')
+            .setDescription('Only this status')
+            .addChoices(...STATUS_CHOICES),
         ),
     )
     .addSubcommand((s) =>
@@ -95,7 +106,10 @@ export const sidusCommand: CommandDefinition = {
         .setName('recent')
         .setDescription('Latest items in the library.')
         .addStringOption((o) =>
-          o.setName('status').setDescription('Only this status').addChoices(...STATUS_CHOICES),
+          o
+            .setName('status')
+            .setDescription('Only this status')
+            .addChoices(...STATUS_CHOICES),
         ),
     )
     .addSubcommand((s) =>

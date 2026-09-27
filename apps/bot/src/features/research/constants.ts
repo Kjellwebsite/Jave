@@ -45,9 +45,7 @@ export const EVIDENCE_LABELS: Readonly<Record<EvidenceLevel, string>> = {
 
 export const EVIDENCE_LEVELS = Object.keys(EVIDENCE_LABELS) as EvidenceLevel[];
 
-export const SYNC_LABELS: Readonly<
-  Record<research.ResearchItemView['sidusSyncStatus'], string>
-> = {
+export const SYNC_LABELS: Readonly<Record<research.ResearchItemView['sidusSyncStatus'], string>> = {
   not_synced: 'NOT SYNCED',
   pending: 'PENDING',
   synced: 'SYNCED',

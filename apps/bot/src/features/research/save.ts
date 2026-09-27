@@ -47,7 +47,9 @@ async function saveReply(h: HandlerContext, target: TargetMessage) {
   } catch (error) {
     if (!(error instanceof ConflictError)) throw error;
     return {
-      embeds: [panel({ title: DUPLICATE_TITLE, description: error.userMessage, color: COLORS.steel })],
+      embeds: [
+        panel({ title: DUPLICATE_TITLE, description: error.userMessage, color: COLORS.steel }),
+      ],
       ephemeral: true,
     };
   }
@@ -79,7 +81,10 @@ export const saveToSidusContext: CommandDefinition = {
   async execute(h) {
     const target = h.interaction.targetMessage;
     if (!target) throw new NotFoundError('Message');
-    if (h.interaction.guildId !== h.services.discord.guildId || target.guildId !== h.interaction.guildId) {
+    if (
+      h.interaction.guildId !== h.services.discord.guildId ||
+      target.guildId !== h.interaction.guildId
+    ) {
       throw new ValidationError('Save messages from JAVELIN channels only.');
     }
     await h.respond(await saveReply(h, target));

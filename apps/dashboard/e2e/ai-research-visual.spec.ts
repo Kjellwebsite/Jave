@@ -35,8 +35,16 @@ const SHOTS: readonly Shot[] = [
   { name: 'ai-proposals', path: '/ai?tab=proposals', persona: 'founder' },
   { name: 'ai-ledger', path: '/ai?tab=ledger', persona: 'founder' },
   { name: 'research-library', path: '/research', persona: 'founder' },
-  { name: 'research-item-review', path: (page) => itemPath(page, SEEDED_PAPERS.sleep), persona: 'founder' },
-  { name: 'research-item-verified', path: (page) => itemPath(page, SEEDED_PAPERS.numpy), persona: 'founder' },
+  {
+    name: 'research-item-review',
+    path: (page) => itemPath(page, SEEDED_PAPERS.sleep),
+    persona: 'founder',
+  },
+  {
+    name: 'research-item-verified',
+    path: (page) => itemPath(page, SEEDED_PAPERS.numpy),
+    persona: 'founder',
+  },
   { name: 'research-empty', path: '/research?q=no-such-reference', persona: 'founder' },
   { name: 'ai-member', path: '/ai', persona: 'member' },
   { name: 'ai-member-proposals', path: '/ai?tab=proposals', persona: 'member' },
@@ -58,12 +66,20 @@ for (const viewport of VIEWPORTS) {
           const overflow = await page.evaluate(
             () => document.documentElement.scrollWidth - window.innerWidth,
           );
-          expect(overflow, `${shot.name} scrolls horizontally at ${viewport.width}px`).toBeLessThanOrEqual(0);
+          expect(
+            overflow,
+            `${shot.name} scrolls horizontally at ${viewport.width}px`,
+          ).toBeLessThanOrEqual(0);
           if (SAVE) {
             const height = await page.evaluate(() => document.documentElement.scrollHeight);
             await page.screenshot({
               path: `${SCREENSHOT_DIR}${shot.name}-${viewport.width}.png`,
-              clip: { x: 0, y: 0, width: viewport.width, height: Math.min(height, MAX_CAPTURE_HEIGHT) },
+              clip: {
+                x: 0,
+                y: 0,
+                width: viewport.width,
+                height: Math.min(height, MAX_CAPTURE_HEIGHT),
+              },
               fullPage: true,
               animations: 'disabled',
               caret: 'hide',

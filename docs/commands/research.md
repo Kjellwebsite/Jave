@@ -8,12 +8,12 @@ save, review, archive and push; the state machine; dedupe; optimistic versions.
 
 Replies are ephemeral.
 
-| Subcommand                    | Who                  | What it does                                                                                                                                                                             |
-| ----------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/sidus search query [status]` | `canViewMembers`     | Up to 10 matches (title, summary, DOI) with an **Open an item** select menu.                                                                                                              |
-| `/sidus recent [status]`       | `canViewMembers`     | The 10 newest items (archived only for their submitter and reviewers) with the same select.                                                                                              |
-| `/sidus view item`             | `canViewMembers`     | Item card: title, authors, venue, summary, status, evidence level, topic, tags, DOI / arXiv, submitter, review time, Sidus sync state; link buttons DOI · arXiv · Source · Message. `item` autocompletes from the library. |
-| `/sidus review item`           | `canReviewResearch`  | Opens the review modal. Never for your own submission.                                                                                                                                   |
+| Subcommand                     | Who                 | What it does                                                                                                                                                                                                               |
+| ------------------------------ | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sidus search query [status]` | `canViewMembers`    | Up to 10 matches (title, summary, DOI) with an **Open an item** select menu.                                                                                                                                               |
+| `/sidus recent [status]`       | `canViewMembers`    | The 10 newest items (archived only for their submitter and reviewers) with the same select.                                                                                                                                |
+| `/sidus view item`             | `canViewMembers`    | Item card: title, authors, venue, summary, status, evidence level, topic, tags, DOI / arXiv, submitter, review time, Sidus sync state; link buttons DOI · arXiv · Source · Message. `item` autocompletes from the library. |
+| `/sidus review item`           | `canReviewResearch` | Opens the review modal. Never for your own submission.                                                                                                                                                                     |
 
 The **Source** button is shown only for http(s) links that are not Discord links; a Discord CDN
 attachment or message from a private channel is never presented as a public reference.
@@ -34,13 +34,13 @@ Only messages in JAVELIN channels are accepted.
 
 ## Components and modals (custom ids route, never authorize)
 
-| Custom id                            | Kind   | Rule                                                                                                                           |
-| ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `research:open`                      | select | Values are item ids; the item is loaded as the clicking member.                                                                |
-| `research:view:<itemId>`             | button | Item card.                                                                                                                     |
-| `research:review:<itemId>`           | button | Reviewers only (`ACCESS RESTRICTED` otherwise); refuses your own submission. Shown only to reviewers on others' items.        |
+| Custom id                            | Kind   | Rule                                                                                                                                                                                                                                                                |
+| ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `research:open`                      | select | Values are item ids; the item is loaded as the clicking member.                                                                                                                                                                                                     |
+| `research:view:<itemId>`             | button | Item card.                                                                                                                                                                                                                                                          |
+| `research:review:<itemId>`           | button | Reviewers only (`ACCESS RESTRICTED` otherwise); refuses your own submission. Shown only to reviewers on others' items.                                                                                                                                              |
 | `research:review:<itemId>:<version>` | modal  | Status (NEEDS REVIEW / REVIEWED / VERIFIED), evidence level, topic, tags (comma separated), audited note. The decision applies to `version` — a changed item is a `CONFLICT`. VERIFIED requires a known evidence level. Self-review is blocked and audited by core. |
-| `research:sync:<itemId>`             | button | **Push to Sidus**: reviewers, verified items, not your own. Queues `research.sync_sidus`.                                     |
+| `research:sync:<itemId>`             | button | **Push to Sidus**: reviewers, verified items, not your own. Queues `research.sync_sidus`.                                                                                                                                                                           |
 
 ## Jobs
 

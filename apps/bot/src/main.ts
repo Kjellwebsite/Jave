@@ -28,7 +28,9 @@ async function main(): Promise<void> {
     integrations = integrationsFromEnv(env);
   } catch (error) {
     // The factories name the offending variable, never its value.
-    console.error(`Invalid AI / Sidus configuration: ${error instanceof Error ? error.message : 'unknown error'}`);
+    console.error(
+      `Invalid AI / Sidus configuration: ${error instanceof Error ? error.message : 'unknown error'}`,
+    );
     process.exit(1);
   }
   logger.info(

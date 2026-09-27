@@ -37,7 +37,10 @@ export function proposalPreview(
   ];
   if (warnings.includes('possible_prompt_injection')) {
     fields.push(
-      field('Notice', 'The source text contains instruction-like content. Review before confirming.'),
+      field(
+        'Notice',
+        'The source text contains instruction-like content. Review before confirming.',
+      ),
     );
   }
   return {
@@ -75,7 +78,9 @@ function reportPayload(report: ai.ActionReport): ReplyPayload {
 function closedPayload(proposal: ai.ProposalView): ReplyPayload {
   if (proposal.status === 'expired') {
     return {
-      embeds: [failure('EXPIRED', 'This proposal expired before it was confirmed. Draft it again.')],
+      embeds: [
+        failure('EXPIRED', 'This proposal expired before it was confirmed. Draft it again.'),
+      ],
       components: [],
     };
   }

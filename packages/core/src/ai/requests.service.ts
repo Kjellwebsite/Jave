@@ -95,8 +95,7 @@ export async function listAiRequests(
       outputTokens: request.outputTokens,
       latencyMs: request.latencyMs,
       errorCode: request.errorCode,
-      requester:
-        everyone && request.userId ? { userId: request.userId, displayName } : null,
+      requester: everyone && request.userId ? { userId: request.userId, displayName } : null,
       fingerprint:
         everyone && request.promptHash
           ? request.promptHash.slice(0, FINGERPRINT_DISPLAY_LENGTH)

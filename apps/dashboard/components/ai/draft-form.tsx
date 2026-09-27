@@ -17,9 +17,21 @@ export interface DraftFormProps {
 }
 
 /** SUGGEST → PREVIEW: the model drafts, JAVE stores a pending proposal. Nothing executes. */
-export function DraftForm({ action, label, description, placeholder, submitLabel }: DraftFormProps) {
+export function DraftForm({
+  action,
+  label,
+  description,
+  placeholder,
+  submitLabel,
+}: DraftFormProps) {
   return (
-    <ActionForm action={action} submitLabel={submitLabel} submitVariant="secondary" resetOnSuccess aria-label={label}>
+    <ActionForm
+      action={action}
+      submitLabel={submitLabel}
+      submitVariant="secondary"
+      resetOnSuccess
+      aria-label={label}
+    >
       <FormField name="brief" label={label} description={description} required>
         <Textarea
           name="brief"

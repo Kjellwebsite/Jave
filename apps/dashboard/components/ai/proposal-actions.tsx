@@ -3,7 +3,6 @@
 import { Check, X } from 'lucide-react';
 import { Button, Textarea } from '@jave/ui';
 import type { FormAction } from '../forms/action-form';
-import { useAnnouncedAction } from '../forms/announced-action';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 
@@ -26,8 +25,8 @@ const MAX_REASON_LENGTH = 500;
 
 /**
  * CONFIRM (executes exactly the preview) and REJECT for one pending proposal.
- * Both controls leave the page once the proposal is decided, so their results
- * are announced through the toast directly.
+ * Both controls leave the page once the proposal is decided; the dialog
+ * announces the result itself.
  */
 export function ProposalActions({
   proposalId,
@@ -40,8 +39,6 @@ export function ProposalActions({
   confirmAction,
   rejectAction,
 }: ProposalActionsProps) {
-  const confirm = useAnnouncedAction(confirmAction);
-  const reject = useAnnouncedAction(rejectAction);
   return (
     <div className="flex flex-wrap justify-end gap-2">
       <ConfirmActionDialog
@@ -54,7 +51,7 @@ export function ProposalActions({
         }
         confirmLabel={isOwn ? 'Withdraw proposal' : 'Reject proposal'}
         tone="danger"
-        action={reject}
+        action={rejectAction}
         hidden={{ proposalId }}
         trigger={
           <Button variant="ghost" size="sm" iconLeft={X} data-testid="reject-proposal">
@@ -72,7 +69,7 @@ export function ProposalActions({
           title={confirmLabel}
           description={`${consequence} Executes exactly the preview below, as you.`}
           confirmLabel={confirmLabel}
-          action={confirm}
+          action={confirmAction}
           hidden={{ proposalId }}
           trigger={
             <Button variant="primary" size="sm" iconLeft={Check} data-testid="confirm-proposal">

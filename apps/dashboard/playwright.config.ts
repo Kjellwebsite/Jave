@@ -43,6 +43,8 @@ export default defineConfig({
       JAVE_PUBLIC_URL: BASE_URL,
       JAVE_SESSION_SECRET: randomBytes(32).toString('hex'),
       JAVE_DEV_AUTH: 'true',
+      // MOCK / DEVELOPMENT ONLY: deterministic offline AI (refused with NODE_ENV=production).
+      AI_PROVIDER: 'mock',
     },
   },
 });

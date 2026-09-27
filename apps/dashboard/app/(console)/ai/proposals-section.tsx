@@ -1,12 +1,5 @@
 import { Inbox, Sparkles } from 'lucide-react';
-import {
-  ai,
-  CAPABILITY_KEYS,
-  type Capability,
-  can,
-  getSettings,
-  userNames,
-} from '@jave/core';
+import { ai, CAPABILITY_KEYS, type Capability, can, getSettings, userNames } from '@jave/core';
 import { EmptyState, Pagination, Panel } from '@jave/ui';
 import { DraftForm } from '@/components/ai/draft-form';
 import {

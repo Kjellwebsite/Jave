@@ -160,7 +160,13 @@ export interface MemberUsageRow {
 }
 
 /** Today's usage per member, heaviest first (audit data: canViewAuditLogs). */
-export function MemberUsagePanel({ rows, limit }: { rows: readonly MemberUsageRow[]; limit: number }) {
+export function MemberUsagePanel({
+  rows,
+  limit,
+}: {
+  rows: readonly MemberUsageRow[];
+  limit: number;
+}) {
   return (
     <Panel
       title="Usage by member today"
@@ -168,16 +174,26 @@ export function MemberUsagePanel({ rows, limit }: { rows: readonly MemberUsageRo
       flush
     >
       {rows.length === 0 ? (
-        <EmptyState compact title="NO REQUESTS TODAY" description="Nobody has used JAVE AI today." />
+        <EmptyState
+          compact
+          title="NO REQUESTS TODAY"
+          description="Nobody has used JAVE AI today."
+        />
       ) : (
         <Table caption="AI usage by member today" dense>
           <TableHead>
             <tr>
               <TableHeaderCell>Member</TableHeaderCell>
               <TableHeaderCell className="text-right">Counted</TableHeaderCell>
-              <TableHeaderCell className="hidden text-right sm:table-cell">Attempts</TableHeaderCell>
-              <TableHeaderCell className="hidden text-right md:table-cell">Tokens in</TableHeaderCell>
-              <TableHeaderCell className="hidden text-right md:table-cell">Tokens out</TableHeaderCell>
+              <TableHeaderCell className="hidden text-right sm:table-cell">
+                Attempts
+              </TableHeaderCell>
+              <TableHeaderCell className="hidden text-right md:table-cell">
+                Tokens in
+              </TableHeaderCell>
+              <TableHeaderCell className="hidden text-right md:table-cell">
+                Tokens out
+              </TableHeaderCell>
             </tr>
           </TableHead>
           <TableBody>

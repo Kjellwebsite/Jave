@@ -29,7 +29,13 @@ export function AddReferenceDialog({ action }: { action: FormAction }) {
       </FormField>
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField name="doi" label="DOI">
-          <Input name="doi" maxLength={LIMITS.doi} placeholder="10.1038/…" mono autoComplete="off" />
+          <Input
+            name="doi"
+            maxLength={LIMITS.doi}
+            placeholder="10.1038/…"
+            mono
+            autoComplete="off"
+          />
         </FormField>
         <FormField name="arxivId" label="arXiv ID">
           <Input
@@ -42,7 +48,13 @@ export function AddReferenceDialog({ action }: { action: FormAction }) {
         </FormField>
       </div>
       <FormField name="url" label="Link" description="http(s) only.">
-        <Input name="url" type="url" maxLength={LIMITS.url} placeholder="https://…" autoComplete="off" />
+        <Input
+          name="url"
+          type="url"
+          maxLength={LIMITS.url}
+          placeholder="https://…"
+          autoComplete="off"
+        />
       </FormField>
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField name="topic" label="Topic">

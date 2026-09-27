@@ -9,7 +9,13 @@ import type { FakeInteraction } from '../../testing/fake-interaction';
 import { TEST_GUILD_ID } from '../../testing/harness';
 import { paginate, PAGE_CHARS } from './pages';
 import { ExpiringStore } from './store';
-import { type AiHarness, createAiHarness, HARNESS_TIMEOUT_MS, SUITE, targetMessage } from './test-fixtures';
+import {
+  type AiHarness,
+  createAiHarness,
+  HARNESS_TIMEOUT_MS,
+  SUITE,
+  targetMessage,
+} from './test-fixtures';
 
 const CHANNEL_ID = '100000000000000555';
 const HIDDEN_CHANNEL_ID = '100000000000000556';
@@ -155,7 +161,10 @@ describe('ai feature: answers', SUITE, () => {
     expect(ok.interaction.lastText()).toContain('JAVE AI · SUMMARIZE');
     expect(t.mock.calls[0]!.request.messages[0]!.content).toContain('Mara: We ship');
 
-    const secret = t.bot.gateway.seedMessage({ channelId: HIDDEN_CHANNEL_ID, content: 'staff only' });
+    const secret = t.bot.gateway.seedMessage({
+      channelId: HIDDEN_CHANNEL_ID,
+      content: 'staff only',
+    });
     t.bot.gateway.channelReaders.set(HIDDEN_CHANNEL_ID, new Set(['100000000000000001']));
     const hidden = await t.bot.run({
       kind: 'slash',
@@ -288,7 +297,12 @@ describe('ai feature: answers', SUITE, () => {
     it('AI disabled in settings, the daily limit and provider failures reply calmly', async () => {
       const founder = await t.bot.member({ roles: ['founder'] });
       await updateSettings(t.bot.kit.as(founder.actor), 'ai', { enabled: false });
-      const disabled = await t.bot.run({ kind: 'slash', name: 'ask', user, options: { question: 'q' } });
+      const disabled = await t.bot.run({
+        kind: 'slash',
+        name: 'ask',
+        user,
+        options: { question: 'q' },
+      });
       expect(disabled.interaction.lastText()).toContain('DISABLED');
 
       await updateSettings(t.bot.kit.as(founder.actor), 'ai', {
@@ -296,7 +310,12 @@ describe('ai feature: answers', SUITE, () => {
         dailyRequestsPerUser: 1,
       });
       await t.bot.run({ kind: 'slash', name: 'ask', user, options: { question: 'one' } });
-      const limited = await t.bot.run({ kind: 'slash', name: 'ask', user, options: { question: 'two' } });
+      const limited = await t.bot.run({
+        kind: 'slash',
+        name: 'ask',
+        user,
+        options: { question: 'two' },
+      });
       expect(limited.interaction.lastText()).toContain('AI LIMIT REACHED');
       expect(limited.interaction.lastText()).toContain('Daily AI limit reached');
       expect(limited.interaction.lastText()).toMatch(/<t:\d+:R>/);
@@ -305,10 +324,18 @@ describe('ai feature: answers', SUITE, () => {
       t.script(() => {
         throw new AIOverloadedError({ provider: 'mock' });
       });
-      const overloaded = await t.bot.run({ kind: 'slash', name: 'ask', user, options: { question: 'q' } });
+      const overloaded = await t.bot.run({
+        kind: 'slash',
+        name: 'ask',
+        user,
+        options: { question: 'q' },
+      });
       expect(overloaded.interaction.lastText()).toContain('SERVICE UNAVAILABLE');
       expect(overloaded.interaction.lastText()).toContain('at capacity');
-      const rows = await t.bot.kit.db.select().from(aiRequests).where(eq(aiRequests.status, 'error'));
+      const rows = await t.bot.kit.db
+        .select()
+        .from(aiRequests)
+        .where(eq(aiRequests.status, 'error'));
       expect(rows).toHaveLength(1);
     });
   });

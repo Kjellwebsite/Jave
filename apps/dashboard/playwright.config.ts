@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_DATABASE_URL } from './e2e/database-url';
 import { E2E_GITHUB_WEBHOOK_SECRET } from './e2e/deployment-secrets';
 
 /**
@@ -11,8 +12,7 @@ import { E2E_GITHUB_WEBHOOK_SECRET } from './e2e/deployment-secrets';
 /** Override with E2E_PORT when several checkouts run end-to-end suites on one machine. */
 const PORT = Number(process.env.E2E_PORT ?? 3107);
 const BASE_URL = `http://localhost:${PORT}`;
-const DATABASE_URL =
-  process.env.E2E_DATABASE_URL ?? 'postgres://jave:jave@localhost:5432/jave_e2e_dash';
+const DATABASE_URL = E2E_DATABASE_URL;
 
 export default defineConfig({
   testDir: './e2e',
@@ -46,6 +46,8 @@ export default defineConfig({
       JAVE_DEV_AUTH: 'true',
       JAVE_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
       GITHUB_WEBHOOK_SECRET: E2E_GITHUB_WEBHOOK_SECRET,
+      // MOCK / DEVELOPMENT ONLY: deterministic offline AI (refused with NODE_ENV=production).
+      AI_PROVIDER: 'mock',
     },
   },
 });

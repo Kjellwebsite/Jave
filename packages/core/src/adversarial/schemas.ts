@@ -186,3 +186,11 @@ export const markDebriefPostedSchema = z
     (value) => value.outcome !== 'sent' || (value.channelId && value.messageId),
     'A posted debrief needs its channel and message IDs.',
   );
+
+/** The stop word seen in a Discord message (bot message listener). */
+export const stopWordTypedSchema = z.object({
+  /** The message author. */
+  discordUserId: snowflake,
+  /** The channel the message was posted in (a thread's parent channel); null outside the server. */
+  channelId: snowflake.nullable(),
+});

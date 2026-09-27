@@ -105,6 +105,9 @@ describe('adversarial lifecycle', () => {
     expect(briefJob!.payload).toEqual({ roleId: role.id, revision: 1 });
     const [pointer] = await notificationsFor(fx.operative.userId, 'adversarial.briefing');
     expect(pointer!.title).toBe('CONFIDENTIAL BRIEFING');
+    // It points where the briefing really is: there is no dashboard page for operatives.
+    expect(pointer!.body).toContain('/trial briefing');
+    expect(pointer!.body).not.toContain('dashboard');
     // Inbox pointer only: the DM carries the briefing itself.
     expect(
       await kit.db

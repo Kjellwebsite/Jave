@@ -9,6 +9,7 @@ import { requireContributor } from '../../research/model';
 import { saveResearchItem } from '../../research/research.service';
 import { saveResearchItemSchema } from '../../research/schemas';
 import { getSettings } from '../../settings/settings.service';
+import { MIN_DRAFT_BODY_LENGTH, MIN_DRAFT_TITLE_LENGTH } from '../constants';
 import { DISCORD_AI_ANNOUNCE_JOB } from '../discord-jobs';
 import { defineActionKind, type RegisteredActionKind } from './registry';
 
@@ -58,8 +59,8 @@ export const createResearchItemAction = defineActionKind({
 });
 
 const createTaskSchema = z.object({
-  title: z.string().trim().min(3).max(120),
-  brief: z.string().trim().min(10).max(4000),
+  title: z.string().trim().min(MIN_DRAFT_TITLE_LENGTH).max(120),
+  brief: z.string().trim().min(MIN_DRAFT_BODY_LENGTH).max(4000),
   type: z.enum(missionType.enumValues).default('individual'),
 });
 
@@ -106,8 +107,8 @@ export const createTaskAction = defineActionKind({
 });
 
 const draftAnnouncementSchema = z.object({
-  title: z.string().trim().min(3).max(100),
-  body: z.string().trim().min(10).max(3500),
+  title: z.string().trim().min(MIN_DRAFT_TITLE_LENGTH).max(100),
+  body: z.string().trim().min(MIN_DRAFT_BODY_LENGTH).max(3500),
 });
 
 /** Post an announcement to the configured channel via the bot. Broadcasters only. */

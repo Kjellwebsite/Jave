@@ -24,6 +24,7 @@ import {
   loadTeams,
   loadTrial,
   type ParticipantDetail,
+  type TrialRecord,
 } from './repository';
 import { assignTeamsSchema, selectParticipantsSchema } from './schemas';
 import { assertStatus, assertTransition } from './state-machine';
@@ -31,6 +32,7 @@ import {
   type AssignmentStrategy,
   createRng,
   generateSeed,
+  type PlannedTeam,
   planTeams,
   seededShuffle,
 } from './team-assignment';
@@ -188,6 +190,90 @@ export interface AssignmentResult {
 }
 
 /**
+ * The teams `assignTeams` would create right now: selected participants
+ * re-checked for eligibility (roles, standing and presence can change after
+ * selection), then planned with the given size, strategy and seed.
+ */
+async function planAssignment(
+  t: ServiceContext,
+  trial: TrialRecord,
+  options: { strategy: AssignmentStrategy; teamSize: number; seed: string },
+): Promise<{ plan: PlannedTeam[]; selected: ParticipantDetail[]; removed: ParticipantDetail[] }> {
+  const candidates = await loadParticipantDetails(t, trial.id, ['selected']);
+  const roles = await activeRolesByMember(
+    t,
+    candidates.map((p) => p.memberId),
+  );
+  const eligible = (p: ParticipantDetail) =>
+    eligibilityProblem({
+      roles: roles.get(p.memberId) ?? [],
+      standing: p.standing,
+      guildStatus: p.guildStatus,
+    }) === null;
+  const selected = candidates.filter(eligible);
+  const removed = candidates.filter((p) => !eligible(p));
+  if (candidates.length === 0)
+    throw new InvalidStateError(
+      `${trialRef(trial)} has no selected participants. Select participants first.`,
+    );
+  if (selected.length === 0)
+    throw new InvalidStateError(
+      `None of the selected participants of ${trialRef(trial)} is still eligible.`,
+    );
+  const plan = planTeams(
+    selected.map((p) => ({
+      memberId: p.memberId,
+      primaryDomain: p.primaryDomain,
+      leadPriority: leadPriority(roles.get(p.memberId) ?? []),
+    })),
+    options,
+  );
+  return { plan, selected, removed };
+}
+
+export interface TeamPreview {
+  trialId: string;
+  strategy: AssignmentStrategy;
+  /** Pass this seed to `assignTeams` to get exactly these teams. */
+  seed: string;
+  teamSize: number;
+  teams: PlannedTeam[];
+  /** Selected members who are no longer eligible and would be removed. */
+  ineligibleMemberIds: string[];
+}
+
+/**
+ * Dry run of `assignTeams`: the exact teams a strategy and seed produce with
+ * the current selection. Writes nothing; it reveals nothing beyond the staff
+ * view, so it is not audited.
+ */
+export async function previewTeams(
+  ctx: ServiceContext,
+  input: z.input<typeof assignTeamsSchema>,
+): Promise<TeamPreview> {
+  const data = parseInput(assignTeamsSchema, input);
+  await authorize(ctx, 'canManageTrials', { type: 'trial', id: data.trialId });
+  await assertNoConflictOfInterest(ctx, data.trialId, 'preview its teams');
+  const trial = await loadTrial(ctx, data.trialId);
+  assertTransition(trial, 'teams_assigned', 'preview teams');
+  const teamSize = data.teamSize ?? trial.teamSize;
+  const seed = data.seed ?? generateSeed();
+  const { plan, removed } = await planAssignment(ctx, trial, {
+    strategy: data.strategy,
+    teamSize,
+    seed,
+  });
+  return {
+    trialId: trial.id,
+    strategy: data.strategy,
+    seed,
+    teamSize,
+    teams: plan,
+    ineligibleMemberIds: removed.map((p) => p.memberId),
+  };
+}
+
+/**
  * Split the selected participants into teams (see `planTeams`). Allowed while
  * recruiting and again before the start (a reshuffle replaces every team; the
  * Discord resources of the old teams are torn down). Selected members who are
@@ -204,28 +290,14 @@ export async function assignTeams(
   return withTransaction(ctx, async (t) => {
     const trial = await loadTrial(t, data.trialId, 'update');
     assertTransition(trial, 'teams_assigned', 'assign teams');
-    const candidates = await loadParticipantDetails(t, trial.id, ['selected']);
-    const roles = await activeRolesByMember(
-      t,
-      candidates.map((p) => p.memberId),
-    );
-    // Standing, server presence and roles can change after selection: re-check.
-    const eligible = (p: ParticipantDetail) =>
-      eligibilityProblem({
-        roles: roles.get(p.memberId) ?? [],
-        standing: p.standing,
-        guildStatus: p.guildStatus,
-      }) === null;
-    const selected = candidates.filter(eligible);
-    const removed = candidates.filter((p) => !eligible(p));
-    if (candidates.length === 0)
-      throw new InvalidStateError(
-        `${trialRef(trial)} has no selected participants. Select participants first.`,
-      );
-    if (selected.length === 0)
-      throw new InvalidStateError(
-        `None of the selected participants of ${trialRef(trial)} is still eligible.`,
-      );
+    const teamSize = data.teamSize ?? trial.teamSize;
+    const seed = data.seed ?? generateSeed();
+    // Standing, server presence and roles can change after selection: re-checked here.
+    const { plan, selected, removed } = await planAssignment(t, trial, {
+      strategy: data.strategy,
+      teamSize,
+      seed,
+    });
     if (removed.length > 0)
       await t.db
         .update(trialParticipants)
@@ -239,16 +311,6 @@ export async function assignTeams(
             ),
           ),
         );
-    const teamSize = data.teamSize ?? trial.teamSize;
-    const seed = data.seed ?? generateSeed();
-    const plan = planTeams(
-      selected.map((p) => ({
-        memberId: p.memberId,
-        primaryDomain: p.primaryDomain,
-        leadPriority: leadPriority(roles.get(p.memberId) ?? []),
-      })),
-      { teamSize, strategy: data.strategy, seed },
-    );
 
     // Locked: a markTeamProvisioned committing a channel id now either lands
     // first (and the channel is torn down here) or finds the team gone.

@@ -1,3 +1,5 @@
+'use client';
+
 import { Sparkles } from 'lucide-react';
 import type { tickets } from '@jave/core';
 import { Badge, Mono } from '@jave/ui';

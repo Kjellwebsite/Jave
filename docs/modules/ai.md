@@ -41,13 +41,13 @@ relies on the official SDK's transport for those.
 
 ### Environment
 
-| Variable                 | Rules                                                                                                                                                                              |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AI_PROVIDER`            | `anthropic` \| `openai` \| `openai-compatible` \| `disabled` (default). `mock` is accepted by the factory type only with `NODE_ENV=development` or `test` (see known limitations). |
-| `AI_API_KEY`             | Required for `anthropic` and `openai`; optional for `openai-compatible` (local servers).                                                                                           |
-| `AI_MODEL`               | Optional for `anthropic`; required for `openai` / `openai-compatible`. ≤ 64 chars, `[A-Za-z0-9._:/@-]`.                                                                            |
-| `AI_BASE_URL`            | Required for `openai-compatible`. https only, except loopback hosts; no embedded credentials.                                                                                      |
-| `AI_DAILY_REQUEST_LIMIT` | Deployment ceiling; the effective per-user limit is `min(settings.ai.dailyRequestsPerUser, ceiling)`.                                                                              |
+| Variable                 | Rules                                                                                                                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AI_PROVIDER`            | `anthropic` \| `openai` \| `openai-compatible` \| `disabled` (default) \| `mock` (**MOCK / DEVELOPMENT ONLY**: the env schema refuses it with `NODE_ENV=production`, and the factory accepts it only with `development` or `test`). |
+| `AI_API_KEY`             | Required for `anthropic` and `openai`; optional for `openai-compatible` (local servers).                                                                                                                                            |
+| `AI_MODEL`               | Optional for `anthropic`; required for `openai` / `openai-compatible`. ≤ 64 chars, `[A-Za-z0-9._:/@-]`.                                                                                                                             |
+| `AI_BASE_URL`            | Required for `openai-compatible`. https only, except loopback hosts; no embedded credentials.                                                                                                                                       |
+| `AI_DAILY_REQUEST_LIMIT` | Deployment ceiling; the effective per-user limit is `min(settings.ai.dailyRequestsPerUser, ceiling)`.                                                                                                                               |
 
 ## Core module (`import { ai } from '@jave/core'`)
 
@@ -62,9 +62,12 @@ the surface (services never read `process.env`).
 | `analyze({ text })`, `explain({ text })`                                             | READ         |                                                                                                                                                                                                                                      |
 | `brainstorm({ topic, constraints? })`                                                | SUGGEST      |                                                                                                                                                                                                                                      |
 | `draftAnnouncement({ brief })`                                                       | SUGGEST      | Requires `canBroadcast`. The model drafts; JAVE stores a **pending** `draft_announcement` proposal.                                                                                                                                  |
-| `draftTask({ brief })`                                                               | SUGGEST      | Requires `canManageMissions`. The model drafts a mission; JAVE stores a **pending** `create_task` proposal.                                                                                                                          |
+| `draftTask({ brief, source? })`                                                      | SUGGEST      | Requires `canManageMissions`. The model drafts a mission; JAVE stores a **pending** `create_task` proposal. `source` (material the requester did not write) is wrapped as untrusted data.                                            |
 | `proposeAction`, `confirmProposal`, `rejectProposal`, `getProposal`, `listProposals` | EXECUTE path | See below.                                                                                                                                                                                                                           |
 | `getUsage(ctx, deps?)`                                                               |              | Today's `{ used, limit, remaining, resetsAt }` for the caller.                                                                                                                                                                       |
+| `listAiRequests(ctx, { scope, feature?, status? })`                                  |              | The ledger, newest first. `mine` for anyone; `all` needs `canViewAuditLogs` and adds the requester and a 12-character prompt fingerprint. Never prompts or answers. Capped total (`totalCapped`).                                    |
+| `getUsageByUser(ctx, { limit })`                                                     |              | Today's (UTC) counted requests, attempts and tokens per member, heaviest first. `canViewAuditLogs`.                                                                                                                                  |
+| `ticketSummarizer(ctx, deps, surface)`                                               | READ         | The tickets module's `TicketSummarizer` extension point, through the same guarded path (feature `ticket_summary`, billed and limited like any request). The transcript is one untrusted block with role labels only.                 |
 | `getOrgUsage(ctx, { days ≤ 90 })`                                                    |              | `canViewAnalytics`. Aggregates only: totals, by status, by feature, by day. No prompts, no per-user rows.                                                                                                                            |
 | `recordAnnouncementDelivery`                                                         |              | Bot callback (system actor only).                                                                                                                                                                                                    |
 
@@ -111,6 +114,10 @@ pending ──confirm──► executed                      (effect applied in 
    ├──expiry (settings.ai.proposalTtlMinutes, sweep every 5 min)──► expired
    └──tampered / invalid payload / execution error──► failed
 ```
+
+`listProposals({ scope })`: `mine` is the caller's proposals; `to_confirm` is the queue of
+**other members'** pending, unexpired proposals of kinds the caller may confirm (their own are
+in `mine`), so its total is the queue's exact size.
 
 `proposeAction` validates the payload with the kind's schema, caps it (16 KB canonical JSON),
 checks that a referenced `aiRequestId` belongs to the caller, limits a user to 10 live pending
@@ -173,11 +180,31 @@ bounded by the kind's capability), `canManageMissions`, `canBroadcast`, `canView
 - **New action kind:** `defineActionKind({...})` in `actions/kinds.ts` and add it to `ACTION_KINDS`. Put domain permission checks in `authorizeExecution` (it runs before the transaction; denials are audited durably). `execute` runs inside the confirmation transaction.
 - **Surfaces:** build `AiDeps` once per process; call `sanitizeForDiscord` on every model output; render `warnings`; show `preview` before offering Confirm.
 
+## Surfaces
+
+- **Discord** (`apps/bot/src/features/ai`): `/ask`, `/research`, `/summarize`, `/analyze`,
+  `/brainstorm`, `/jave ai-usage`; message context menus _Ask JAVE_, _Summarize_, _Explain_,
+  _Create Task_ (PREVIEW → CONFIRM / CANCEL → REPORT); the `discord.ai.announce` job. See
+  [`docs/commands/ai.md`](../commands/ai.md).
+- **Dashboard** (`/ai`): provider status, usage (yours, organization, per member), the proposal
+  queue with CONFIRM / REJECT, draft forms (announcement, mission) and the request ledger.
+- **Wiring**: the bot builds `AiDeps` once in `apps/bot/src/integrations.ts` (`BotServices.ai`;
+  the test harness uses the MOCK / DEVELOPMENT ONLY `MockProvider`); the dashboard in
+  `apps/dashboard/server/ai.ts`, shared by `/ai`, `/research` and the tickets summary panel. In
+  both, a misconfigured provider degrades to unavailable instead of taking the process down: it
+  is logged by variable name (never its value), the bot's `ai` health check reads down and the
+  /ai page names the variable. `/jave status` and `/readyz` carry an `ai` check (disabled / ok /
+  down from `provider.health()`, cached 60 s, non-critical). The tickets surfaces wire
+  `ai.ticketSummarizer(ctx, deps, surface)` into `tickets.summarizeTicket` (feature
+  `ticket_summary`; the tickets module's instructions travel as the trusted request), which
+  passes the AI module's own `DisabledError` / `RateLimitedError` through unchanged.
+
 ## Known limitations
 
-- `@jave/config`'s `AI_PROVIDER` enum does not include `mock`; the factory accepts it (development/test only) but the env schema must add it before `AI_PROVIDER=mock` can be set from the environment.
 - The static core registry cannot receive `AiDeps`; AI features are called directly by surfaces with `deps` (no AI job handlers need the provider today).
 - Research answers come from the model's own knowledge: no browsing, no citation verification.
 - `create_task` writes the `missions` table directly until the missions module exposes a creation API.
 - Injection detection is heuristic; the real safety boundary is that AI output cannot execute anything without a human confirmation.
 - Requests are non-streaming with a 90 s per-attempt deadline (`ProviderFactoryDeps.timeoutMs` overrides it). Long answers on reasoning models can exceed it and surface as "JAVE AI took too long to respond"; timeouts are deliberately not auto-retried.
+- Discord answers for paging live in the bot process's memory (30 minutes, 20 answers per member, 500 per process; a member's oldest answer is dropped first, so one member cannot evict everyone else's): a restart or a second bot replica makes old PREV / NEXT buttons read EXPIRED.
+- `discord.ai.announce` relies on Discord's message nonce for idempotency, which only deduplicates for a few minutes; a retry after a lost response _and_ a failed delivery report beyond that window could post twice.

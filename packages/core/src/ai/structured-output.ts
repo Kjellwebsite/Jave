@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { missionType } from '@jave/database';
+import { ValidationError } from '../kernel/errors';
 import { truncate } from '../kernel/redact';
+import { MIN_DRAFT_BODY_LENGTH, MIN_DRAFT_TITLE_LENGTH } from './constants';
 
 /**
  * Tolerant parsing of JSON the model was asked to produce. Model output is
@@ -21,6 +23,25 @@ const MAX_ANNOUNCEMENT_BODY_LENGTH = 3500;
 const MAX_TASK_TITLE_LENGTH = 120;
 const MAX_TASK_BRIEF_LENGTH = 4000;
 const FALLBACK_TASK_TITLE = 'Untitled mission';
+const FALLBACK_ANNOUNCEMENT_TITLE = 'ANNOUNCEMENT';
+const UNUSABLE_DRAFT_MESSAGE =
+  'JAVE AI returned a draft that is too short to use. Try again with a more detailed brief.';
+
+/**
+ * Hold model drafts to the action kind's minimums: a too-short title falls
+ * back to a neutral one; a too-short body is refused with a calm message
+ * (instead of a schema error about a field the member never typed).
+ */
+function usableDraft<T extends { title: string }>(
+  draft: T,
+  body: string,
+  fallbackTitle: string,
+): T {
+  if (body.trim().length < MIN_DRAFT_BODY_LENGTH) throw new ValidationError(UNUSABLE_DRAFT_MESSAGE);
+  return draft.title.trim().length < MIN_DRAFT_TITLE_LENGTH
+    ? { ...draft, title: fallbackTitle }
+    : draft;
+}
 
 /** Shown next to every model-suggested source. */
 export const MODEL_SUGGESTED_LABEL = 'MODEL-SUGGESTED — UNVERIFIED' as const;
@@ -138,11 +159,17 @@ const announcementSchema = z.object({
 /** The model's announcement draft, or a plain-text fallback with a neutral title. */
 export function parseAnnouncementDraft(text: string): AnnouncementDraft {
   const parsed = announcementSchema.safeParse(extractJsonObject(text));
-  const draft = parsed.success ? parsed.data : { title: 'ANNOUNCEMENT', body: text.trim() };
-  return {
-    title: truncate(draft.title, MAX_ANNOUNCEMENT_TITLE_LENGTH),
-    body: truncate(draft.body, MAX_ANNOUNCEMENT_BODY_LENGTH),
-  };
+  const draft = parsed.success
+    ? parsed.data
+    : { title: FALLBACK_ANNOUNCEMENT_TITLE, body: text.trim() };
+  return usableDraft(
+    {
+      title: truncate(draft.title, MAX_ANNOUNCEMENT_TITLE_LENGTH),
+      body: truncate(draft.body, MAX_ANNOUNCEMENT_BODY_LENGTH),
+    },
+    draft.body,
+    FALLBACK_ANNOUNCEMENT_TITLE,
+  );
 }
 
 export type TaskType = (typeof missionType.enumValues)[number];
@@ -165,9 +192,13 @@ export function parseTaskDraft(text: string): TaskDraft {
   const draft = parsed.success
     ? parsed.data
     : { title: FALLBACK_TASK_TITLE, brief: text.trim(), type: 'individual' as const };
-  return {
-    title: truncate(draft.title, MAX_TASK_TITLE_LENGTH),
-    brief: truncate(draft.brief, MAX_TASK_BRIEF_LENGTH),
-    type: draft.type,
-  };
+  return usableDraft(
+    {
+      title: truncate(draft.title, MAX_TASK_TITLE_LENGTH),
+      brief: truncate(draft.brief, MAX_TASK_BRIEF_LENGTH),
+      type: draft.type,
+    },
+    draft.brief,
+    FALLBACK_TASK_TITLE,
+  );
 }

@@ -1,0 +1,214 @@
+/**
+ * End-to-end fixtures for /ai and /research — TEST DATA ONLY. Written through
+ * the core services so ledger rows, proposals, reviews and audit entries are
+ * genuine. The AI provider is the MOCK / DEVELOPMENT ONLY MockProvider.
+ */
+import { MockProvider } from '@jave/ai';
+import {
+  ai,
+  createContext,
+  findUserByDiscordId,
+  research,
+  resolveUserActor,
+  type ServiceContext,
+  systemActor,
+  updateSettings,
+  withActor,
+} from '@jave/core';
+import { createDatabase } from '@jave/database';
+import { DEV_PERSONAS } from '../server/auth/dev-personas';
+
+/** Fictional announcements channel id (never a real Discord channel). */
+const ANNOUNCEMENTS_CHANNEL = '300000000000000042';
+
+/** The research references the library starts with (fictional reviews of real papers). */
+export const SEEDED_PAPERS = {
+  numpy: 'Array programming with NumPy',
+  alphafold: 'Highly accurate protein structure prediction with AlphaFold',
+  sleep: 'Sleep and memory consolidation',
+} as const;
+
+const MISSION_DRAFT = JSON.stringify({
+  title: 'Decode the CubeSat beacon',
+  brief:
+    'Parse the beacon frame format and publish decoded telemetry. Completion is verified by a live demo against a recorded pass.',
+  type: 'build',
+});
+const ANNOUNCEMENT_DRAFT = JSON.stringify({
+  title: 'Autumn trials open',
+  body: 'Trials open Monday 18:00 UTC. Read the brief in the trials channel before you apply. Applications close Sunday.',
+});
+
+async function contextFor(system: ServiceContext, discordId: string): Promise<ServiceContext> {
+  const user = await findUserByDiscordId(system, discordId);
+  if (!user) throw new Error(`e2e fixture user ${discordId} is missing`);
+  return withActor(system, await resolveUserActor(system, user.id));
+}
+
+function personaDiscordId(key: string): string {
+  const persona = DEV_PERSONAS.find((candidate) => candidate.key === key);
+  if (!persona) throw new Error(`unknown persona ${key}`);
+  return persona.discordId;
+}
+
+export async function seedAiResearchFixtures(databaseUrl: string): Promise<void> {
+  const database = createDatabase(databaseUrl, { max: 2, applicationName: 'jave-e2e-ai-seed' });
+  const system = createContext({ db: database.db, actor: systemActor('e2e-seed') });
+  try {
+    const founder = await contextFor(system, personaDiscordId('founder'));
+    const core = await contextFor(system, personaDiscordId('core'));
+    const operations = await contextFor(system, personaDiscordId('operations'));
+    const verified = await contextFor(system, personaDiscordId('verified'));
+    const member = await contextFor(system, personaDiscordId('member'));
+    const mara = await contextFor(system, '110000000000000011');
+    const sana = await contextFor(system, '110000000000000013');
+    await updateSettings(founder, 'channels', { announcements: ANNOUNCEMENTS_CHANNEL });
+
+    // Ledger and usage: a few answered requests from different members and surfaces.
+    const answers = { provider: new MockProvider() };
+    await ai.ask(mara, answers, { question: 'What makes a good ground-station schedule?' });
+    await ai.research(sana, answers, { question: 'Does sleep help memory consolidation?' });
+    await ai.summarize(member, answers, {
+      text: 'Notes from the trial briefing: build, document, defend.',
+      surface: 'dashboard',
+    });
+    await ai.brainstorm(verified, answers, { topic: 'Cheap satellite ground stations' });
+
+    // Proposals: pending drafts by other staff, for the founder's confirmation queue.
+    await ai.draftTask(
+      operations,
+      { provider: new MockProvider({ respond: () => MISSION_DRAFT }) },
+      {
+        brief: 'Someone should decode the beacon frames from the last pass.',
+      },
+    );
+    await ai.draftAnnouncement(
+      core,
+      { provider: new MockProvider({ respond: () => ANNOUNCEMENT_DRAFT }) },
+      { brief: 'Announce the autumn trials.', surface: 'dashboard' },
+    );
+
+    // Research library: saved, reviewed and verified by different members.
+    const numpy = await research.saveResearchItem(mara, {
+      title: SEEDED_PAPERS.numpy,
+      authors: ['Harris, C. R.', 'Millman, K. J.', 'van der Walt, S. J.'],
+      doi: '10.1038/s41586-020-2649-2',
+      source: 'Nature',
+      publishedOn: '2020-09-16',
+      topic: 'Scientific computing',
+      tags: ['python', 'arrays'],
+      summary: 'The design of NumPy and why array programming underpins scientific Python.',
+    });
+    const alphafold = await research.saveResearchItem(sana, {
+      title: SEEDED_PAPERS.alphafold,
+      authors: ['Jumper, J.', 'Evans, R.', 'Pritzel, A.'],
+      doi: '10.1038/s41586-021-03819-2',
+      source: 'Nature',
+      publishedOn: '2021-07-15',
+      topic: 'Structural biology',
+      tags: ['protein folding'],
+    });
+    await research.saveResearchItem(verified, {
+      title: SEEDED_PAPERS.sleep,
+      url: 'https://example.org/sleep-memory-review',
+      topic: 'Neuroscience',
+    });
+    const reviewed = await research.reviewResearchItem(operations, {
+      itemId: numpy.item.id,
+      expectedVersion: numpy.item.version,
+      status: 'verified',
+      evidenceLevel: 'peer_reviewed',
+      note: 'Published, widely replicated.',
+    });
+    await research.reviewResearchItem(operations, {
+      itemId: alphafold.item.id,
+      expectedVersion: alphafold.item.version,
+      status: 'reviewed',
+      evidenceLevel: 'experimental',
+    });
+    await research.requestSidusSync(founder, { itemId: reviewed.id });
+  } finally {
+    await database.close();
+  }
+}
+
+/** The two drafting personas: one fills its pending cap with missions, then the other. */
+const QUEUE_REQUESTERS = [
+  {
+    persona: 'operations',
+    kind: 'create_task',
+    payload: (n: number) => ({
+      title: `Queued mission ${n}`,
+      brief: `Queue fixture ${n}: build it, document it, and demo the result for verification.`,
+    }),
+  },
+  {
+    persona: 'core',
+    kind: 'draft_announcement',
+    payload: (n: number) => ({
+      title: `QUEUED ANNOUNCEMENT ${n}`,
+      body: `Queue fixture ${n}. Nothing is posted unless someone confirms it.`,
+    }),
+  },
+] as const;
+
+export interface QueuedProposal {
+  id: string;
+  persona: (typeof QUEUE_REQUESTERS)[number]['persona'];
+}
+
+async function withSystem<T>(
+  databaseUrl: string,
+  run: (system: ServiceContext) => Promise<T>,
+): Promise<T> {
+  const database = createDatabase(databaseUrl, { max: 1, applicationName: 'jave-e2e-ai-queue' });
+  try {
+    return await run(createContext({ db: database.db, actor: systemActor('e2e-seed') }));
+  } finally {
+    await database.close();
+  }
+}
+
+/**
+ * TEST DATA ONLY: `count` pending proposals for the founder's confirmation
+ * queue, drafted by other staff (each persona up to the pending cap). Pass
+ * the result to withdrawProposals() afterwards.
+ */
+export async function queueProposals(
+  databaseUrl: string,
+  count: number,
+): Promise<QueuedProposal[]> {
+  return withSystem(databaseUrl, async (system) => {
+    const queued: QueuedProposal[] = [];
+    for (const requester of QUEUE_REQUESTERS) {
+      const ctx = await contextFor(system, personaDiscordId(requester.persona));
+      const pending = await ai.listProposals(ctx, { scope: 'mine', status: 'pending', limit: 1 });
+      let room = ai.MAX_PENDING_PROPOSALS_PER_USER - pending.total;
+      while (queued.length < count && room > 0) {
+        const proposal = await ai.proposeAction(ctx, {
+          kind: requester.kind,
+          payload: requester.payload(queued.length + 1),
+        });
+        queued.push({ id: proposal.id, persona: requester.persona });
+        room -= 1;
+      }
+    }
+    if (queued.length < count) {
+      throw new Error(`only ${queued.length} of ${count} proposals fit the pending caps`);
+    }
+    return queued;
+  });
+}
+
+/** TEST DATA ONLY: each requester withdraws what queueProposals() drafted for them. */
+export async function withdrawProposals(
+  databaseUrl: string,
+  queued: readonly QueuedProposal[],
+): Promise<void> {
+  await withSystem(databaseUrl, async (system) => {
+    for (const { id, persona } of queued) {
+      const requester = await contextFor(system, personaDiscordId(persona));
+      await ai.rejectProposal(requester, { proposalId: id, reason: 'Queue fixture withdrawn.' });
+    }
+  });
+}

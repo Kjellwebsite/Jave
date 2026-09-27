@@ -1,7 +1,9 @@
 import {
   Bell,
   ChartNoAxesColumn,
+  Cpu,
   FileText,
+  FlaskConical,
   FolderKanban,
   GitPullRequestArrow,
   Inbox,
@@ -12,6 +14,7 @@ import {
   Settings2,
   ShieldAlert,
   ShieldCheck,
+  Swords,
   UserRound,
   Users,
   Webhook,
@@ -62,6 +65,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: 'OPERATIONS',
     items: [
+      { href: '/trials', label: 'Trials', icon: Swords, capability: 'canManageTrials' },
       { href: '/projects', label: 'Projects', icon: FolderKanban, capability: null },
       {
         href: '/contributions',
@@ -78,7 +82,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/moderation', label: 'Moderation', icon: ShieldAlert, capability: 'canModerate' },
     ],
   },
-  { label: 'INTELLIGENCE', items: [] },
+  {
+    label: 'INTELLIGENCE',
+    items: [
+      { href: '/ai', label: 'JAVE AI', icon: Cpu, capability: 'canUseAI' },
+      { href: '/research', label: 'Research', icon: FlaskConical, capability: 'canViewMembers' },
+    ],
+  },
   {
     label: 'SYSTEM',
     items: [

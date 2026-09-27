@@ -1,4 +1,4 @@
-import { and, count, desc, eq, type SQL } from 'drizzle-orm';
+import { and, desc, eq, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { jobs } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
@@ -9,7 +9,7 @@ import {
   isUniqueViolation,
   NotFoundError,
 } from '../kernel/errors';
-import { type Page, pageSchema } from '../kernel/pagination';
+import { type CappedPage, cappedCount, pageSchema } from '../kernel/pagination';
 import { parseInput } from '../kernel/validation';
 import { authorize } from '../permissions/authorize';
 import type { JobRecord } from './queue';
@@ -67,13 +67,13 @@ function toSummary(row: JobRecord): JobSummary {
 export async function listJobs(
   ctx: ServiceContext,
   input: z.input<typeof listJobsSchema> = {},
-): Promise<Page<JobSummary>> {
+): Promise<CappedPage<JobSummary>> {
   await authorize(ctx, 'canViewSystemStatus');
   const q = parseInput(listJobsSchema, input);
   const filters: SQL[] = [eq(jobs.status, q.status)];
   if (q.type) filters.push(eq(jobs.type, q.type));
   const where = and(...filters);
-  const [rows, [total]] = await Promise.all([
+  const [rows, total] = await Promise.all([
     ctx.db
       .select()
       .from(jobs)
@@ -81,11 +81,12 @@ export async function listJobs(
       .orderBy(desc(jobs.createdAt), desc(jobs.id))
       .limit(q.limit)
       .offset(q.offset),
-    ctx.db.select({ value: count() }).from(jobs).where(where),
+    cappedCount(ctx.db, jobs, where, { offset: q.offset }),
   ]);
   return {
     items: rows.map(toSummary),
-    total: total?.value ?? 0,
+    total: total.total,
+    totalCapped: total.capped,
     limit: q.limit,
     offset: q.offset,
   };

@@ -21,7 +21,9 @@ import {
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
+  type PermissionName,
   type PermissionOverwriteSpec,
+  type ReadableMessage,
   type ScheduledEventSpec,
   type SentMessage,
   type ThreadAutoArchiveMinutes,
@@ -71,6 +73,30 @@ async function attempt<T>(action: string, fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (error) {
+    return normalize(error, action);
+  }
+}
+
+/** Lookups whose failure means "not there / not yours", never "retry". */
+const NOT_READABLE_CODES = new Set<number>([
+  RESTJSONErrorCodes.UnknownChannel,
+  RESTJSONErrorCodes.UnknownMessage,
+  RESTJSONErrorCodes.UnknownMember,
+  RESTJSONErrorCodes.MissingAccess,
+  RESTJSONErrorCodes.MissingPermissions,
+]);
+
+/** Resolves to null for "not there / not readable" API errors; rethrows the rest normalized. */
+async function readable<T>(action: string, fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (
+      error instanceof DiscordAPIError &&
+      typeof error.code === 'number' &&
+      NOT_READABLE_CODES.has(error.code)
+    )
+      return null;
     return normalize(error, action);
   }
 }
@@ -426,6 +452,31 @@ export class DiscordJsGateway implements DiscordGateway {
     });
   }
 
+  async setChannelOverwrite(channelId: string, overwrite: PermissionOverwriteSpec, reason: string) {
+    const channel = await this.textChannel(channelId);
+    if (channel.isThread()) throw new DiscordActionError('threads have no overwrites', null, true);
+    const options: Partial<Record<PermissionName, boolean>> = {};
+    for (const permission of overwrite.allow ?? []) options[permission] = true;
+    for (const permission of overwrite.deny ?? []) options[permission] = false;
+    await attempt(
+      'set overwrite',
+      async () =>
+        // create() replaces this one overwrite; the channel's other overwrites stay as they are.
+        void (await (channel as TextChannel).permissionOverwrites.create(overwrite.id, options, {
+          reason,
+          type: overwrite.type === 'member' ? OverwriteType.Member : OverwriteType.Role,
+        })),
+    );
+  }
+
+  async roleMemberIds(roleId: string): Promise<string[]> {
+    const guild = await this.guild();
+    // role.members reads the member cache: fetch the member list first (GuildMembers intent).
+    await attempt('fetch members', () => guild.members.fetch());
+    const role = await attempt('fetch role', () => guild.roles.fetch(roleId));
+    return role ? [...role.members.keys()] : [];
+  }
+
   async sendMessageOnce(
     channelId: string,
     payload: MessagePayload,
@@ -438,5 +489,44 @@ export class DiscordJsGateway implements DiscordGateway {
       channel.send({ ...toMessageOptions(payload), nonce, enforceNonce: true }),
     );
     return { channelId: message.channelId, messageId: message.id };
+  }
+
+  async fetchMessageAs(
+    asUserId: string,
+    channelId: string,
+    messageId: string,
+  ): Promise<ReadableMessage | null> {
+    const channel = await readable('fetch channel', () => this.client.channels.fetch(channelId));
+    if (!channel || !channel.isTextBased() || channel.isDMBased()) return null;
+    if (channel.guildId !== this.guildId) return null;
+    const member = await readable('fetch member', () => channel.guild.members.fetch(asUserId));
+    if (!member) return null;
+    const permissions = channel.permissionsFor(member);
+    if (
+      !permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory])
+    )
+      return null;
+    if (channel.type === ChannelType.PrivateThread) {
+      const threadMember = await readable('fetch thread member', () =>
+        channel.members.fetch({ member: asUserId }),
+      );
+      if (!threadMember && !permissions.has(PermissionFlagsBits.ManageThreads)) return null;
+    }
+    const message = await readable('fetch message', () => channel.messages.fetch(messageId));
+    if (!message) return null;
+    return {
+      id: message.id,
+      channelId: message.channelId,
+      authorId: message.author.id,
+      authorName:
+        message.member?.displayName ?? message.author.globalName ?? message.author.username,
+      authorIsBot: message.author.bot,
+      content: message.content,
+      embedsText: message.embeds
+        .map((e) => [e.title, e.description].filter(Boolean).join('\n'))
+        .filter(Boolean),
+      createdAt: message.createdAt,
+      url: message.url,
+    };
   }
 }

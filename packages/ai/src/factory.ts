@@ -9,10 +9,12 @@ import { OPENAI_DEFAULT_BASE_URL, OpenAICompatibleProvider } from './providers/o
 import { type AIProvider, MODEL_ID_PATTERN } from './types';
 
 /**
- * `@jave/config`'s AiEnv plus the development-only `mock` provider and the
- * runtime mode. `AI_PROVIDER=mock` requires NODE_ENV=development or test.
+ * `@jave/config`'s AiEnv (which includes the MOCK / DEVELOPMENT ONLY `mock`
+ * provider) plus the runtime mode. `AI_PROVIDER=mock` requires
+ * NODE_ENV=development or test: the env schema refuses it in production and
+ * this factory refuses it again.
  */
-export type AiProviderKind = AiEnv['AI_PROVIDER'] | 'mock';
+export type AiProviderKind = AiEnv['AI_PROVIDER'];
 
 export interface AiProviderEnv extends Omit<AiEnv, 'AI_PROVIDER' | 'AI_DAILY_REQUEST_LIMIT'> {
   AI_PROVIDER: AiProviderKind;

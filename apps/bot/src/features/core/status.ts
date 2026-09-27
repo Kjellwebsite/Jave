@@ -4,6 +4,7 @@ import type { CommandDefinition } from '../../interactions/types';
 import { panel } from '../../ui/components';
 import { alignRows } from '../../ui/format';
 import { COLORS } from '../../ui/theme';
+import { aiUsageReport } from '../ai/usage';
 
 const MARK: Record<HealthState, string> = { ok: '✓', degraded: '▲', down: '✕', disabled: '—' };
 const LABELS: Record<string, string> = {
@@ -22,10 +23,18 @@ export const statusCommand: CommandDefinition = {
     .addSubcommand((s) =>
       s.setName('status').setDescription('System status: Discord, database, AI, webhooks, queue.'),
     )
+    .addSubcommand((s) =>
+      s.setName('ai-usage').setDescription('JAVE AI usage today: yours, and the organization’s.'),
+    )
     .toJSON(),
-  help: { category: 'system', summary: 'System diagnostics.', usage: '/jave status' },
+  help: {
+    category: 'system',
+    summary: 'System diagnostics and AI usage.',
+    usage: '/jave status | ai-usage',
+  },
   defer: 'ephemeral',
   async execute(h) {
+    if (h.interaction.options.subcommand() === 'ai-usage') return aiUsageReport(h);
     const report = await h.services.health();
     const detailed = can(h.ctx, 'canViewSystemStatus');
     const rows: [string, string][] = report.checks.map((check) => {

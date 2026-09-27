@@ -6,7 +6,9 @@ import { spawnSync } from 'node:child_process';
 import postgres from 'postgres';
 import { databaseEnvSchema, parseEnv } from '@jave/config';
 import { seedDashboardFixtures } from './seed';
+import { seedAiResearchFixtures } from './seed-ai-research';
 import { seedTicketFixtures } from './tickets-seed';
+import { seedTrialFixtures } from './seed-trials';
 
 const E2E_DATABASE_NAME = /e2e/i;
 
@@ -31,7 +33,9 @@ async function main(): Promise<void> {
   });
   if (migrate.status !== 0) throw new Error('migration failed');
   await seedDashboardFixtures(DATABASE_URL);
+  await seedAiResearchFixtures(DATABASE_URL);
   await seedTicketFixtures(DATABASE_URL);
+  await seedTrialFixtures(DATABASE_URL);
   console.log(`e2e database "${name}" ready`);
 }
 

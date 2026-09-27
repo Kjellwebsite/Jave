@@ -169,14 +169,16 @@ describe('navigation', () => {
     expect(everyone).toEqual(['/overview', '/projects', '/contributions', '/tickets']);
 
     const member = hrefs(['canViewMembers']);
-    expect(member).toEqual(expect.arrayContaining(['/members', '/ranking']));
+    expect(member).toEqual(expect.arrayContaining(['/members', '/ranking', '/research']));
     expect(member).not.toContain('/audit');
     expect(member).not.toContain('/integrations');
+    expect(member).not.toContain('/trials');
     expect(visibleNav(NAV_GROUPS, ['canViewMembers']).map((group) => group.label)).toEqual([
       'OVERVIEW',
       'PEOPLE',
       'OPERATIONS',
       'SUPPORT & SAFETY',
+      'INTELLIGENCE',
     ]);
 
     const staff = hrefs(['canViewMembers', 'canViewAuditLogs', 'canManageIntegrations']);
@@ -190,6 +192,7 @@ describe('navigation', () => {
       '/projects',
       '/contributions',
       '/tickets',
+      '/research',
       '/audit',
       '/settings',
     ]);

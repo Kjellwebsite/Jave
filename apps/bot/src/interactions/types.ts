@@ -76,6 +76,16 @@ export interface TargetMessage {
 export type InteractionKind =
   'slash' | 'user_context' | 'message_context' | 'button' | 'select' | 'modal' | 'autocomplete';
 
+/** The message an interaction came from (a button, a select, or a modal opened from one). */
+export interface SourceMessage {
+  /**
+   * Only the user who pressed can see it (an ephemeral reply). Replacing it
+   * with update() then shows nothing to anyone else; replacing a public
+   * message changes it for the whole channel.
+   */
+  readonly ephemeral: boolean;
+}
+
 export interface InteractionContext {
   kind: InteractionKind;
   id: string;
@@ -101,7 +111,9 @@ export interface InteractionContext {
   defer(options: { ephemeral: boolean }): Promise<void>;
   editReply(payload: ReplyPayload): Promise<void>;
   followUp(payload: ReplyPayload): Promise<void>;
-  /** Components only: replace the message the component is attached to. */
+  /** The message the interaction came from, if any. Only then can update() replace it. */
+  readonly sourceMessage: SourceMessage | null;
+  /** Replace the message the interaction came from (requires `sourceMessage`). */
   update(payload: ReplyPayload): Promise<void>;
   deferUpdate(): Promise<void>;
   showModal(modal: ModalPayload): Promise<void>;

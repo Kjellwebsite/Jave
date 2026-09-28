@@ -104,19 +104,39 @@ export function parseReferralTab(raw: string | undefined): ReferralTab {
 /** `?notice=` value set after a campaign is deleted (the page shows fixed copy for it). */
 export const CAMPAIGN_DELETED_NOTICE = 'campaign-deleted';
 
-/** Why a campaign can or cannot be deleted, from core's usage counts (its delete predicate). */
-export function campaignDeletionNote(usage: invites.CampaignUsage): string {
+/** "2 live invites attached, 1 deleted on Discord." */
+export function campaignAttachedSummary(usage: invites.CampaignUsage): string {
+  const live = plural(usage.attachedInvites - usage.deletedInvites, 'live invite');
+  const deleted = usage.deletedInvites > 0 ? `, ${usage.deletedInvites} deleted on Discord` : '';
+  return `${live} attached${deleted}.`;
+}
+
+/**
+ * Why a campaign can or cannot be deleted, from core's usage counts (its
+ * delete predicate). Deactivation is suggested only while it is active.
+ */
+export function campaignDeletionNote(
+  usage: invites.CampaignUsage,
+  campaign: { active: boolean },
+): string {
   if (usage.deletable) {
     return 'Nothing references it, so it can be removed without losing history.';
   }
-  if (usage.referrals > 0) {
-    return 'Joins were credited to it. Deactivate it instead: its history stays intact.';
-  }
-  if (usage.referralCodes > 0) {
-    return 'Referral codes were issued for it. Deactivate it instead: its history stays intact.';
-  }
-  const deleted = usage.deletedInvites > 0 ? `, ${usage.deletedInvites} deleted on Discord` : '';
-  return `It still has ${plural(usage.attachedInvites, 'attached invite')}${deleted}. Detach them to delete it, or deactivate it instead.`;
+  const keep = campaign.active
+    ? 'Deactivate it instead: its history stays intact.'
+    : 'It stays inactive, with its history intact.';
+  if (usage.referrals > 0) return `Joins were credited to it. ${keep}`;
+  if (usage.referralCodes > 0) return `Referral codes were issued for it. ${keep}`;
+  const { attachedInvites: attached, deletedInvites: deleted } = usage;
+  const gone =
+    deleted === 0
+      ? ''
+      : deleted === attached
+        ? `, ${attached === 1 ? '' : 'all '}deleted on Discord`
+        : `, ${deleted} deleted on Discord`;
+  const detach = `Detach ${attached === 1 ? 'it' : 'them'} to delete the campaign`;
+  const alternative = campaign.active ? ', or deactivate it instead' : '';
+  return `It still has ${plural(attached, 'attached invite')}${gone}. ${detach}${alternative}.`;
 }
 
 /** The three independent page offsets of a campaign page. */

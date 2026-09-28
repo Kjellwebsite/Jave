@@ -52,6 +52,12 @@ export const attachInviteSchema = z.object({
   campaignId: z.uuid().nullable(),
 });
 
+export const detachInviteSchema = z.object({
+  code: z.string().trim().min(2).max(32),
+  /** The campaign the invite must be attached to right now. */
+  campaignId: z.uuid(),
+});
+
 /** Does a campaign accept attributions at `at`? (active and inside its window) */
 export function campaignAccepts(
   campaign: Pick<CampaignRecord, 'active' | 'startsAt' | 'endsAt'>,
@@ -313,5 +319,34 @@ export async function attachInviteToCampaign(
       context: { from: invite.campaignId, to: data.campaignId },
     });
     return row!;
+  });
+}
+
+/**
+ * Detach `code` from `campaignId`, and only from it: one conditional update,
+ * so a stale page or card naming a campaign the invite has since left changes
+ * nothing (NOT FOUND). Works for invites Discord has deleted, so no
+ * attachment is ever stuck. Past referrals keep their credit.
+ */
+export async function detachInviteFromCampaign(
+  ctx: ServiceContext,
+  input: z.input<typeof detachInviteSchema>,
+) {
+  const data = parseInput(detachInviteSchema, input);
+  await authorize(ctx, 'canManageCampaigns', { type: 'invite', id: data.code });
+  return withTransaction(ctx, async (tx) => {
+    const [row] = await tx.db
+      .update(inviteCodes)
+      .set({ campaignId: null })
+      .where(and(eq(inviteCodes.code, data.code), eq(inviteCodes.campaignId, data.campaignId)))
+      .returning();
+    if (!row) throw new NotFoundError('Invite');
+    await recordAudit(tx, {
+      action: 'invite.campaign_detached',
+      targetType: 'invite',
+      targetId: row.code,
+      context: { from: data.campaignId, to: null },
+    });
+    return row;
   });
 }

@@ -1,15 +1,6 @@
 import { LabelBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import type { APIEmbedField, APISelectMenuOption } from 'discord.js';
-import {
-  authorize,
-  can,
-  DAY,
-  invites,
-  isUuid,
-  NotFoundError,
-  type Page,
-  ValidationError,
-} from '@jave/core';
+import { authorize, can, DAY, invites, isUuid, type Page, ValidationError } from '@jave/core';
 import type { HandlerContext, ModalPayload, ReplyPayload } from '../../interactions/types';
 import { customId } from '../../interactions/custom-id';
 import { button, field, panel, row, stringSelect } from '../../ui/components';
@@ -28,10 +19,6 @@ const CAMPAIGN_KEY_MAX = 48;
 const CAMPAIGN_NAME_MAX = 120;
 const CAMPAIGN_DESCRIPTION_MAX = 2000;
 const SELECT_DESCRIPTION_MAX = 100;
-/** Invites read per page when checking that one is attached to a campaign (core's page cap). */
-const ATTACHED_SCAN_PAGE = 100;
-/** Discord caps a guild at 1000 invites (plus the vanity URL): 11 pages always suffice. */
-const ATTACHED_SCAN_MAX_PAGES = 11;
 
 type CampaignView = invites.CampaignView;
 
@@ -52,8 +39,29 @@ export function parsePageOffset(value: string | undefined): number {
 
 /** "`code` · 3 uses", marked when Discord no longer lists the invite. */
 function attachedLine(invite: invites.InviteCodeView): string {
-  const deleted = invite.deletedAt ? ` ${GLYPH.dot} deleted on Discord` : '';
+  const deleted = invite.deletedAt ? ` ${GLYPH.dot} deleted` : '';
   return `\`${invite.code}\` ${GLYPH.dot} ${invite.uses} uses${deleted}`;
+}
+
+/** Room kept for the "+ N more" line when a list does not fit one field. */
+const MORE_LINE_RESERVE = 16;
+
+/**
+ * Whole lines within one embed field value; lines that do not fit are
+ * counted, never cut mid-line (a cut could leave a code span open).
+ */
+export function fitLines(lines: readonly string[], max: number = LIMITS.fieldValue): string {
+  const all = lines.join('\n');
+  if (all.length <= max) return all;
+  const kept: string[] = [];
+  let length = 0;
+  for (const line of lines) {
+    const next = length + line.length + 1;
+    if (next > max - MORE_LINE_RESERVE) break;
+    kept.push(line);
+    length = next;
+  }
+  return [...kept, `+ ${lines.length - kept.length} more`].join('\n');
 }
 
 function campaignState(campaign: CampaignView, now: Date): string {
@@ -162,7 +170,7 @@ function detailPayload(
     field(
       attachedFieldName(attached),
       attached.items.length > 0
-        ? attached.items.map(attachedLine).join('\n')
+        ? fitLines(attached.items.map(attachedLine))
         : 'None. Joins through attached invites credit this campaign while it accepts.',
     ),
   ];
@@ -188,7 +196,7 @@ function detailPayload(
             label: invite.code,
             value: invite.code,
             description: invite.deletedAt
-              ? `${invite.uses} uses · deleted on Discord`
+              ? `${invite.uses} uses ${GLYPH.dot} deleted on Discord`
               : `${invite.uses} uses`,
           })),
         ),
@@ -341,21 +349,6 @@ export async function attachInvite(h: HandlerContext, campaignId: string): Promi
   await showCampaign(h, campaignId, 'update', { notice: `INVITE ATTACHED — ${invite.code}` });
 }
 
-/** Whether `code` is attached to `campaignId` now, deleted or not (the card may be stale). */
-async function isAttached(h: HandlerContext, campaignId: string, code: string): Promise<boolean> {
-  for (let page = 0; page < ATTACHED_SCAN_MAX_PAGES; page++) {
-    const result = await invites.listInviteCodes(h.ctx, {
-      campaignId,
-      includeDeleted: true,
-      limit: ATTACHED_SCAN_PAGE,
-      offset: page * ATTACHED_SCAN_PAGE,
-    });
-    if (result.items.some((invite) => invite.code === code)) return true;
-    if ((page + 1) * ATTACHED_SCAN_PAGE >= result.total) return false;
-  }
-  return false;
-}
-
 /** Detach an invite from this campaign (only one that is attached to it), then reshow that page. */
 export async function detachInvite(
   h: HandlerContext,
@@ -364,9 +357,8 @@ export async function detachInvite(
 ): Promise<void> {
   const [code] = h.interaction.values;
   const offset = parsePageOffset(offsetArg);
-  await authorize(h.ctx, 'canManageCampaigns', { type: 'campaign', id: campaignId });
-  if (!code || !(await isAttached(h, campaignId, code))) throw new NotFoundError('Invite');
-  const invite = await invites.attachInviteToCampaign(h.ctx, { code, campaignId: null });
+  // Core detaches only while the invite is attached to this campaign (a stale card is NOT FOUND).
+  const invite = await invites.detachInviteFromCampaign(h.ctx, { code: code ?? '', campaignId });
   await showCampaign(h, campaignId, 'update', {
     notice: `INVITE DETACHED — ${invite.code}`,
     offset,

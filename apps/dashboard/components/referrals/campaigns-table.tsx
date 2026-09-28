@@ -72,11 +72,11 @@ export function CampaignsTable({
           />
         ) : (
           campaigns.map((campaign) => (
-            <TableRow key={campaign.id} className="relative">
+            <TableRow key={campaign.id}>
               <TableCell>
                 <Link
                   href={`/referrals/campaigns/${campaign.id}`}
-                  className="block min-w-0 after:absolute after:inset-0 focus-visible:outline-none"
+                  className="row-link block min-w-0"
                 >
                   <span className="block truncate text-body font-medium text-fg">
                     {campaign.name}

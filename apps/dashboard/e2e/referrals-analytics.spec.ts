@@ -50,6 +50,11 @@ const SHOTS: readonly {
     persona: 'core',
     path: (page) => campaignPath(page, REFERRAL_FIXTURES.activeCampaign),
   },
+  {
+    name: 'referrals-campaign-idle',
+    persona: 'core',
+    path: (page) => campaignPath(page, REFERRAL_FIXTURES.idleCampaign),
+  },
   { name: 'overview-health', persona: 'operations', path: '/overview' },
   { name: 'analytics-restricted', persona: 'member', path: '/analytics' },
 ];
@@ -190,6 +195,37 @@ test.describe('referrals', () => {
     await expect(queue.getByRole('button')).toHaveCount(0);
   });
 
+  test('keyboard focus on a campaign row is visible across the whole row', async ({ page }) => {
+    await signInAs(page, 'operations');
+    await page.goto('/referrals?tab=campaigns');
+    const table = page.getByRole('table', { name: 'Campaigns' });
+    await expect(table).toBeVisible();
+    await page.getByRole('heading', { level: 1 }).click();
+    const MAX_TABS = 30;
+    for (let step = 0; step < MAX_TABS; step++) {
+      await page.keyboard.press('Tab');
+      if (await page.evaluate(() => Boolean(document.activeElement?.closest('tbody')))) break;
+    }
+    const focus = await page.evaluate(() => {
+      const link = document.activeElement as HTMLElement;
+      const overlay = getComputedStyle(link, '::after');
+      return {
+        focusVisible: link.matches(':focus-visible'),
+        href: link.getAttribute('href'),
+        overlayPosition: overlay.position,
+        overlayOutlineStyle: overlay.outlineStyle,
+        overlayOutlineWidth: overlay.outlineWidth,
+      };
+    });
+    expect(focus).toMatchObject({
+      focusVisible: true,
+      overlayPosition: 'absolute',
+      overlayOutlineStyle: 'solid',
+      overlayOutlineWidth: '2px',
+    });
+    expect(focus.href).toMatch(/^\/referrals\/campaigns\/[0-9a-f-]{36}$/);
+  });
+
   test('core staff create, edit, attach, detach, deactivate and delete a campaign', async ({
     page,
   }) => {
@@ -257,6 +293,42 @@ test.describe('referrals', () => {
     await page.waitForURL(/tab=campaigns&notice=campaign-deleted/);
     await expect(page.getByText('CAMPAIGN DELETED.')).toBeVisible();
     await expect(page.getByRole('link', { name: /Winter build sprint/ })).toHaveCount(0);
+  });
+
+  test('an attached invite Discord deleted stays visible and detachable, then the campaign deletes', async ({
+    page,
+  }) => {
+    await signInAs(page, 'core');
+    await page.goto(await campaignPath(page, REFERRAL_FIXTURES.idleCampaign));
+    const code = REFERRAL_FIXTURES.expiredInvite;
+    const attached = page.getByRole('table', { name: 'Attached invites' });
+    const row = attached.getByRole('row').filter({ hasText: code });
+    await expect(row.getByText('Deleted on Discord')).toBeVisible();
+    await expect(
+      page.getByText('0 live invites attached, 1 deleted on Discord.', { exact: false }),
+    ).toBeVisible();
+    // Core refuses the delete while the attachment exists: no button that always fails.
+    await expect(page.getByTestId('delete-campaign')).toHaveCount(0);
+    await expect(
+      page.getByText(
+        'It still has 1 attached invite, deleted on Discord. Detach it to delete the campaign.',
+      ),
+    ).toBeVisible();
+
+    await page.getByTestId(`detach-${code}`).click();
+    const dialog = page.getByRole('dialog', { name: `Detach ${code}` });
+    await expect(dialog.getByText(/Discord already deleted this invite/)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Detach invite' }).click();
+    await expect(page.getByText(new RegExp(`INVITE DETACHED — ${code}`))).toBeVisible();
+    await expect(attached.getByText('NO INVITES ATTACHED')).toBeVisible();
+
+    await page.getByTestId('delete-campaign').click();
+    await page
+      .getByRole('dialog', { name: 'Delete campaign' })
+      .getByRole('button', { name: 'Delete campaign' })
+      .click();
+    await page.waitForURL(/tab=campaigns&notice=campaign-deleted/);
+    await expect(page.getByText('CAMPAIGN DELETED.')).toBeVisible();
   });
 
   test('BREAK: a campaign that credited joins offers no delete, only deactivation', async ({

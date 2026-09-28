@@ -17,10 +17,10 @@ import { FunnelPanel } from '@/components/referrals/funnel-panel';
 import { InvitersTable } from '@/components/referrals/inviters-table';
 import { InvitesTable } from '@/components/referrals/invites-table';
 import { RestrictedPage } from '@/components/restricted-page';
-import { plural } from '@/lib/analytics-view';
 import { campaignDayValue } from '@/lib/campaign-form';
 import {
   attachPickerEmptyNote,
+  campaignAttachedSummary,
   campaignDeletionNote,
   campaignHref,
   type CampaignPageOffsets,
@@ -76,12 +76,6 @@ export default async function CampaignPage({
   };
   const hrefWith = (change: Partial<CampaignPageOffsets>) =>
     campaignHref(campaign.id, { ...offsets, ...change });
-  const liveAttached = usage.attachedInvites - usage.deletedInvites;
-  const attachedSummary =
-    `${plural(liveAttached, 'live invite')} ${liveAttached === 1 ? 'credits' : 'credit'} this campaign.` +
-    (usage.deletedInvites > 0
-      ? ` ${plural(usage.deletedInvites, 'attached invite')} ${usage.deletedInvites === 1 ? 'was' : 'were'} deleted on Discord.`
-      : '');
 
   return (
     <div className="space-y-8">
@@ -122,7 +116,7 @@ export default async function CampaignPage({
       />
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <Panel title="Attached invites" description={attachedSummary} flush>
+        <Panel title="Attached invites" description={campaignAttachedSummary(usage)} flush>
           <InvitesTable
             items={attached.items}
             caption="Attached invites"
@@ -248,7 +242,7 @@ export default async function CampaignPage({
         <Card className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <h2 className="type-heading text-fg">Delete campaign</h2>
-            <p className="text-small text-fg-subtle">{campaignDeletionNote(usage)}</p>
+            <p className="text-small text-fg-subtle">{campaignDeletionNote(usage, campaign)}</p>
           </div>
           {usage.deletable ? (
             <DeleteCampaignButton campaign={campaign} action={deleteCampaignAction} />

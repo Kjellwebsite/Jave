@@ -16,6 +16,10 @@ import { campaignDayValue, parseCampaignDay } from './campaign-form';
 import {
   anomalyFlagDetail,
   anomalyFlagLabel,
+  attachPickerEmptyNote,
+  campaignAttachedSummary,
+  campaignDeletionNote,
+  campaignHref,
   campaignState,
   methodLabel,
   parseReferralTab,
@@ -158,5 +162,63 @@ describe('referral labels', () => {
     expect(parseReferralTab('review')).toBe('review');
     expect(parseReferralTab('../settings')).toBe('inviters');
     expect(parseReferralTab(undefined)).toBe('inviters');
+  });
+});
+
+describe('campaign page copy', () => {
+  const unused = {
+    attachedInvites: 0,
+    deletedInvites: 0,
+    referralCodes: 0,
+    referrals: 0,
+    deletable: true,
+  };
+
+  it('names what blocks deletion, deleted invites included', () => {
+    const active = { active: true };
+    const inactive = { active: false };
+    expect(campaignDeletionNote(unused, active)).toMatch(/can be removed/);
+    expect(campaignDeletionNote({ ...unused, referrals: 3, deletable: false }, active)).toBe(
+      'Joins were credited to it. Deactivate it instead: its history stays intact.',
+    );
+    expect(campaignDeletionNote({ ...unused, referralCodes: 1, deletable: false }, inactive)).toBe(
+      'Referral codes were issued for it. It stays inactive, with its history intact.',
+    );
+    // The reviewer's case: an expired invite is the only thing left, and it can be detached.
+    const expired = { ...unused, attachedInvites: 1, deletedInvites: 1, deletable: false };
+    expect(campaignDeletionNote(expired, inactive)).toBe(
+      'It still has 1 attached invite, deleted on Discord. Detach it to delete the campaign.',
+    );
+    const mixed = { ...unused, attachedInvites: 3, deletedInvites: 1, deletable: false };
+    expect(campaignDeletionNote(mixed, active)).toBe(
+      'It still has 3 attached invites, 1 deleted on Discord. Detach them to delete the campaign, or deactivate it instead.',
+    );
+    const allGone = { ...unused, attachedInvites: 2, deletedInvites: 2, deletable: false };
+    expect(campaignDeletionNote(allGone, active)).toMatch(
+      /2 attached invites, all deleted on Discord/,
+    );
+  });
+
+  it('counts live invites apart from the ones Discord deleted', () => {
+    expect(campaignAttachedSummary(unused)).toBe('0 live invites attached.');
+    expect(campaignAttachedSummary({ ...unused, attachedInvites: 3, deletedInvites: 2 })).toBe(
+      '1 live invite attached, 2 deleted on Discord.',
+    );
+  });
+
+  it('explains an empty attach picker', () => {
+    expect(attachPickerEmptyNote({ total: 0, paged: false })).toMatch(/No live invites/);
+    expect(attachPickerEmptyNote({ total: 3, paged: false })).toMatch(/Every mirrored invite/);
+    expect(attachPickerEmptyNote({ total: 140, paged: true })).toMatch(/on this page/);
+  });
+
+  it('keeps the other lists where they were when one pages', () => {
+    const id = '0f0e5b1c-8d7e-4a6b-9c1d-2e3f4a5b6c7d';
+    expect(campaignHref(id, { offset: 0, attached: 0, picker: 0 })).toBe(
+      `/referrals/campaigns/${id}`,
+    );
+    expect(campaignHref(id, { offset: 25, attached: 0, picker: 100 })).toBe(
+      `/referrals/campaigns/${id}?offset=25&picker=100`,
+    );
   });
 });

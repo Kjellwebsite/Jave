@@ -60,6 +60,8 @@ export const REFERRAL_FIXTURES = {
   activeCampaign: 'autumn-trials',
   endedCampaign: 'robotics-fair',
   idleCampaign: 'spring-open',
+  /** Attached to the idle campaign, then expired on Discord: the mirror keeps it, deleted. */
+  expiredInvite: 'openday26',
   flaggedInvitees: ['Nova Reyes', 'Nova Reyez'],
 } as const;
 
@@ -358,13 +360,17 @@ async function seedCampaigns(core: ServiceContext, now: Date) {
     startsAt: new Date(now.getTime() - 30 * DAY),
     endsAt: new Date(now.getTime() - 15 * DAY),
   });
-  await invites.createCampaign(core, {
+  const idle = await invites.createCampaign(core, {
     key: REFERRAL_FIXTURES.idleCampaign,
     name: 'Spring open call',
     active: false,
   });
   await invites.attachInviteToCampaign(core, { code: 'maracore', campaignId: active.id });
   await invites.attachInviteToCampaign(core, { code: 'fair2026', campaignId: ended.id });
+  await invites.attachInviteToCampaign(core, {
+    code: REFERRAL_FIXTURES.expiredInvite,
+    campaignId: idle.id,
+  });
 }
 
 /** Daily snapshots for the last 30 days (flows through the job; see header for the gauge). */
@@ -411,7 +417,7 @@ export async function seedReferralFixtures(databaseUrl: string): Promise<void> {
 
 async function seed(system: ServiceContext): Promise<void> {
   const now = system.clock.now();
-  await invites.syncInvites(system, [
+  const live = [
     ...INVITES.map((invite) => ({
       code: invite.code,
       inviterDiscordId: invite.inviter,
@@ -421,9 +427,20 @@ async function seed(system: ServiceContext): Promise<void> {
       createdAt: new Date(now.getTime() - 45 * DAY),
     })),
     { code: VANITY_CODE, inviterDiscordId: null, uses: VANITY_USES, vanity: true },
-  ]);
+  ];
+  const openDay = {
+    code: REFERRAL_FIXTURES.expiredInvite,
+    inviterDiscordId: null,
+    channelId: GUILD_CHANNEL,
+    uses: 0,
+    createdAt: new Date(now.getTime() - 20 * DAY),
+    expiresAt: new Date(now.getTime() - 13 * DAY),
+  };
+  await invites.syncInvites(system, [...live, openDay]);
   const core = await actorFor(system, '100000000000000002');
   await seedCampaigns(core, now);
+  // The open-day invite expires: the next complete snapshot no longer lists it.
+  await invites.syncInvites(system, live);
 
   for (const [index, fixture] of REFERRALS.entries()) {
     const joinedAt = new Date(now.getTime() - fixture.joinedDaysAgo * DAY);

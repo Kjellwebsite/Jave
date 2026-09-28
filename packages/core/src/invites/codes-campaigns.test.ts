@@ -20,6 +20,7 @@ import {
   campaignAccepts,
   createCampaign,
   deleteCampaign,
+  detachInviteFromCampaign,
   getCampaign,
   getCampaignUsage,
   listCampaigns,
@@ -140,7 +141,10 @@ describe('invites: referral codes and campaigns', () => {
         deletedInvites: 1,
         deletable: false,
       });
-      const listed = await listInviteCodes(kit.as(core), { campaignId: c.id, includeDeleted: true });
+      const listed = await listInviteCodes(kit.as(core), {
+        campaignId: c.id,
+        includeDeleted: true,
+      });
       // Live first, even though the deleted invite has more uses.
       expect(listed.items.map((i) => [i.code, i.deletedAt === null])).toEqual([
         ['live-inv', true],
@@ -159,9 +163,9 @@ describe('invites: referral codes and campaigns', () => {
       await expect(
         attachInviteToCampaign(kit.as(core), { code: 'event-inv', campaignId: other.id }),
       ).rejects.toBeInstanceOf(NotFoundError);
-      const detached = await attachInviteToCampaign(kit.as(core), {
+      const detached = await detachInviteFromCampaign(kit.as(core), {
         code: 'event-inv',
-        campaignId: null,
+        campaignId: c.id,
       });
       expect(detached.campaignId).toBeNull();
       expect(detached.deletedAt).not.toBeNull();
@@ -172,6 +176,35 @@ describe('invites: referral codes and campaigns', () => {
         .from(auditLogs)
         .where(eq(auditLogs.action, 'invite.campaign_detached'));
       expect(audit?.targetId).toBe('event-inv');
+      expect(audit?.context).toEqual({ from: c.id, to: null });
+    });
+
+    it('BREAK: detaching through a stale campaign changes nothing', async () => {
+      await syncInvites(kit.system, [{ code: 'moved-inv', uses: 3 }]);
+      const first = await createCampaign(kit.as(core), { key: 'first', name: 'First' });
+      const second = await createCampaign(kit.as(core), { key: 'second', name: 'Second' });
+      await attachInviteToCampaign(kit.as(core), { code: 'moved-inv', campaignId: first.id });
+      // Another tab moves the invite; a page still showing it under `first` detaches.
+      await attachInviteToCampaign(kit.as(core), { code: 'moved-inv', campaignId: second.id });
+      await expect(
+        detachInviteFromCampaign(kit.as(core), { code: 'moved-inv', campaignId: first.id }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(
+        detachInviteFromCampaign(kit.as(core), { code: 'no-such', campaignId: second.id }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      const [still] = await listInviteCodes(kit.as(core), { campaignId: second.id }).then(
+        (page) => page.items,
+      );
+      expect(still?.code).toBe('moved-inv');
+      const ops = await kit.member({ roles: ['operations'] });
+      await expect(
+        detachInviteFromCampaign(kit.as(ops), { code: 'moved-inv', campaignId: second.id }),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+      const detachAudits = await kit.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, 'invite.campaign_detached'));
+      expect(detachAudits).toHaveLength(0);
     });
 
     it('a campaign code with no claims still blocks deletion', async () => {

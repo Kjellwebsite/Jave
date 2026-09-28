@@ -42,28 +42,30 @@ Database invariants (`packages/database/src/schema/invites.ts`):
 
 ## Services
 
-| Function                              | Who                                             | What                                                                      |
-| ------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------- |
-| `syncInvites(ctx, invites[])`         | system only                                     | Replace the invite mirror with a complete snapshot; missing codes deleted |
-| `inviteUsageSnapshot(ctx)`            | system only                                     | Mirror as a detection baseline for a cold bot cache                       |
-| `detectUsedInvite(before, after)`     | pure                                            | The invite whose uses rose by exactly 1, else `unknown`                   |
-| `attributeJoin(ctx, {…})`             | system only                                     | Create the referral for a join (idempotent per invitee + joinedAt)        |
-| `createReferralCode(ctx, {…})`        | member (own, ≤ 3 active) / `canManageCampaigns` | Random code; staff may pick the code, attach a campaign, issue for others |
-| `deactivateReferralCode(ctx, {code})` | owner / `canManageCampaigns`                    | Idempotent; others get not-found                                          |
-| `claimReferralCode(ctx, {code})`      | member (the invitee), not quarantined/banned    | Once per person, never own code, within 30 days of an observed join       |
-| `createCampaign` / `updateCampaign`   | `canManageCampaigns`                            | Key, name, window, active flag; audited with a diff                       |
-| `deleteCampaign`                      | `canManageCampaigns`                            | Only when nothing was attributed; otherwise deactivate                    |
-| `getCampaign` / `listCampaigns`       | `canViewAnalytics`                              | With funnels (two aggregate queries)                                      |
-| `attachInviteToCampaign(ctx, {…})`    | `canManageCampaigns`                            | Future joins through the invite credit the campaign                       |
-| `listInviteCodes(ctx, {…})`           | `canViewAnalytics`                              | Mirrored invites with inviter names                                       |
-| `markInviteeLeft` (subscriber)        | system (`member.left`)                          | JOINED/RETAINED → LEFT, `fast_leave` flag under 24 h                      |
-| `runReferralSweep(ctx)` (job)         | system only                                     | Missed leaves, JOINED → RETAINED, RETAINED → VALID                        |
-| `reviewReferral(ctx, {…})`            | `canManageCampaigns`, not inviter/invitee       | `clear_flags` (false positive) or `invalidate`                            |
-| `getReferralLeaderboard(ctx, {…})`    | `canViewMembers`                                | VALID + unflagged only; campaign / 7-30-90 day filters                    |
-| `getReferralFunnel(ctx, {…})`         | self, or `canViewAnalytics`                     | Per inviter, per campaign, or server-wide                                 |
-| `listInviterFunnels(ctx, {…})`        | `canViewAnalytics`                              | Staff table of inviters                                                   |
-| `getMyReferrals(ctx)`                 | member                                          | Own codes, funnel, recent referrals                                       |
-| `listReferrals(ctx, {…})`             | `canViewAnalytics`                              | Staff listing with flags; `reviewable: true` is the review queue          |
+| Function                              | Who                                             | What                                                                               |
+| ------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `syncInvites(ctx, invites[])`         | system only                                     | Replace the invite mirror with a complete snapshot; missing codes deleted          |
+| `inviteUsageSnapshot(ctx)`            | system only                                     | Mirror as a detection baseline for a cold bot cache                                |
+| `detectUsedInvite(before, after)`     | pure                                            | The invite whose uses rose by exactly 1, else `unknown`                            |
+| `attributeJoin(ctx, {…})`             | system only                                     | Create the referral for a join (idempotent per invitee + joinedAt)                 |
+| `createReferralCode(ctx, {…})`        | member (own, ≤ 3 active) / `canManageCampaigns` | Random code; staff may pick the code, attach a campaign, issue for others          |
+| `deactivateReferralCode(ctx, {code})` | owner / `canManageCampaigns`                    | Idempotent; others get not-found                                                   |
+| `claimReferralCode(ctx, {code})`      | member (the invitee), not quarantined/banned    | Once per person, never own code, within 30 days of an observed join                |
+| `createCampaign` / `updateCampaign`   | `canManageCampaigns`                            | Key, name, window, active flag; audited with a diff                                |
+| `deleteCampaign`                      | `canManageCampaigns`                            | Only when nothing references it (`getCampaignUsage`); otherwise deactivate         |
+| `getCampaignUsage(ctx, campaignId)`   | `canViewAnalytics`                              | Attached invites (deleted ones too), codes, referrals; `deletable`                 |
+| `getCampaign` / `listCampaigns`       | `canViewAnalytics`                              | With funnels (two aggregate queries)                                               |
+| `attachInviteToCampaign(ctx, {…})`    | `canManageCampaigns`                            | Future joins through a live invite credit the campaign                             |
+| `detachInviteFromCampaign(ctx, {…})`  | `canManageCampaigns`                            | Only while attached to that campaign (one conditional update); deleted invites too |
+| `listInviteCodes(ctx, {…})`           | `canViewAnalytics`                              | Mirrored invites with inviter names, live first; `includeDeleted` opt-in           |
+| `markInviteeLeft` (subscriber)        | system (`member.left`)                          | JOINED/RETAINED → LEFT, `fast_leave` flag under 24 h                               |
+| `runReferralSweep(ctx)` (job)         | system only                                     | Missed leaves, JOINED → RETAINED, RETAINED → VALID                                 |
+| `reviewReferral(ctx, {…})`            | `canManageCampaigns`, not inviter/invitee       | `clear_flags` (false positive) or `invalidate`                                     |
+| `getReferralLeaderboard(ctx, {…})`    | `canViewMembers`                                | VALID + unflagged only; campaign / 7-30-90 day filters                             |
+| `getReferralFunnel(ctx, {…})`         | self, or `canViewAnalytics`                     | Per inviter, per campaign, or server-wide                                          |
+| `listInviterFunnels(ctx, {…})`        | `canViewAnalytics`                              | Staff table of inviters                                                            |
+| `getMyReferrals(ctx)`                 | member                                          | Own codes, funnel, recent referrals                                                |
+| `listReferrals(ctx, {…})`             | `canViewAnalytics`                              | Staff listing with flags; `reviewable: true` is the review queue                   |
 
 Attribution rules:
 
@@ -72,7 +74,12 @@ Attribution rules:
 - A campaign is credited only while it is active and inside its window
   (`campaignAccepts`). Attaching an invite never rewrites history.
 - A code for a max-uses invite deleted by the very use that brought the member
-  is still credited (the mirror keeps deleted codes).
+  is still credited (the mirror keeps deleted codes), including when Discord
+  delivers the invite's delete event before the member add (the bot keeps the
+  use pending for a short grace; see _Surfaces_).
+- An invite Discord deletes stays attached to its campaign until staff detach
+  it, and blocks deleting the campaign meanwhile; both surfaces list it,
+  marked as deleted, so the attachment is never stuck.
 - A code not yet mirrored is recorded for tracing with method `unknown`.
 - Claims require an **observed** join (a live referral or a recorded join
   event). Members synced before JAVE tracked joins cannot mint referrals.
@@ -198,15 +205,21 @@ Full reference: [docs/commands/invites.md](../commands/invites.md).
   and invite create/delete re-sync (bursts coalesce); each non-bot join diffs
   the cached snapshot against a fresh `listInvites()` and credits an invite
   only when exactly one rose by exactly one use (vanity → method `vanity`),
-  otherwise `unknown`. The gateway's `InviteSnapshot` carries `vanity` and
-  `inviterUsername` for this.
+  otherwise `unknown`. A re-sync that runs between a join and its member add
+  (an unrelated invite event, or the delete Discord sends for an invite whose
+  last use was consumed) would absorb that use; so an invite whose uses rose,
+  or that vanished with exactly one use left, keeps its previous entry in the
+  baseline as a pending use for the next join diff only, and for at most
+  `PENDING_USE_GRACE_MS` (30 s). The gateway's `InviteSnapshot` carries
+  `vanity` and `inviterUsername` for this.
 - **Dashboard** (`apps/dashboard/app/(console)/referrals`, `canViewAnalytics`):
   `/referrals` with the server-wide funnel and tabs for inviters (filter by
   campaign), campaigns, the review queue (`listReferrals({ reviewable: true })`
-  - `reviewReferral`) and the invite mirror; `/referrals/campaigns/[id]` with
-    the campaign funnel, attached invites, per-inviter funnels and, for
-    `canManageCampaigns`, settings, attach/detach, activate/deactivate and
-    delete (only when nothing was credited).
+  and `reviewReferral`) and the invite mirror; `/referrals/campaigns/[id]`
+  with the campaign funnel, attached invites (paged, deleted ones marked),
+  per-inviter funnels and, for `canManageCampaigns`, settings, a paged attach
+  picker, detach, activate/deactivate and delete (offered only when
+  `getCampaignUsage` says `deletable`; otherwise the page says what blocks it).
 
 ## Extension points
 

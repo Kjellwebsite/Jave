@@ -8,7 +8,6 @@ import { campaignDayValue, type CampaignDayField, parseCampaignDay } from '@/lib
 import { formEnum, formOptional, formString } from '@/lib/form-data';
 import { CAMPAIGN_DELETED_NOTICE } from '@/lib/referral-labels';
 import { runAction } from '@/server/actions';
-import type { UserContext } from '@/server/context';
 
 /*
  * Referral and campaign mutations. Every identifier from the form is
@@ -18,10 +17,6 @@ import type { UserContext } from '@/server/context';
 
 const CAMPAIGN_FIELDS = ['key', 'name', 'description', 'startsAt', 'endsAt'] as const;
 const REVIEW_DECISIONS = ['clear_flags', 'invalidate'] as const;
-/** Invites scanned per page when checking an invite belongs to a campaign. */
-const INVITE_SCAN_PAGE = 100;
-/** Discord caps a guild at 1000 invites (+ vanity): 11 pages always suffice. */
-const INVITE_SCAN_MAX_PAGES = 11;
 
 function campaignIdFrom(data: FormData): string {
   const id = formString(data, 'campaignId');
@@ -132,26 +127,14 @@ export async function attachInviteAction(_: ActionState, data: FormData): Promis
   );
 }
 
-/** Whether `code` is attached to `campaignId` right now (the page may be stale). */
-async function isAttached(ctx: UserContext, campaignId: string, code: string): Promise<boolean> {
-  for (let page = 0; page < INVITE_SCAN_MAX_PAGES; page++) {
-    const result = await invites.listInviteCodes(ctx, {
-      campaignId,
-      limit: INVITE_SCAN_PAGE,
-      offset: page * INVITE_SCAN_PAGE,
-    });
-    if (result.items.some((invite) => invite.code === code)) return true;
-    if ((page + 1) * INVITE_SCAN_PAGE >= result.total) return false;
-  }
-  return false;
-}
-
 export async function detachInviteAction(_: ActionState, data: FormData): Promise<ActionState> {
   return runAction('campaign.detach_invite', async (ctx) => {
     const campaignId = campaignIdFrom(data);
-    const code = formString(data, 'code').trim();
-    if (!code || !(await isAttached(ctx, campaignId, code))) throw new NotFoundError('Invite');
-    const invite = await invites.attachInviteToCampaign(ctx, { code, campaignId: null });
+    // Core detaches only while the invite is attached to this campaign (a stale page is NOT FOUND).
+    const invite = await invites.detachInviteFromCampaign(ctx, {
+      code: formString(data, 'code'),
+      campaignId,
+    });
     refresh(campaignId);
     return `INVITE DETACHED — ${invite.code}. Past referrals keep their credit.`;
   });

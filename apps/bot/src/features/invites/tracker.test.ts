@@ -5,7 +5,7 @@ import { invites } from '@jave/core';
 import { DiscordActionError, type InviteSnapshot } from '../../discord/gateway';
 import type { JoinedMember } from '../../gateway-events/types';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
-import { CONSUMED_INVITE_GRACE_MS, toSyncInput, trackerFor } from './tracker';
+import { PENDING_USE_GRACE_MS, toSyncInput, trackerFor } from './tracker';
 
 /** PGlite boots (WASM compile) slowly on a loaded machine; allow for it. */
 vi.setConfig({ hookTimeout: 180_000, testTimeout: 60_000 });
@@ -180,7 +180,7 @@ describe('invites: tracker (gateway listeners)', () => {
     expect(await referralOf(member)).toMatchObject({ method: 'invite', inviteCode: 'once04' });
   });
 
-  it('gives a consumed-invite tombstone exactly one join', async () => {
+  it('gives a pending consumed use exactly one join', async () => {
     bot.gateway.invites = [invite('once04', 0, { maxUses: 1 }), invite('alpha01', 3)];
     await bot.app.events.ready();
     consumeLastUse('once04');
@@ -197,24 +197,63 @@ describe('invites: tracker (gateway listeners)', () => {
     // Staff delete the invite; no join follows it.
     consumeLastUse('once04');
     await bot.app.events.invitesChanged();
-    bot.kit.clock.advance(CONSUMED_INVITE_GRACE_MS + 1);
+    bot.kit.clock.advance(PENDING_USE_GRACE_MS + 1);
     const member = await join('rigel');
     expect(await referralOf(member)).toMatchObject({ method: 'unknown', inviteCode: null });
   });
 
-  it('BREAK: a tombstone never turns a concurrent join into a false credit', async () => {
+  it('BREAK: a pending use never turns a concurrent join into a false credit', async () => {
     bot.gateway.invites = [invite('once04', 0, { maxUses: 1 }), invite('alpha01', 3)];
     await bot.app.events.ready();
     consumeLastUse('once04');
     await bot.app.events.invitesChanged();
-    // Another member's use lands first: two candidates, so unknown; the tombstone is spent.
+    // Another member's use lands first: two candidates, so unknown; the pending use is spent.
     const other = await join('sirius', 'alpha01');
     const member = await join('vega');
     expect(await referralOf(other)).toMatchObject({ method: 'unknown', inviteCode: null });
     expect(await referralOf(member)).toMatchObject({ method: 'unknown', inviteCode: null });
   });
 
-  it('BREAK: an invite deleted with uses left is not a tombstone', async () => {
+  it('credits a use that a re-sync absorbed before the member add', async () => {
+    bot.gateway.invites = [invite('alpha01', 3), invite('beta02', 0)];
+    await bot.app.events.ready();
+    // The member joins through alpha01, but an unrelated invite event is processed first.
+    bumpUse('alpha01');
+    bot.gateway.invites.push(invite('fresh05', 0, { inviterDiscordId: OTHER_INVITER_ID }));
+    await bot.app.events.invitesChanged();
+    const member = await join('altais');
+    expect(await referralOf(member)).toMatchObject({ method: 'invite', inviteCode: 'alpha01' });
+    // The mirror still reflects Discord exactly.
+    expect((await mirror()).find((r) => r.code === 'alpha01')?.uses).toBe(4);
+  });
+
+  it('credits an absorbed use even after an earlier pending use on that invite expired', async () => {
+    bot.gateway.invites = [invite('alpha01', 3), invite('beta02', 0)];
+    await bot.app.events.ready();
+    // A use whose member add never arrives.
+    bumpUse('alpha01');
+    await bot.app.events.invitesChanged();
+    bot.kit.clock.advance(PENDING_USE_GRACE_MS + 1);
+    // Later, a real join through alpha01 is absorbed by another re-sync first.
+    bumpUse('alpha01');
+    bot.gateway.invites.push(invite('fresh05', 0, { inviterDiscordId: OTHER_INVITER_ID }));
+    await bot.app.events.invitesChanged();
+    const member = await join('mira');
+    expect(await referralOf(member)).toMatchObject({ method: 'invite', inviteCode: 'alpha01' });
+  });
+
+  it('BREAK: an absorbed use never credits a join after the grace', async () => {
+    bot.gateway.invites = [invite('alpha01', 3), invite('beta02', 0)];
+    await bot.app.events.ready();
+    // A use whose member add never arrives (a missed gateway event).
+    bumpUse('alpha01');
+    await bot.app.events.invitesChanged();
+    bot.kit.clock.advance(PENDING_USE_GRACE_MS + 1);
+    const member = await join('deneb', 'beta02');
+    expect(await referralOf(member)).toMatchObject({ method: 'invite', inviteCode: 'beta02' });
+  });
+
+  it('BREAK: an invite deleted with uses left is not a pending use', async () => {
     bot.gateway.invites = [invite('multi06', 1, { maxUses: 5 }), invite('alpha01', 3)];
     await bot.app.events.ready();
     consumeLastUse('multi06');

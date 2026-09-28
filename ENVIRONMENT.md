@@ -5,6 +5,10 @@ A process refuses to start with a list of the invalid variables — names only,
 never values. Empty values are treated as unset. Copy `.env.example` to `.env`
 for local development; production values live in your host's secret store.
 
+In development every script reads the root `.env` (`pnpm dev:bot`, `pnpm dev:dashboard`,
+`pnpm db:migrate`, `pnpm db:seed`). The dashboard also reads `apps/dashboard/.env.local`
+(Next.js); a variable set in both takes the root value.
+
 ## Who needs what
 
 | Variable                          |   Bot   | Dashboard | Required                     | Notes                                                                                                                                                                                   |

@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "generate": "drizzle-kit generate",
     "check": "drizzle-kit check",
-    "migrate": "tsx src/scripts/migrate.ts",
+    "migrate": "tsx --env-file-if-exists=../../.env src/scripts/migrate.ts",
     "docs": "tsx src/scripts/generate-docs.ts",
     "test:db:clean": "tsx src/scripts/clean-test-databases.ts"
   },

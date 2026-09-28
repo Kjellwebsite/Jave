@@ -29,6 +29,9 @@ against production data you are not authorized to access.
   authorize.
 - **Dashboard users** authenticate with Discord OAuth2 (state + PKCE). Sessions
   are random 256-bit tokens; only their hash is stored.
+- **Discord Activity users** sign in through the Embedded App SDK: the dashboard exchanges
+  Discord's code and answers a short-lived bearer token (below). The Activity holds no secret and
+  no cookie.
 - **Integrations** (GitHub, generic webhooks) authenticate with HMAC signatures.
 - **AI providers** receive redacted, delimited content and can only _propose_
   actions.
@@ -109,6 +112,28 @@ against production data you are not authorized to access.
 - Security headers: CSP, frame-ancestors none, HSTS (production), strict referrer policy.
 - Dev login (`JAVE_DEV_AUTH`) is refused by env validation and at runtime in production.
 
+### Discord Activity
+
+- `jave_token`: HMAC-SHA256 over the claims with `JAVE_SESSION_SECRET` under its own purpose
+  label, so no other signed value verifies as one. It lives one hour (a token claiming more than
+  two is refused), is kept in memory only, and asserts identity only: every request re-resolves
+  roles and standing through core, so a ban, quarantine or role change applies on the next
+  request.
+- Instance scope: a token acts only on game sessions of the Activity instance it was issued for;
+  other sessions answer 404 like ones that do not exist. Game moves are re-authorized as the
+  player; spectators and non-players cannot move.
+- `/api/activity/*` answers `no-store`, accepts JSON only with strict schemas and small body caps,
+  and spends shared rate-limit budgets (per Discord account, and a per-IP circuit breaker).
+  Responses go through whitelist mappers field by field, so nothing core adds to a view reaches
+  the Activity by accident; the Arena board leaves out players whose profile the viewer could not
+  open.
+- The dev token (`/api/activity/dev-token`) is **MOCK / DEVELOPMENT ONLY**: it answers 404 unless
+  dev auth is on outside production, and a dev token stops verifying the moment dev auth is off.
+- Accepted limitation: tokens are stateless, so ending dashboard sessions does not end an Activity
+  session; it expires within an hour (its authority is already gone on the next request after a
+  ban or quarantine). Rotating `JAVE_SESSION_SECRET` ends every Activity session at once. See
+  [docs/ACTIVITY.md](docs/ACTIVITY.md#limitations).
+
 ### Privacy
 
 - **Export.** Every member can download their own data (dashboard → My profile → Privacy): a JSON
@@ -125,7 +150,8 @@ against production data you are not authorized to access.
 - **Sessions.** Members can see and end their dashboard sessions, or sign out everywhere.
   Moderators can end the sessions of accounts ranked below them (reason required, audited); a ban
   ends them automatically. Authority is re-resolved on every request, so a quarantined or banned
-  account holds no capability even before its sessions end.
+  account holds no capability even before its sessions end. Discord Activity tokens are not
+  sessions and expire on their own within an hour (see Discord Activity above).
 
 ### Availability
 

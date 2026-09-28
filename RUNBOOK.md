@@ -232,6 +232,27 @@ says, and only touches roles it maps.
 - **Growing too fast**: check that housekeeping runs:
   `select status, completed_at, last_error from jobs where type = 'system.housekeeping' order by run_at desc limit 5;`
 
+### The Discord Activity will not start
+
+The Activity is a static bundle; its API is the dashboard's `/api/activity/*`, so start with the
+dashboard's health and logs.
+
+- **Every launch fails at sign-in**: search the dashboard logs for `activity code exchange failed`.
+  Usual causes are a wrong or rotated `DISCORD_CLIENT_SECRET`, or the Developer Portal's URL
+  mappings not pointing `/api` at the dashboard ([docs/ACTIVITY.md](docs/ACTIVITY.md#discord-developer-portal-configuration)).
+- **Launches say JAVELIN IS BUSY**: search for `activity budget exhausted`. The per-IP budget on
+  sign-in is shared by everyone (requests arrive through Discord's proxy); members already inside
+  keep playing, and new launches retry on their own. A caller key that keeps exhausting it points
+  at one scripted client.
+- **SIGN-IN REFUSED**: Discord authenticated a different user than JAVE issued the token for. It
+  should not happen with a real client; if it persists, check the `auth.login` audit entries with
+  `method: discord_activity` for that account.
+- **Sign everyone out of the Activity** (for example after a leaked `JAVE_SESSION_SECRET`): rotate
+  `JAVE_SESSION_SECRET` and restart the dashboard. Every Activity token stops verifying at once;
+  players sign in again on their next request. Dashboard sessions are not signed with it and stay; a dashboard sign-in in progress starts again.
+- **A lobby is stuck**: event staff close it from the dashboard, or the bot's `games.sweep` job
+  closes it; that job needs the bot's worker running.
+
 ### A webhook integration stopped delivering
 
 **Integrations → Deliveries** lists every inbound and outbound delivery with its

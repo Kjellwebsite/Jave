@@ -21,8 +21,9 @@ function usesText(invite: invites.InviteCodeView): string {
 }
 
 /**
- * Discord invites mirrored by the bot, most used first. `actions` renders a
- * trailing control per row (e.g. detach) on the campaign page.
+ * Discord invites mirrored by the bot, live first, then most used. Invites
+ * Discord has deleted (listed only on a campaign page) carry a badge.
+ * `actions` renders a trailing control per row (e.g. detach).
  */
 export function InvitesTable({
   items,
@@ -71,6 +72,7 @@ export function InvitesTable({
                     <Mono className="text-fg">{invite.code}</Mono>
                     {invite.vanity ? <Badge>Vanity URL</Badge> : null}
                     {invite.temporary ? <Badge>Temporary</Badge> : null}
+                    {invite.deletedAt ? <Badge tone="warning">Deleted on Discord</Badge> : null}
                   </span>
                   <span className="mt-0.5 block truncate text-small text-fg-subtle">
                     {invite.vanity

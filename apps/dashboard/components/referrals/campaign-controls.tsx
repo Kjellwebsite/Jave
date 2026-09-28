@@ -61,17 +61,24 @@ export function CampaignActiveToggle({
 export function DetachInviteButton({
   campaignId,
   code,
+  deleted,
   action,
 }: {
   campaignId: string;
   code: string;
+  /** Discord no longer lists the invite: detaching only clears the stale link. */
+  deleted: boolean;
   action: FormAction;
 }) {
   return (
     <ConfirmActionDialog
       eyebrow="CAMPAIGN"
       title={`Detach ${code}`}
-      description="Future joins through this invite stop crediting the campaign. Past referrals keep their credit."
+      description={
+        deleted
+          ? 'Discord already deleted this invite. Detaching clears the stale link. Past referrals keep their credit.'
+          : 'Future joins through this invite stop crediting the campaign. Past referrals keep their credit.'
+      }
       confirmLabel="Detach invite"
       action={action}
       hidden={{ campaignId, code }}
@@ -95,19 +102,18 @@ function pickerLabel(invite: invites.InviteCodeView): string {
 export function AttachInviteForm({
   campaignId,
   attachable,
+  emptyNote,
   action,
 }: {
   campaignId: string;
+  /** One picker page of live invites not attached here. */
   attachable: readonly invites.InviteCodeView[];
+  /** Shown instead of the form when `attachable` is empty. */
+  emptyNote: string;
   action: FormAction;
 }) {
   if (attachable.length === 0) {
-    return (
-      <p className="text-small text-fg-subtle">
-        Every mirrored invite is already attached here. Create an invite in Discord; the bot mirrors
-        it within seconds.
-      </p>
-    );
+    return <p className="text-small text-fg-subtle">{emptyNote}</p>;
   }
   return (
     <ActionForm action={action} resetOnSuccess aria-label="Attach an invite" className="space-y-3">

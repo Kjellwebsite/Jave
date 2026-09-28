@@ -149,9 +149,12 @@ export async function updateEvent(
       rsvpClosesAt: data.rsvpClosesAt === undefined ? event.rsvpClosesAt : data.rsvpClosesAt,
     });
     const rescheduled = times.startsAt.getTime() !== event.startsAt.getTime();
+    // Only a new or moved RSVP close must lie ahead: re-sending the stored one is no change.
+    const rsvpCloseMoved =
+      times.rsvpClosesAt !== null && times.rsvpClosesAt.getTime() !== event.rsvpClosesAt?.getTime();
     validateEventTimes(times, now, {
       requireFutureStart: rescheduled,
-      requireFutureRsvpClose: data.rsvpClosesAt !== undefined && data.rsvpClosesAt !== null,
+      requireFutureRsvpClose: rsvpCloseMoved,
     });
 
     if (data.kind && data.kind !== event.kind && event.kind === 'tournament') {

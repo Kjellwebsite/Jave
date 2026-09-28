@@ -28,8 +28,16 @@ export const settingsSchemas = {
       .regex(/^#[0-9a-fA-F]{6}$/)
       .default('#B8BDC3'),
   }),
+  /**
+   * Cross-field rules (who may change which mapping, the quarantine role never
+   * being a mapped role) apply to writes only: see `role-mapping.ts`. A stored
+   * value always reads back as stored.
+   */
   roles: z.object({
-    /** JAVE role → Discord role ID. Unmapped roles exist only inside JAVE. */
+    /**
+     * JAVE role → Discord role ID. Unmapped roles exist only inside JAVE. One
+     * Discord role may back several JAVE roles (e.g. one "Staff" role).
+     */
     discordRoleIds: z.partialRecord(orgRoleKey, snowflake).default({}),
     /** Role applied during quarantine; must deny access to all channels but one. */
     quarantineRoleId: optionalSnowflake,

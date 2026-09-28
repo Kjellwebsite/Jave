@@ -19,10 +19,16 @@ import { InvitesTable } from '@/components/referrals/invites-table';
 import { RestrictedPage } from '@/components/restricted-page';
 import { plural } from '@/lib/analytics-view';
 import { campaignDayValue } from '@/lib/campaign-form';
+import {
+  attachPickerEmptyNote,
+  campaignDeletionNote,
+  campaignHref,
+  type CampaignPageOffsets,
+} from '@/lib/referral-labels';
 import { offsetParam, type SearchParams } from '@/lib/search-params';
 import { formatDate } from '@/lib/time';
 import { requireConsoleContext } from '@/server/context';
-import { loadCampaignPage } from '@/server/data/referrals';
+import { ATTACH_PICKER_PAGE_SIZE, loadCampaignPage } from '@/server/data/referrals';
 import { loadViewer } from '@/server/data/viewer';
 import { guarded } from '@/server/guard';
 import {
@@ -45,20 +51,37 @@ export default async function CampaignPage({
   const { ctx } = await requireConsoleContext();
   const { id } = await params;
   if (!isUuid(id)) notFound();
-  const offset = offsetParam((await searchParams).offset);
-  const loaded = await guarded(() => loadCampaignPage(ctx, id, offset));
+  const query = await searchParams;
+  const loaded = await guarded(() =>
+    loadCampaignPage(ctx, id, {
+      offset: offsetParam(query.offset),
+      attachedOffset: offsetParam(query.attached),
+      pickerOffset: offsetParam(query.picker),
+    }),
+  );
   if (!loaded.ok) {
     return (
       <RestrictedPage eyebrow="PEOPLE / REFERRALS" title="Campaign" capability="canViewAnalytics" />
     );
   }
-  const { campaign, attached, attachedTotal, attachable, inviters } = loaded.value;
+  const { campaign, usage, attached, picker, attachable, inviters } = loaded.value;
   const viewer = await loadViewer(ctx);
   const manage = can(ctx, 'canManageCampaigns');
   const now = ctx.clock.now();
-  // Core refuses to delete anything that credited activity; hide a button that would always fail.
-  const deletable =
-    attachedTotal === 0 && campaign.funnel.joined === 0 && campaign.funnel.codeClaims === 0;
+  // The offsets actually served (a stale link is clamped to the last page).
+  const offsets: CampaignPageOffsets = {
+    offset: inviters.offset,
+    attached: attached.offset,
+    picker: picker.offset,
+  };
+  const hrefWith = (change: Partial<CampaignPageOffsets>) =>
+    campaignHref(campaign.id, { ...offsets, ...change });
+  const liveAttached = usage.attachedInvites - usage.deletedInvites;
+  const attachedSummary =
+    `${plural(liveAttached, 'live invite')} ${liveAttached === 1 ? 'credits' : 'credit'} this campaign.` +
+    (usage.deletedInvites > 0
+      ? ` ${plural(usage.deletedInvites, 'attached invite')} ${usage.deletedInvites === 1 ? 'was' : 'were'} deleted on Discord.`
+      : '');
 
   return (
     <div className="space-y-8">
@@ -99,13 +122,9 @@ export default async function CampaignPage({
       />
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <Panel
-          title="Attached invites"
-          description={`${plural(attachedTotal, 'invite')} ${attachedTotal === 1 ? 'credits' : 'credit'} this campaign.`}
-          flush
-        >
+        <Panel title="Attached invites" description={attachedSummary} flush>
           <InvitesTable
-            items={attached}
+            items={attached.items}
             caption="Attached invites"
             timeZone={viewer.timeZone}
             empty={{
@@ -118,19 +137,46 @@ export default async function CampaignPage({
                     <DetachInviteButton
                       campaignId={campaign.id}
                       code={invite.code}
+                      deleted={invite.deletedAt !== null}
                       action={detachInviteAction}
                     />
                   )
                 : undefined
             }
           />
+          {attached.total > attached.limit ? (
+            <div className="border-t border-line-subtle px-5 py-3">
+              <Pagination
+                label="Attached invites pages"
+                offset={attached.offset}
+                limit={attached.limit}
+                total={attached.total}
+                linkComponent={NextLink}
+                hrefForOffset={(next) => hrefWith({ attached: next })}
+              />
+            </div>
+          ) : null}
           {manage ? (
-            <div className="border-t border-line-subtle p-5">
+            <div className="space-y-4 border-t border-line-subtle p-5">
               <AttachInviteForm
                 campaignId={campaign.id}
                 attachable={attachable}
+                emptyNote={attachPickerEmptyNote({
+                  total: picker.total,
+                  paged: picker.total > ATTACH_PICKER_PAGE_SIZE,
+                })}
                 action={attachInviteAction}
               />
+              {picker.total > ATTACH_PICKER_PAGE_SIZE ? (
+                <Pagination
+                  label="Invite picker pages"
+                  offset={picker.offset}
+                  limit={picker.limit}
+                  total={picker.total}
+                  linkComponent={NextLink}
+                  hrefForOffset={(next) => hrefWith({ picker: next })}
+                />
+              ) : null}
             </div>
           ) : null}
         </Panel>
@@ -192,9 +238,7 @@ export default async function CampaignPage({
               limit={inviters.limit}
               total={inviters.total}
               linkComponent={NextLink}
-              hrefForOffset={(next) =>
-                `/referrals/campaigns/${campaign.id}${next ? `?offset=${next}` : ''}`
-              }
+              hrefForOffset={(next) => hrefWith({ offset: next })}
             />
           </div>
         ) : null}
@@ -204,13 +248,9 @@ export default async function CampaignPage({
         <Card className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <h2 className="type-heading text-fg">Delete campaign</h2>
-            <p className="text-small text-fg-subtle">
-              {deletable
-                ? 'Nothing was ever credited to it, so it can be removed without losing history.'
-                : 'It has attached invites or credited joins. Deactivate it instead: its history stays intact.'}
-            </p>
+            <p className="text-small text-fg-subtle">{campaignDeletionNote(usage)}</p>
           </div>
-          {deletable ? (
+          {usage.deletable ? (
             <DeleteCampaignButton campaign={campaign} action={deleteCampaignAction} />
           ) : null}
         </Card>

@@ -8,6 +8,7 @@ import { databaseEnvSchema, parseEnv } from '@jave/config';
 import { seedReferralFixtures } from './seed-referrals';
 import { seedDashboardFixtures } from './seed';
 import { seedAiResearchFixtures } from './seed-ai-research';
+import { seedEventsAndGames } from './seed-events-games';
 import { seedTicketFixtures } from './tickets-seed';
 import { seedTrialFixtures } from './seed-trials';
 
@@ -35,6 +36,7 @@ async function main(): Promise<void> {
   if (migrate.status !== 0) throw new Error('migration failed');
   await seedDashboardFixtures(DATABASE_URL);
   await seedAiResearchFixtures(DATABASE_URL);
+  await seedEventsAndGames(DATABASE_URL);
   await seedTicketFixtures(DATABASE_URL);
   await seedTrialFixtures(DATABASE_URL);
   // Last: it records the analytics snapshots, which must see every fixture.

@@ -1,10 +1,12 @@
 import {
   Bell,
+  CalendarDays,
   ChartLine,
   ChartNoAxesColumn,
   Cpu,
   FileText,
   FlaskConical,
+  Gamepad2,
   Inbox,
   LayoutGrid,
   LifeBuoy,
@@ -67,7 +69,11 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
   {
     label: 'OPERATIONS',
-    items: [{ href: '/trials', label: 'Trials', icon: Swords, capability: 'canManageTrials' }],
+    items: [
+      { href: '/trials', label: 'Trials', icon: Swords, capability: 'canManageTrials' },
+      { href: '/events', label: 'Events', icon: CalendarDays, capability: null },
+      { href: '/games', label: 'Games', icon: Gamepad2, capability: null },
+    ],
   },
   {
     label: 'SUPPORT & SAFETY',

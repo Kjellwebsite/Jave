@@ -5,6 +5,7 @@
 import type { invites } from '@jave/core';
 import type { BadgeTone } from '@jave/ui';
 import { plural } from './analytics-view';
+import { toQueryString } from './search-params';
 
 export type ReferralStatusKey = 'joined' | 'retained' | 'valid' | 'left' | 'invalid';
 
@@ -116,4 +117,34 @@ export function campaignDeletionNote(usage: invites.CampaignUsage): string {
   }
   const deleted = usage.deletedInvites > 0 ? `, ${usage.deletedInvites} deleted on Discord` : '';
   return `It still has ${plural(usage.attachedInvites, 'attached invite')}${deleted}. Detach them to delete it, or deactivate it instead.`;
+}
+
+/** The three independent page offsets of a campaign page. */
+export interface CampaignPageOffsets {
+  /** Per-inviter funnels. */
+  offset: number;
+  /** Attached invites. */
+  attached: number;
+  /** Attach picker. */
+  picker: number;
+}
+
+/** A campaign page URL; zero offsets are left out. */
+export function campaignHref(campaignId: string, offsets: CampaignPageOffsets): string {
+  return `/referrals/campaigns/${campaignId}${toQueryString({
+    offset: offsets.offset || null,
+    attached: offsets.attached || null,
+    picker: offsets.picker || null,
+  })}`;
+}
+
+/** Why the attach picker offers nothing: no mirrored invites, or all already attached. */
+export function attachPickerEmptyNote(picker: { total: number; paged: boolean }): string {
+  if (picker.total === 0) {
+    return 'No live invites are mirrored yet. Create an invite in Discord; the bot mirrors it within seconds.';
+  }
+  if (picker.paged) {
+    return 'Every invite on this page is already attached here. Page through the rest below.';
+  }
+  return 'Every mirrored invite is already attached here. Create an invite in Discord; the bot mirrors it within seconds.';
 }

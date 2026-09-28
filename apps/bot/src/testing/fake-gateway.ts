@@ -1,17 +1,61 @@
+import { PermissionFlagsBits } from 'discord.js';
 import {
+  type BotMemberSnapshot,
+  type ChannelAccessSnapshot,
+  type ChannelKind,
+  type ChannelAccess,
+  type ChannelSubject,
   DiscordActionError,
   type DiscordGateway,
+  type DiscordPermission,
   MESSAGE_NONCE_MAX,
   type GuildMemberSnapshot,
   type InviteSnapshot,
   type MessagePayload,
   type PermissionOverwriteSpec,
   type ReadableMessage,
+  type RoleSnapshot,
+  type ScheduledEventEdit,
   type ScheduledEventSpec,
+  type ScheduledEventStatus,
   type SentMessage,
   type ThreadAutoArchiveMinutes,
   type ThreadState,
 } from '../discord/gateway';
+import { REQUIRED_PERMISSIONS } from '../discord/permissions';
+import { planScheduledEventUpdate, scheduledStartEdit } from '../discord/scheduled-event-status';
+
+/** The fake bot's own user id (matches the harness client id). */
+export const FAKE_BOT_USER_ID = '100000000000000888';
+
+export interface FakeGuildChannel {
+  name: string;
+  kind: ChannelKind;
+  /** The bot cannot see the channel at all. */
+  hidden?: boolean;
+  /** Permission overwrites denying the bot these flags in this channel. */
+  denied?: DiscordPermission[];
+  /** Roles whose holders can view the channel; the guild id stands for @everyone. */
+  viewers?: string[];
+}
+
+/** Discord's "Unknown Guild Scheduled Event" error code. */
+const UNKNOWN_SCHEDULED_EVENT = 10070;
+/** Discord's "Invalid Form Body" (RESTJSONErrorCodes.InvalidFormBodyOrContentType). */
+const INVALID_FORM_BODY = 50035;
+
+const FULL_ACCESS: ChannelAccess = {
+  textBased: true,
+  view: true,
+  send: true,
+  embedLinks: true,
+  readHistory: true,
+};
+
+/** Key for `FakeDiscordGateway.channelAccessOverrides`. */
+export function channelAccessKey(channelId: string, subject: ChannelSubject): string {
+  return `${channelId}:${subject.kind === 'bot' ? 'bot' : subject.userId}`;
+}
 
 export interface GatewayCall {
   method: string;
@@ -47,7 +91,16 @@ export class FakeDiscordGateway implements DiscordGateway {
   readonly messages = new Map<string, { channelId: string; payload: MessagePayload }>();
   readonly dms: { userId: string; payload: MessagePayload }[] = [];
   readonly bans = new Set<string>();
-  readonly scheduledEvents = new Map<string, ScheduledEventSpec & { cancelled?: boolean }>();
+  readonly scheduledEvents = new Map<
+    string,
+    ScheduledEventSpec & { cancelled?: boolean; status: ScheduledEventStatus }
+  >();
+  /**
+   * `channelAccessKey(channel, subject)` → access (null = unknown channel/member).
+   * Without an override the bot has full access everywhere and guild members
+   * have full access; users who are not guild members get null.
+   */
+  readonly channelAccessOverrides = new Map<string, ChannelAccess | null>();
   invites: InviteSnapshot[] = [];
   /** User ids with DMs closed. */
   readonly closedDms = new Set<string>();
@@ -58,9 +111,12 @@ export class FakeDiscordGateway implements DiscordGateway {
   /** channel id → the only user ids allowed to read it (absent: everyone in the guild). */
   readonly channelReaders = new Map<string, Set<string>>();
   ready = true;
+  /** The clock Discord's own checks read (a scheduled start must lie ahead). */
+  private readonly now: () => Date;
 
-  constructor(guildId = '100000000000000999') {
+  constructor(guildId = '100000000000000999', options: { now?: () => Date } = {}) {
     this.guildId = guildId;
+    this.now = options.now ?? (() => new Date());
   }
 
   addMember(
@@ -277,21 +333,68 @@ export class FakeDiscordGateway implements DiscordGateway {
     if (!thread?.thread) throw new DiscordActionError('unknown channel', 10003, true);
     return { archived: thread.archived ?? false, locked: thread.locked ?? false };
   }
+  /** Like Discord: a scheduled start that is not in the future refuses the request. */
+  private assertFutureStart(startAt: Date) {
+    if (startAt.getTime() <= this.now().getTime()) {
+      throw new DiscordActionError(
+        'Invalid Form Body: cannot schedule event in the past',
+        INVALID_FORM_BODY,
+        true,
+      );
+    }
+  }
   async createScheduledEvent(spec: ScheduledEventSpec & { reason: string }) {
     this.record('createScheduledEvent', spec);
+    this.assertFutureStart(spec.startAt);
     const id = nextId();
-    this.scheduledEvents.set(id, spec);
+    this.scheduledEvents.set(id, { ...spec, status: 'scheduled' });
     return id;
   }
-  async editScheduledEvent(eventId: string, spec: Partial<ScheduledEventSpec>, reason: string) {
-    this.record('editScheduledEvent', eventId, spec, reason);
+  private knownScheduledEvent(eventId: string) {
     const existing = this.scheduledEvents.get(eventId);
-    if (existing) Object.assign(existing, spec);
+    if (!existing) {
+      throw new DiscordActionError('unknown scheduled event', UNKNOWN_SCHEDULED_EVENT, true);
+    }
+    return existing;
+  }
+  async editScheduledEvent(eventId: string, spec: ScheduledEventEdit, reason: string) {
+    this.record('editScheduledEvent', eventId, spec, reason);
+    const existing = this.knownScheduledEvent(eventId);
+    const { status, startAt, ...fields } = spec;
+    const plan = planScheduledEventUpdate(existing.status, status ?? existing.status);
+    if (plan.remove) {
+      this.scheduledEvents.delete(eventId);
+      return;
+    }
+    if (plan.editable) {
+      const start = scheduledStartEdit(plan, existing.startAt, startAt, this.now());
+      if (start) this.assertFutureStart(start);
+      Object.assign(existing, fields, start ? { startAt: start } : {});
+    }
+    for (const next of plan.transitions) existing.status = next;
   }
   async cancelScheduledEvent(eventId: string, reason: string) {
     this.record('cancelScheduledEvent', eventId, reason);
-    const existing = this.scheduledEvents.get(eventId);
-    if (existing) existing.cancelled = true;
+    const existing = this.knownScheduledEvent(eventId);
+    const plan = planScheduledEventUpdate(existing.status, 'canceled');
+    if (plan.remove) {
+      this.scheduledEvents.delete(eventId);
+      return;
+    }
+    for (const next of plan.transitions) existing.status = next;
+    existing.cancelled = existing.status === 'canceled';
+  }
+  async deleteScheduledEvent(eventId: string, reason: string) {
+    this.record('deleteScheduledEvent', eventId, reason);
+    this.knownScheduledEvent(eventId);
+    this.scheduledEvents.delete(eventId);
+  }
+  async channelAccess(channelId: string, subject: ChannelSubject) {
+    this.record('channelAccess', channelId, subject);
+    const key = channelAccessKey(channelId, subject);
+    if (this.channelAccessOverrides.has(key)) return this.channelAccessOverrides.get(key) ?? null;
+    if (subject.kind === 'member' && !this.members.has(subject.userId)) return null;
+    return { ...FULL_ACCESS };
   }
   async setChannelOverwrite(channelId: string, overwrite: PermissionOverwriteSpec, reason: string) {
     this.record('setChannelOverwrite', channelId, overwrite, reason);
@@ -305,6 +408,92 @@ export class FakeDiscordGateway implements DiscordGateway {
       .filter((member) => member.roleIds.includes(roleId))
       .map((member) => member.userId);
   }
+
+  // Introspection state. Defaults describe a correctly installed bot:
+  // exactly the required permissions, no Administrator, role near the top.
+  readonly botPermissions = new Set<DiscordPermission>(
+    Object.keys(REQUIRED_PERMISSIONS) as DiscordPermission[],
+  );
+  botAdministrator = false;
+  botHighestRolePosition = 50;
+  readonly roles = new Map<string, RoleSnapshot>();
+  /** Guild channels visible to introspection (created text channels count as text). */
+  readonly guildChannels = new Map<string, FakeGuildChannel>();
+
+  addRole(
+    id: string,
+    name: string,
+    position: number,
+    managed = false,
+    permissions: DiscordPermission[] = [],
+  ): RoleSnapshot {
+    const role = { id, name, position, managed, everyone: false, permissions };
+    this.roles.set(id, role);
+    return role;
+  }
+
+  addGuildChannel(id: string, channel: FakeGuildChannel): void {
+    this.guildChannels.set(id, channel);
+  }
+
+  private effectivePermissions(denied: readonly DiscordPermission[] = []): DiscordPermission[] {
+    if (this.botAdministrator) return Object.keys(PermissionFlagsBits) as DiscordPermission[];
+    return [...this.botPermissions].filter((p) => !denied.includes(p));
+  }
+
+  async botMember(): Promise<BotMemberSnapshot> {
+    this.record('botMember');
+    return {
+      userId: FAKE_BOT_USER_ID,
+      permissions: this.effectivePermissions(),
+      administrator: this.botAdministrator,
+      highestRolePosition: this.botHighestRolePosition,
+    };
+  }
+
+  async botPermissionsIn(
+    channelId: string,
+    audienceRoleIds: readonly string[] = [],
+  ): Promise<ChannelAccessSnapshot | null> {
+    this.record('botPermissionsIn', channelId, [...audienceRoleIds]);
+    const created = this.channels.get(channelId);
+    const channel: FakeGuildChannel | undefined =
+      this.guildChannels.get(channelId) ??
+      (created ? { name: created.name, kind: created.thread ? 'thread' : 'text' } : undefined);
+    if (!channel) return null;
+    if (channel.hidden && !this.botAdministrator) {
+      return {
+        channelId,
+        name: null,
+        kind: 'other',
+        visible: false,
+        permissions: [],
+        everyoneCanView: false,
+        audienceWithView: [],
+      };
+    }
+    const permissions = this.effectivePermissions(channel.denied);
+    const viewers = channel.viewers ?? [];
+    return {
+      channelId,
+      name: channel.name,
+      kind: channel.kind,
+      visible: permissions.includes('ViewChannel'),
+      permissions,
+      everyoneCanView: viewers.includes(this.guildId),
+      audienceWithView: audienceRoleIds.filter((id) => viewers.includes(id)),
+    };
+  }
+
+  async listRoles(): Promise<RoleSnapshot[]> {
+    this.record('listRoles');
+    const everyone = { id: this.guildId, name: '@everyone', position: 0, managed: false };
+    return [
+      { ...everyone, everyone: true, permissions: [] },
+      ...[...this.roles.values()].map((r) => ({ ...r, permissions: [...r.permissions] })),
+    ];
+  }
+
   /** channelId:nonce → message id, like Discord's enforce_nonce window. */
   readonly nonces = new Map<string, string>();
   async sendMessageOnce(channelId: string, payload: MessagePayload, nonce: string) {

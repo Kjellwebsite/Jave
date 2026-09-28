@@ -4,7 +4,7 @@ import type { CommandDefinition, HelpCategory } from '../../interactions/types';
 import { field, linkButton, panel, row } from '../../ui/components';
 import { BRAND, COLORS, GLYPH } from '../../ui/theme';
 
-const CATEGORY_ORDER: { key: HelpCategory; label: string }[] = [
+export const CATEGORY_ORDER: readonly { key: HelpCategory; label: string }[] = [
   { key: 'identity', label: 'Identity' },
   { key: 'progression', label: 'Progression' },
   { key: 'operations', label: 'Operations' },

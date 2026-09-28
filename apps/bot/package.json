@@ -9,7 +9,8 @@
     "build": "node build.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "commands:deploy": "tsx --env-file-if-exists=../../.env src/scripts/deploy-commands.ts",
-    "commands:print": "tsx src/scripts/print-commands.ts"
+    "commands:print": "tsx src/scripts/print-commands.ts",
+    "commands:doc": "tsx src/scripts/generate-commands-doc.ts"
   },
   "dependencies": {
     "@jave/ai": "workspace:*",

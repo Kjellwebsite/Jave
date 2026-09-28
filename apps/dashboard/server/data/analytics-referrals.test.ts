@@ -5,7 +5,12 @@ import { createTestKit, type TestKit } from '@jave/core/testing';
 import { auditLogs, referrals } from '@jave/database';
 import { KPI_LABEL_MAX_LENGTH, overviewKpis } from '@/lib/analytics-kpis';
 import { loadAnalytics, loadHealthStrip, TREND_METRICS } from './analytics';
-import { loadCampaignPage, loadReferralsPage } from './referrals';
+import {
+  ATTACH_PICKER_PAGE_SIZE,
+  loadCampaignPage,
+  loadReferralsPage,
+  REFERRALS_PAGE_SIZE,
+} from './referrals';
 
 let kit: TestKit;
 let operations: UserActor;
@@ -131,11 +136,76 @@ describe('referrals page data', () => {
     expect(scoped.data.page.total).toBe(0);
   });
 
+  const FIRST_PAGES = { offset: 0, attachedOffset: 0, pickerOffset: 0 };
+
   it('offers only invites not yet attached on the campaign page', async () => {
     const campaign = await seed();
-    const page = await loadCampaignPage(kit.as(operations), campaign.id, 0);
-    expect(page.attached.map((invite) => invite.code)).toEqual(['ada-inv']);
+    const page = await loadCampaignPage(kit.as(operations), campaign.id, FIRST_PAGES);
+    expect(page.attached.items.map((invite) => invite.code)).toEqual(['ada-inv']);
     expect(page.attachable.map((invite) => invite.code)).toEqual(['spare']);
+    expect(page.usage).toMatchObject({ attachedInvites: 1, deletedInvites: 0, deletable: false });
+  });
+
+  it('lists an attached invite Discord deleted, so it can still be detached', async () => {
+    const campaign = await seed();
+    // Discord deletes ada-inv (expired): the attachment remains and blocks deletion.
+    await invites.syncInvites(kit.system, [{ code: 'spare', uses: 1 }]);
+    const page = await loadCampaignPage(kit.as(operations), campaign.id, FIRST_PAGES);
+    expect(page.attached.items.map((invite) => [invite.code, invite.deletedAt !== null])).toEqual([
+      ['ada-inv', true],
+    ]);
+    expect(page.usage).toMatchObject({ attachedInvites: 1, deletedInvites: 1, deletable: false });
+    // The picker offers live invites only.
+    expect(page.picker.items.map((invite) => invite.code)).toEqual(['spare']);
+  });
+
+  it('pages the attach picker and the attached invites, clamping a stale offset', async () => {
+    const campaign = await invites.createCampaign(kit.as(core), { key: 'bulk', name: 'Bulk' });
+    const bulk = Array.from({ length: ATTACH_PICKER_PAGE_SIZE + 5 }, (_, index) => ({
+      code: `bulk${String(index).padStart(3, '0')}`,
+      uses: index,
+    }));
+    await invites.syncInvites(kit.system, bulk);
+    for (const invite of bulk.slice(0, REFERRALS_PAGE_SIZE + 2)) {
+      await invites.attachInviteToCampaign(kit.as(core), {
+        code: invite.code,
+        campaignId: campaign.id,
+      });
+    }
+    const second = await loadCampaignPage(kit.as(operations), campaign.id, {
+      offset: 0,
+      attachedOffset: REFERRALS_PAGE_SIZE,
+      pickerOffset: ATTACH_PICKER_PAGE_SIZE,
+    });
+    expect(second.attached.total).toBe(REFERRALS_PAGE_SIZE + 2);
+    expect(second.attached.items).toHaveLength(2);
+    // The least-used invites are reachable on the picker's second page.
+    expect(second.picker.total).toBe(ATTACH_PICKER_PAGE_SIZE + 5);
+    expect(second.picker.items.map((invite) => invite.code)).toEqual([
+      'bulk004',
+      'bulk003',
+      'bulk002',
+      'bulk001',
+      'bulk000',
+    ]);
+    // Those are attached already, so the second page offers nothing.
+    expect(second.attachable).toEqual([]);
+    const stale = await loadCampaignPage(kit.as(operations), campaign.id, {
+      offset: 0,
+      attachedOffset: 500,
+      pickerOffset: 5000,
+    });
+    expect(stale.attached.offset).toBe(REFERRALS_PAGE_SIZE);
+    expect(stale.picker.offset).toBe(ATTACH_PICKER_PAGE_SIZE);
+  });
+
+  it('BREAK: a member cannot read a campaign page, and is refused once', async () => {
+    const campaign = await seed();
+    const before = await deniedAudits();
+    await expect(loadCampaignPage(kit.as(member), campaign.id, FIRST_PAGES)).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect((await deniedAudits()) - before).toBe(1);
   });
 
   it('BREAK: members cannot read referral data, and are refused once', async () => {

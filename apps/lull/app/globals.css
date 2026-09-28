@@ -2043,6 +2043,16 @@
     animation: none;
     opacity: 1;
   }
+  /* Room for up to four lines per layer: name, speed and one line per active. */
+  .ex-labels-static .ex-label:nth-child(1) {
+    top: calc(var(--tab-s) * 0.28);
+  }
+  .ex-labels-static .ex-label:nth-child(2) {
+    top: calc(var(--tab-s) * 0.72);
+  }
+  .ex-labels-static .ex-label:nth-child(3) {
+    top: calc(var(--tab-s) * 1.18);
+  }
   @media (max-width: 767px) {
     .ex-labels-static .ex-label {
       width: auto;

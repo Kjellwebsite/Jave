@@ -110,11 +110,14 @@ export function ReleaseMatrix({
                     <span className="text-[12px] leading-[1.4] opacity-75 sm:text-[13px]">
                       {layer.text}
                     </span>
-                    {actives.length > 0 && (
-                      <span className="text-[12px] leading-[1.4] font-semibold sm:text-[13px]">
-                        {actives.map((i) => `${i.name} ${i.dose}`).join(', ')}
+                    {actives.map((active) => (
+                      <span
+                        key={active.name}
+                        className="text-[12px] leading-[1.4] font-semibold sm:text-[13px]"
+                      >
+                        {active.name} {active.dose}
                       </span>
-                    )}
+                    ))}
                   </span>
                 </li>
               );

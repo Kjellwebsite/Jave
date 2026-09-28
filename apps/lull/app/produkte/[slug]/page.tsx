@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { siteUrl } from '@/lib/env';
 import { getProduct, PRODUCTS, priceCents, productPath } from '@/lib/products';
 
 interface Props {
@@ -43,7 +44,7 @@ export default async function ProductPage({ params }: Props) {
       '@type': 'Offer',
       priceCurrency: 'EUR',
       price: (priceCents(product) / 100).toFixed(2),
-      url: productPath(product),
+      url: new URL(productPath(product), siteUrl()).toString(),
     },
   };
   return (

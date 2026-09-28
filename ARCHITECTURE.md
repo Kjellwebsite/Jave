@@ -31,6 +31,7 @@ Discord Activity sharing one relational data layer and one domain layer.
 | `packages/core`     | Domain layer: every business rule, permission check, audit entry and state transition. No Discord or HTTP code. |
 | `packages/ai`       | Provider-agnostic AI layer (`AIProvider`, `AIRequest`, `AIResponse`, `AIContext`, `AIUsage`).                   |
 | `packages/ui`       | JAVELIN design system: tokens, fonts, React primitives, emblem.                                                 |
+| `packages/brand`    | Emblem, wordmark, lockups, role icons, avatars and the render pipeline that produces their SVG and PNG files.   |
 | `apps/bot`          | Discord gateway client, interaction router, Discord side-effect job handlers, job worker, health server.        |
 | `apps/dashboard`    | Next.js operations dashboard, public profiles, OAuth, inbound webhooks, Activity token exchange.                |
 | `apps/activity`     | Discord Activity (Embedded App SDK) front-end.                                                                  |

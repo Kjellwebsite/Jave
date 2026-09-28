@@ -226,7 +226,7 @@ export default async function ResearchPage({
                     <TableCell>
                       <Link
                         href={`/research/${item.id}`}
-                        className="block min-w-0 after:absolute after:inset-0 focus-visible:outline-none"
+                        className="row-link block min-w-0"
                       >
                         <span className="line-clamp-2 text-body font-medium text-fg">
                           {item.title}

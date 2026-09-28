@@ -305,10 +305,13 @@ export class DiscordJsGateway implements DiscordGateway {
       temporary: invite.temporary ?? false,
       createdAt: invite.createdAt,
       expiresAt: invite.expiresAt,
+      vanity: false,
+      inviterUsername: invite.inviter?.username ?? null,
     }));
     if (guild.vanityURLCode) {
-      const vanity = await guild.fetchVanityData().catch(() => null);
-      if (vanity?.code) {
+      // All or nothing: a snapshot missing the vanity entry would mark it deleted.
+      const vanity = await attempt('fetch vanity data', () => guild.fetchVanityData());
+      if (vanity.code) {
         snapshots.push({
           code: vanity.code,
           inviterDiscordId: null,
@@ -318,6 +321,8 @@ export class DiscordJsGateway implements DiscordGateway {
           temporary: false,
           createdAt: null,
           expiresAt: null,
+          vanity: true,
+          inviterUsername: null,
         });
       }
     }

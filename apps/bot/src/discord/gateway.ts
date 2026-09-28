@@ -28,6 +28,10 @@ export interface InviteSnapshot {
   temporary: boolean;
   createdAt: Date | null;
   expiresAt: Date | null;
+  /** The guild's vanity URL (joins through it are attributed as method 'vanity'). */
+  vanity?: boolean;
+  /** The inviter's username when Discord includes the inviter object. */
+  inviterUsername?: string | null;
 }
 
 export interface PermissionOverwriteSpec {

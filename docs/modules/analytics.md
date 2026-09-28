@@ -106,6 +106,32 @@ existing indexes (`applications_status_idx`, `mod_cases_time_idx`,
 mission assignments have no index on `verified_at`; add one if those tables
 grow large.
 
+## Surfaces
+
+Full reference: [docs/commands/invites.md](../commands/invites.md#dashboard).
+
+- **Dashboard `/analytics`** (`apps/dashboard/app/(console)/analytics`,
+  `canViewAnalytics`): one range filter (7 · 30 · 90 days) scoping the page;
+  eight headline readouts; members (daily joins above and leaves below one
+  baseline, D7/D30 retention, onboarding, members present); pipeline
+  (applications by stage with time to decision and acceptance rate, trials
+  with pass rate, missions, projects, contributions); outcomes over time as
+  small multiples; tickets, moderation cases by action and security events
+  by trigger; JAVELIN progress (outcomes to date, progression roles, and per
+  domain VERIFIED / CLAIMED / UNKNOWN plus members by peak verified tier).
+  Reads go through `getServerOverview`, `getJavelinProgress` and
+  `getTimeSeries`; access is checked once up front, so a refused viewer
+  produces one audited denial. The kill switch renders ANALYTICS DISABLED.
+- **`/overview` health strip**: net members, D30 retention, median decision
+  time and SLA breach rate for 30 days, shown only to `canViewAnalytics`
+  (others are not asked, so no denial is logged).
+- **Charts** (`@jave/ui` `ColumnChart`, `LineChart`, `BarList`, `Meter`,
+  `StackedBar`, `HeatCell`, `FunnelChart`, `ChartFrame`): monochrome marks in
+  semantic tokens (so the light theme inverts them), a keyboard and pointer
+  readout, and a table twin for every chart. A day without a snapshot is
+  shaded and reads "no data", never 0.
+- **Discord**: none. Analytics is a staff instrument on the dashboard.
+
 ## Extension points
 
 - Add a metric: declare it in `ANALYTICS_METRICS`, emit it in

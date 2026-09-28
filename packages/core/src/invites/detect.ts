@@ -33,7 +33,7 @@ function indexByCode(list: readonly InviteUsage[]): Map<string, InviteUsage> {
 }
 
 /** True when `usage` had exactly one use left, so one more use deletes it. */
-function lastUseConsumed(usage: InviteUsage): boolean {
+export function lastUseConsumed(usage: InviteUsage): boolean {
   return typeof usage.maxUses === 'number' && usage.maxUses > 0 && usage.uses + 1 === usage.maxUses;
 }
 

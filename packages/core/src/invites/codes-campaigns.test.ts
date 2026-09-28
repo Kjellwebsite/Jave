@@ -20,7 +20,9 @@ import {
   campaignAccepts,
   createCampaign,
   deleteCampaign,
+  detachInviteFromCampaign,
   getCampaign,
+  getCampaignUsage,
   listCampaigns,
   updateCampaign,
 } from './campaigns.service';
@@ -30,7 +32,7 @@ import {
   createReferralCode,
   deactivateReferralCode,
 } from './referral-codes.service';
-import { syncInvites } from './sync.service';
+import { listInviteCodes, syncInvites } from './sync.service';
 import { joinGuild, SLOW_DATABASE_TIMEOUTS } from './test-support';
 
 vi.setConfig(SLOW_DATABASE_TIMEOUTS);
@@ -114,6 +116,113 @@ describe('invites: referral codes and campaigns', () => {
       await expect(deleteCampaign(kit.as(core), c.id)).rejects.toBeInstanceOf(ConflictError);
     });
 
+    it('reports usage with the same predicate deleteCampaign enforces', async () => {
+      const inviter = await joinGuild(kit, { username: 'usage-inviter' });
+      await syncInvites(kit.system, [
+        { code: 'live-inv', inviterDiscordId: inviter.user.discordId, uses: 2 },
+        { code: 'gone-inv', inviterDiscordId: inviter.user.discordId, uses: 9 },
+      ]);
+      const c = await createCampaign(kit.as(core), { key: 'usage', name: 'Usage' });
+      expect(await getCampaignUsage(kit.as(core), c.id)).toEqual({
+        attachedInvites: 0,
+        deletedInvites: 0,
+        referralCodes: 0,
+        referrals: 0,
+        deletable: true,
+      });
+      await attachInviteToCampaign(kit.as(core), { code: 'live-inv', campaignId: c.id });
+      await attachInviteToCampaign(kit.as(core), { code: 'gone-inv', campaignId: c.id });
+      // Discord deletes one (expired): the attachment remains and still blocks deletion.
+      await syncInvites(kit.system, [
+        { code: 'live-inv', inviterDiscordId: inviter.user.discordId, uses: 2 },
+      ]);
+      expect(await getCampaignUsage(kit.as(core), c.id)).toMatchObject({
+        attachedInvites: 2,
+        deletedInvites: 1,
+        deletable: false,
+      });
+      const listed = await listInviteCodes(kit.as(core), {
+        campaignId: c.id,
+        includeDeleted: true,
+      });
+      // Live first, even though the deleted invite has more uses.
+      expect(listed.items.map((i) => [i.code, i.deletedAt === null])).toEqual([
+        ['live-inv', true],
+        ['gone-inv', false],
+      ]);
+      await expect(deleteCampaign(kit.as(core), c.id)).rejects.toBeInstanceOf(ConflictError);
+    });
+
+    it('detaches an invite Discord deleted, so the campaign can be deleted', async () => {
+      await syncInvites(kit.system, [{ code: 'event-inv', uses: 0 }]);
+      const c = await createCampaign(kit.as(core), { key: 'fair-2026', name: 'Fair' });
+      const other = await createCampaign(kit.as(core), { key: 'other', name: 'Other' });
+      await attachInviteToCampaign(kit.as(core), { code: 'event-inv', campaignId: c.id });
+      await syncInvites(kit.system, []);
+      // A deleted invite cannot be attached anywhere, only detached.
+      await expect(
+        attachInviteToCampaign(kit.as(core), { code: 'event-inv', campaignId: other.id }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      const detached = await detachInviteFromCampaign(kit.as(core), {
+        code: 'event-inv',
+        campaignId: c.id,
+      });
+      expect(detached.campaignId).toBeNull();
+      expect(detached.deletedAt).not.toBeNull();
+      expect((await getCampaignUsage(kit.as(core), c.id)).deletable).toBe(true);
+      await deleteCampaign(kit.as(core), c.id);
+      const [audit] = await kit.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, 'invite.campaign_detached'));
+      expect(audit?.targetId).toBe('event-inv');
+      expect(audit?.context).toEqual({ from: c.id, to: null });
+    });
+
+    it('BREAK: detaching through a stale campaign changes nothing', async () => {
+      await syncInvites(kit.system, [{ code: 'moved-inv', uses: 3 }]);
+      const first = await createCampaign(kit.as(core), { key: 'first', name: 'First' });
+      const second = await createCampaign(kit.as(core), { key: 'second', name: 'Second' });
+      await attachInviteToCampaign(kit.as(core), { code: 'moved-inv', campaignId: first.id });
+      // Another tab moves the invite; a page still showing it under `first` detaches.
+      await attachInviteToCampaign(kit.as(core), { code: 'moved-inv', campaignId: second.id });
+      await expect(
+        detachInviteFromCampaign(kit.as(core), { code: 'moved-inv', campaignId: first.id }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(
+        detachInviteFromCampaign(kit.as(core), { code: 'no-such', campaignId: second.id }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      const [still] = await listInviteCodes(kit.as(core), { campaignId: second.id }).then(
+        (page) => page.items,
+      );
+      expect(still?.code).toBe('moved-inv');
+      const ops = await kit.member({ roles: ['operations'] });
+      await expect(
+        detachInviteFromCampaign(kit.as(ops), { code: 'moved-inv', campaignId: second.id }),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+      const detachAudits = await kit.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, 'invite.campaign_detached'));
+      expect(detachAudits).toHaveLength(0);
+    });
+
+    it('a campaign code with no claims still blocks deletion', async () => {
+      const owner = await kit.member();
+      const c = await createCampaign(kit.as(core), { key: 'codes-only', name: 'Codes' });
+      await createReferralCode(kit.as(core), {
+        campaignId: c.id,
+        code: 'FAIRCODE',
+        ownerMemberId: owner.memberId!,
+      });
+      expect(await getCampaignUsage(kit.as(core), c.id)).toMatchObject({
+        referralCodes: 1,
+        referrals: 0,
+        deletable: false,
+      });
+      await expect(deleteCampaign(kit.as(core), c.id)).rejects.toBeInstanceOf(ConflictError);
+    });
+
     it('BREAK: operations (no canManageCampaigns) cannot manage campaigns but can read them', async () => {
       const ops = await kit.member({ roles: ['operations'] });
       await expect(
@@ -124,12 +233,14 @@ describe('invites: referral codes and campaigns', () => {
         updateCampaign(kit.as(ops), { campaignId: c.id, name: 'Hijacked' }),
       ).rejects.toBeInstanceOf(ForbiddenError);
       await expect(deleteCampaign(kit.as(ops), c.id)).rejects.toBeInstanceOf(ForbiddenError);
+      expect((await getCampaignUsage(kit.as(ops), c.id)).deletable).toBe(true);
       await expect(
         attachInviteToCampaign(kit.as(ops), { code: 'whatever', campaignId: c.id }),
       ).rejects.toBeInstanceOf(ForbiddenError);
       expect(await listCampaigns(kit.as(ops))).toHaveLength(1);
       const member = await kit.member();
       await expect(listCampaigns(kit.as(member))).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(getCampaignUsage(kit.as(member), c.id)).rejects.toBeInstanceOf(ForbiddenError);
       await expect(listCampaigns(kit.as(anonymousActor))).rejects.toBeInstanceOf(
         UnauthenticatedError,
       );

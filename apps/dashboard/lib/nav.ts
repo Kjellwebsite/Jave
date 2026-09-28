@@ -1,6 +1,7 @@
 import {
   Bell,
   CalendarDays,
+  ChartLine,
   ChartNoAxesColumn,
   Cpu,
   FileText,
@@ -17,6 +18,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Swords,
+  UserPlus,
   UserRound,
   Users,
   Webhook,
@@ -43,7 +45,10 @@ export interface NavGroup {
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: 'OVERVIEW',
-    items: [{ href: '/overview', label: 'Overview', icon: LayoutGrid, capability: null }],
+    items: [
+      { href: '/overview', label: 'Overview', icon: LayoutGrid, capability: null },
+      { href: '/analytics', label: 'Analytics', icon: ChartLine, capability: 'canViewAnalytics' },
+    ],
   },
   {
     label: 'PEOPLE',
@@ -62,6 +67,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: ShieldCheck,
         capability: 'canVerifyMembers',
       },
+      { href: '/referrals', label: 'Referrals', icon: UserPlus, capability: 'canViewAnalytics' },
     ],
   },
   {

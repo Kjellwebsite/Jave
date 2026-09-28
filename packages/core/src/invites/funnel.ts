@@ -1,6 +1,7 @@
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { inviteCodes, referrals } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
+import { REVIEWABLE_REFERRAL_STATUSES } from './lifecycle';
 
 /**
  * INVITED → JOINED → RETAINED → VALID, plus the exits.
@@ -20,7 +21,7 @@ export interface ReferralFunnel {
   valid: number;
   left: number;
   invalid: number;
-  /** Carrying anomaly flags and not invalid: awaiting review. */
+  /** Carrying anomaly flags and still reviewable (JOINED/RETAINED/VALID): awaiting review. */
   flagged: number;
   fastLeaves: number;
   /** retained / joined */
@@ -85,7 +86,7 @@ export const referralCountColumns = {
   valid: sql<number>`count(*) filter (where ${referrals.status} = 'valid')::int`,
   left: sql<number>`count(*) filter (where ${referrals.status} = 'left')::int`,
   invalid: sql<number>`count(*) filter (where ${referrals.status} = 'invalid')::int`,
-  flagged: sql<number>`count(*) filter (where cardinality(${referrals.anomalyFlags}) > 0 and ${referrals.status} <> 'invalid')::int`,
+  flagged: sql<number>`count(*) filter (where cardinality(${referrals.anomalyFlags}) > 0 and ${inArray(referrals.status, [...REVIEWABLE_REFERRAL_STATUSES])})::int`,
   fastLeaves: sql<number>`count(*) filter (where 'fast_leave' = any(${referrals.anomalyFlags}))::int`,
   codeClaims: sql<number>`count(*) filter (where ${referrals.method} = 'referral_code')::int`,
 };

@@ -36,6 +36,21 @@ template that is built once per migration set and dropped when the test ends.
 The same variable also enables the `*.pg.test.ts` lock suites on the default
 backend.
 
+End-to-end tests drive a production build of the dashboard (and the Activity in
+its standalone dev mode) in Chromium against a seeded Postgres. Each run drops
+and re-seeds its database, so it only accepts one whose name contains `e2e`
+(`jave_e2e_dash` and `jave_e2e_activity` by default, or `E2E_DATABASE_URL`);
+create it once with `createdb -U jave jave_e2e_dash`:
+
+```bash
+pnpm test:e2e                                   # dashboard (next build, then Playwright)
+pnpm test:e2e:activity                          # two players in one Activity instance
+JAVE_SCREENSHOTS=1 pnpm test:e2e                # also refresh docs/screenshots
+```
+
+`COMMANDS.md` is generated from the command definitions and a test fails when it
+drifts: run `pnpm --filter @jave/bot commands:doc` after changing a command.
+
 ## How the code is organized
 
 Read `ARCHITECTURE.md` first. The rules that matter most:

@@ -312,3 +312,24 @@ Worker (same process) ──► core job handlers + feature 'discord.*' handlers
   `frame-ancestors 'none'`, HSTS in production, strict referrer policy.
 - **Errors**: domain errors show their user-safe message; anything else shows an
   8-character reference that is also logged next to the stack trace.
+
+## Discord Activity (`apps/activity`)
+
+- A static Vite + React bundle that Discord frames; its only server is the
+  dashboard's `/api/activity/*`, reached through Discord's URL mapping. It
+  holds no secret and no cookie.
+- **Sign-in**: the Embedded App SDK's authorization code goes to
+  `POST /api/activity/token`, which exchanges it with Discord, provisions the
+  user through core and answers a one-hour `jave_token` (HMAC under its own
+  purpose label) bound to the user and the Activity instance.
+- **Every request** re-resolves the actor through core, exactly like a
+  dashboard request, so the token asserts identity only. Game actions are core
+  calls (`games` services) scoped to the token's instance.
+- **Responses** go through whitelist mappers: nothing core adds to a view
+  reaches the bundle without a deliberate change. The bundle contains no core
+  code; `scripts/check-bundle.ts` fails the build if trivia answers, secret
+  names or server-only libraries appear in it.
+- The bot's worker advances game timers (`games.tick`) and closes idle
+  sessions (`games.sweep`).
+
+Details, limits and the Discord Developer Portal setup: [docs/ACTIVITY.md](docs/ACTIVITY.md).

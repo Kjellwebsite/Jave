@@ -1,5 +1,24 @@
 import { expect, test } from '@playwright/test';
+import postgres from 'postgres';
+import { E2E_DATABASE_URL } from './database-url';
 import { openMember, signInAs } from './fixtures';
+
+/** The dev founder persona (server/auth/dev-personas.ts). */
+const FOUNDER_DISCORD_ID = '100000000000000001';
+
+/** Unread notifications right now: earlier specs may have added some. */
+async function unreadCount(discordId: string): Promise<number> {
+  const sql = postgres(E2E_DATABASE_URL, { max: 1 });
+  try {
+    const [row] = await sql<{ n: number }[]>`
+      select count(*)::int as n
+      from notifications join users on users.id = notifications.recipient_user_id
+      where users.discord_id = ${discordId} and notifications.read_at is null`;
+    return row?.n ?? 0;
+  } finally {
+    await sql.end();
+  }
+}
 
 test.describe.configure({ mode: 'serial' });
 
@@ -22,7 +41,10 @@ test.describe('founder operations', () => {
       await expect(metrics.getByText(label)).toBeVisible();
     }
     await expect(page.getByText('Recent activity')).toBeVisible();
-    await expect(page.getByTestId('unread-count')).toHaveText('3');
+    const unread = await unreadCount(FOUNDER_DISCORD_ID);
+    // The seed gives the founder unread notifications; other specs may add more.
+    expect(unread).toBeGreaterThanOrEqual(3);
+    await expect(page.getByTestId('unread-count')).toHaveText(String(unread));
   });
 
   test('members can be searched and filtered', async ({ page }) => {
@@ -214,13 +236,16 @@ test.describe('founder operations', () => {
   }) => {
     await page.goto('/notifications');
     await expect(page.getByText('SECURITY EVENT')).toBeVisible();
+    // Relative to what is unread now: earlier specs may have added notifications.
+    const before = await unreadCount(FOUNDER_DISCORD_ID);
+    expect(before).toBeGreaterThanOrEqual(3);
     const unread = page.locator('li[data-unread]');
     await unread.first().getByRole('button', { name: 'Mark read' }).click();
     await expect(
       page.locator('[data-tone="success"]').filter({ hasText: 'Marked read.' }),
     ).toBeVisible();
-    await expect(page.getByTestId('unread-count')).toHaveText('2');
-    await expect(unread).toHaveCount(2);
+    await expect(page.getByTestId('unread-count')).toHaveText(String(before - 1));
+    await expect(unread).toHaveCount(before - 1);
 
     // BREAK: the session ends while the inbox is open.
     const session = (await context.cookies()).find((cookie) => cookie.name === 'jave_session')!;
@@ -234,11 +259,11 @@ test.describe('founder operations', () => {
     await expect(
       page.getByRole('listitem').and(page.locator('[data-tone="danger"]')).filter({ has: failure }),
     ).toHaveCount(1);
-    await expect(unread).toHaveCount(2);
+    await expect(unread).toHaveCount(before - 1);
     await context.addCookies([{ name: 'jave_session', value: session.value, url: baseURL! }]);
 
     await page.getByRole('button', { name: 'Mark all read' }).click();
-    await expect(page.getByText('2 marked read.')).toBeVisible();
+    await expect(page.getByText(`${before - 1} marked read.`)).toBeVisible();
     await expect(page.getByTestId('unread-count')).toHaveCount(0);
     await page.goto('/notifications?filter=unread');
     await expect(page.getByText('ALL CAUGHT UP')).toBeVisible();

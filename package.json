@@ -12,6 +12,7 @@
     "dev:bot": "pnpm --filter @jave/bot dev",
     "dev:dashboard": "pnpm --filter @jave/dashboard dev",
     "dev:activity": "pnpm --filter @jave/activity dev",
+    "dev:lull": "pnpm --filter @lull/web dev",
     "build": "pnpm -r --filter './apps/*' build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint . --max-warnings=0",

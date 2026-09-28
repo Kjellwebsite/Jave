@@ -1,0 +1,194 @@
+import raw from '@/data/products.json';
+import { isHexColor } from './color';
+import { parseEuroCents } from './price';
+import type { TabletPalette } from './tablet';
+
+/**
+ * Product data, extracted from the design prototype into `data/products.json`.
+ * The JSON is validated once at import so a broken edit fails the build, not a page.
+ * Later this can move to a CMS or Supabase behind the same functions.
+ */
+
+export interface Ingredient {
+  name: string;
+  dose: string;
+  /** Mechanism, shown in the ingredient zoom on the product page. */
+  note: string;
+}
+
+export interface Review {
+  title: string;
+  text: string;
+  name: string;
+  /** Stars, 1 to 5. */
+  r: number;
+  since: string;
+}
+
+/** INVENTED in the prototype. Never shown in production, see `lib/launch.ts`. */
+export interface PlaceholderRating {
+  avg: string;
+  count: string;
+  distribution_5_to_1_percent: number[];
+  reviews: Review[];
+}
+
+export interface ProductColors {
+  bg_gradient: string;
+  ink: string;
+  button_ink: string;
+  glow: string;
+  tablet_bottom: string;
+  tablet_mid: string;
+  tablet_top_blush: string;
+  card_stops: [string, string, string];
+}
+
+export interface Product {
+  slug: string;
+  name: string;
+  category: string;
+  price_eur: string;
+  old_price_eur: string;
+  pack: string;
+  hero: { headline: [string, string]; subline: string };
+  finder: { prompt: string; pitch: string; when: string; targets: string[] };
+  card_blurb: string;
+  colors: ProductColors;
+  ingredients: Ingredient[];
+  howto: string;
+  moments: string;
+  rating_PLACEHOLDER: PlaceholderRating;
+}
+
+type Json = Record<string, unknown>;
+
+function fail(where: string, message: string): never {
+  throw new Error(`data/products.json ${where}: ${message}`);
+}
+
+function object(value: unknown, where: string): Json {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    fail(where, 'expected an object');
+  }
+  return value as Json;
+}
+
+function text(o: Json, key: string, where: string): string {
+  const value = o[key];
+  if (typeof value !== 'string' || value.trim() === '') fail(`${where}.${key}`, 'expected text');
+  return value;
+}
+
+function list(o: Json, key: string, where: string): unknown[] {
+  const value = o[key];
+  if (!Array.isArray(value)) fail(`${where}.${key}`, 'expected a list');
+  return value;
+}
+
+function color(o: Json, key: string, where: string): string {
+  const value = text(o, key, where);
+  if (!isHexColor(value)) fail(`${where}.${key}`, `expected #rrggbb, got "${value}"`);
+  return value;
+}
+
+function parseProduct(value: unknown, index: number): Product {
+  const where = `[${index}]`;
+  const p = object(value, where);
+  const slug = text(p, 'slug', where);
+  if (!/^[a-z0-9-]+$/.test(slug)) fail(`${where}.slug`, `not URL-safe: "${slug}"`);
+  for (const key of ['price_eur', 'old_price_eur']) parseEuroCents(text(p, key, where));
+
+  const hero = object(p.hero, `${where}.hero`);
+  const headline = list(hero, 'headline', `${where}.hero`);
+  if (headline.length !== 2 || headline.some((line) => typeof line !== 'string')) {
+    fail(`${where}.hero.headline`, 'expected two lines');
+  }
+  text(hero, 'subline', `${where}.hero`);
+
+  const finder = object(p.finder, `${where}.finder`);
+  for (const key of ['prompt', 'pitch', 'when']) text(finder, key, `${where}.finder`);
+  list(finder, 'targets', `${where}.finder`);
+
+  const colors = object(p.colors, `${where}.colors`);
+  for (const key of ['ink', 'button_ink', 'tablet_bottom', 'tablet_mid', 'tablet_top_blush']) {
+    color(colors, key, `${where}.colors`);
+  }
+  if (gradientStops(text(colors, 'bg_gradient', `${where}.colors`)).length !== 5) {
+    fail(`${where}.colors.bg_gradient`, 'expected five #rrggbb stops');
+  }
+  const stops = list(colors, 'card_stops', `${where}.colors`);
+  if (stops.length !== 3 || stops.some((s) => typeof s !== 'string' || !isHexColor(s))) {
+    fail(`${where}.colors.card_stops`, 'expected three #rrggbb colors');
+  }
+
+  const ingredients = list(p, 'ingredients', where);
+  if (ingredients.length !== 4) fail(`${where}.ingredients`, 'the design expects four');
+  ingredients.forEach((item, i) => {
+    const ingredient = object(item, `${where}.ingredients[${i}]`);
+    for (const key of ['name', 'dose', 'note']) text(ingredient, key, `${where}.ingredients[${i}]`);
+  });
+
+  for (const key of ['name', 'category', 'pack', 'card_blurb', 'howto', 'moments']) {
+    text(p, key, where);
+  }
+
+  const rating = object(p.rating_PLACEHOLDER, `${where}.rating_PLACEHOLDER`);
+  if (list(rating, 'distribution_5_to_1_percent', `${where}.rating_PLACEHOLDER`).length !== 5) {
+    fail(`${where}.rating_PLACEHOLDER.distribution_5_to_1_percent`, 'expected five values');
+  }
+  list(rating, 'reviews', `${where}.rating_PLACEHOLDER`);
+
+  return p as unknown as Product;
+}
+
+/** The five `#rrggbb` stops of a product's `bg_gradient`, top to bottom. */
+export function gradientStops(gradient: string): string[] {
+  return gradient.match(/#[0-9a-f]{6}\b/gi) ?? [];
+}
+
+export const PRODUCTS: readonly Product[] = (() => {
+  if (!Array.isArray(raw)) fail('', 'expected a list of products');
+  const products = raw.map(parseProduct);
+  const slugs = new Set(products.map((p) => p.slug));
+  if (slugs.size !== products.length) fail('', 'duplicate slugs');
+  return products;
+})();
+
+export const DEFAULT_PRODUCT = PRODUCTS[0]!;
+
+export function getProduct(slug: string | null | undefined): Product | undefined {
+  return PRODUCTS.find((p) => p.slug === slug);
+}
+
+export function productIndex(slug: string): number {
+  return PRODUCTS.findIndex((p) => p.slug === slug);
+}
+
+export function productPath(product: Pick<Product, 'slug'>): `/produkte/${string}` {
+  return `/produkte/${product.slug}`;
+}
+
+export function palette(product: Product): TabletPalette {
+  return {
+    bottom: product.colors.tablet_bottom,
+    mid: product.colors.tablet_mid,
+    blush: product.colors.tablet_top_blush,
+  };
+}
+
+export function priceCents(product: Product): number {
+  return parseEuroCents(product.price_eur);
+}
+
+/** Every ingredient across all products, in order, e.g. for the marquee. */
+export function allIngredients(): { ingredient: Ingredient; product: Product }[] {
+  return PRODUCTS.flatMap((product) =>
+    product.ingredients.map((ingredient) => ({ ingredient, product })),
+  );
+}
+
+/** Distinct active ingredients (L-Theanin and Safranextrakt appear twice). */
+export function distinctIngredientCount(): number {
+  return new Set(allIngredients().map(({ ingredient }) => ingredient.name)).size;
+}

@@ -1,0 +1,407 @@
+[
+  {
+    "slug": "calm",
+    "name": "Calm",
+    "category": "Soziale Ruhe",
+    "price_eur": "29,90",
+    "old_price_eur": "34,90",
+    "pack": "Blister, 14 Tabletten",
+    "hero": {
+      "headline": ["Leiser im Kopf.", "Offen im Raum."],
+      "subline": "Eine Tablette für Abende, an denen du unter Leute willst, ohne dass dein Nervensystem die Führung übernimmt."
+    },
+    "finder": {
+      "prompt": "Ich werde nervös unter Leuten",
+      "pitch": "Nimmt die Spitze aus der sozialen Anspannung, ohne dich müde zu machen. Du bleibst wach, nur leiser im Kopf.",
+      "when": "45 Minuten vorher",
+      "targets": ["GABA-A", "NMDA", "Alpha-Wellen", "5-HT"]
+    },
+    "card_blurb": "Für Abende unter Leuten, ohne dass der Kopf die Führung übernimmt.",
+    "colors": {
+      "bg_gradient": "linear-gradient(180deg, #472bb0 0%, #5a3cc6 30%, #6f7ee2 44%, #62aeea 56%, #74bdf2 100%)",
+      "ink": "#1c1548",
+      "button_ink": "#3d2398",
+      "glow": "rgba(240,60,150,0.3)",
+      "tablet_bottom": "#c4122f",
+      "tablet_mid": "#e0218a",
+      "tablet_top_blush": "#fbe1ee",
+      "card_stops": ["#62aeea", "#6f7ee2", "#472bb0"]
+    },
+    "ingredients": [
+      {
+        "name": "L-Theanin",
+        "dose": "200 mg",
+        "note": "Mehr Alpha-Aktivität, weniger glutamaterge Unruhe."
+      },
+      {
+        "name": "Magnesiumbisglycinat",
+        "dose": "150 mg",
+        "note": "Dämpft NMDA, unterstützt GABA-A. Gut verträglich."
+      },
+      {
+        "name": "Safranextrakt",
+        "dose": "28 mg",
+        "note": "Crocin und Safranal, serotonerge Modulation."
+      },
+      {
+        "name": "Zitronenmelisse",
+        "dose": "300 mg",
+        "note": "Rosmarinsäure bremst den GABA-Abbau über GABA-T."
+      }
+    ],
+    "howto": "Eine Tablette mit Wasser, etwa 45 Minuten bevor es losgeht. Maximal zwei pro Tag.",
+    "moments": "Das erste Date. Die Präsentation vor dem Team. Die Party, auf der du genau eine Person kennst.",
+    "rating_PLACEHOLDER": {
+      "avg": "4,8",
+      "count": "1.284",
+      "distribution_5_to_1_percent": [82, 12, 4, 1, 1],
+      "reviews": [
+        {
+          "title": "Endlich wieder auf Partys",
+          "text": "Ich nehm eine vor Geburtstagen, wo ich kaum wen kenne. Ich bin nicht müde oder komisch drauf, nur das Kribbeln im Bauch ist deutlich leiser.",
+          "name": "Lena M.",
+          "r": 5,
+          "since": "seit 4 Monaten"
+        },
+        {
+          "title": "Vor Präsentationen Gold wert",
+          "text": "Vor meinem Pitch getestet. Stimme ruhiger, Hände nicht mehr schwitzig. Kein Wundermittel, aber spürbar.",
+          "name": "Jonas K.",
+          "r": 5,
+          "since": "seit 2 Monaten"
+        },
+        {
+          "title": "Subtil, aber da",
+          "text": "Die ersten zwei Male hab ich wenig gemerkt. Seit ich sie wirklich 45 Minuten vorher nehme, passt es.",
+          "name": "Mira T.",
+          "r": 4,
+          "since": "seit 6 Wochen"
+        }
+      ]
+    }
+  },
+  {
+    "slug": "drift",
+    "name": "Drift",
+    "category": "Schlaf",
+    "price_eur": "24,90",
+    "old_price_eur": "28,90",
+    "pack": "Blister, 14 Tabletten",
+    "hero": {
+      "headline": ["Runterfahren.", "Durchschlafen."],
+      "subline": "Für Nächte, in denen dein Kopf noch Überstunden macht, obwohl der Körper längst fertig ist."
+    },
+    "finder": {
+      "prompt": "Mein Kopf ist nachts zu laut",
+      "pitch": "Senkt Erregung und Kerntemperatur, damit Einschlafen sich wieder wie Loslassen anfühlt und nicht wie Arbeit.",
+      "when": "30 bis 60 Min vor dem Schlafen",
+      "targets": ["GABA-A", "NMDA", "Thermoregulation", "Schlaflatenz"]
+    },
+    "card_blurb": "Runterfahren, einschlafen, durchschlafen.",
+    "colors": {
+      "bg_gradient": "linear-gradient(180deg, #0b1040 0%, #1c2474 30%, #4f45b8 44%, #9d8fec 56%, #c6b8f8 100%)",
+      "ink": "#18123f",
+      "button_ink": "#1c2474",
+      "glow": "rgba(150,130,255,0.34)",
+      "tablet_bottom": "#3b2a9e",
+      "tablet_mid": "#8f7ae0",
+      "tablet_top_blush": "#efe9ff",
+      "card_stops": ["#9d8fec", "#4f45b8", "#0b1040"]
+    },
+    "ingredients": [
+      {
+        "name": "Magnesiumglycinat",
+        "dose": "300 mg",
+        "note": "Senkt den NMDA-Tonus, stützt GABA-A am Abend."
+      },
+      {
+        "name": "Glycin",
+        "dose": "3 g",
+        "note": "Senkt die Kerntemperatur, verkürzt die Einschlaflatenz."
+      },
+      {
+        "name": "Apigenin",
+        "dose": "50 mg",
+        "note": "Bindet an die Benzodiazepin-Stelle des GABA-A-Rezeptors."
+      },
+      {
+        "name": "Passionsblume",
+        "dose": "250 mg",
+        "note": "Chrysin und Flavonoide, milde GABAerge Wirkung."
+      }
+    ],
+    "howto": "Eine Tablette 30 bis 60 Minuten vor dem Schlafen. Nicht mit Alkohol kombinieren.",
+    "moments": "Nach langen Tagen. Vor frühen Flügen. Wenn der Kopf um Mitternacht erst richtig warm wird.",
+    "rating_PLACEHOLDER": {
+      "avg": "4,7",
+      "count": "962",
+      "distribution_5_to_1_percent": [76, 16, 5, 2, 1],
+      "reviews": [
+        {
+          "title": "Kopf ist abends endlich leise",
+          "text": "Früher lag ich eine Stunde wach und hab im Kopf Mails beantwortet. Jetzt bin ich meistens nach 20 Minuten weg.",
+          "name": "Sophie R.",
+          "r": 5,
+          "since": "seit 3 Monaten"
+        },
+        {
+          "title": "Kein Kater am Morgen",
+          "text": "Das war mir am wichtigsten. Ich wach ganz normal auf und bin nicht benebelt wie bei anderen Schlafhilfen.",
+          "name": "Tim B.",
+          "r": 5,
+          "since": "seit 5 Monaten"
+        },
+        {
+          "title": "Top, nur nicht bei Jetlag",
+          "text": "Im Alltag super. Nach einem Langstreckenflug hat es allein aber nicht gereicht.",
+          "name": "Aylin D.",
+          "r": 4,
+          "since": "seit 2 Monaten"
+        }
+      ]
+    }
+  },
+  {
+    "slug": "spark",
+    "name": "Spark",
+    "category": "Fokus",
+    "price_eur": "27,90",
+    "old_price_eur": "32,90",
+    "pack": "Blister, 14 Tabletten",
+    "hero": {
+      "headline": ["Scharf bleiben.", "Ohne Zittern."],
+      "subline": "Klarer Fokus für lange Sessions, ohne den Koffein-Crash am Nachmittag."
+    },
+    "finder": {
+      "prompt": "Ich verliere schnell den Fokus",
+      "pitch": "Wachheit von Koffein, geglättet durch Theanin, dazu Bausteine für Acetylcholin und Dopamin. Fokus ohne Zittern.",
+      "when": "Morgens, nicht nach 14 Uhr",
+      "targets": ["Adenosin A1/A2A", "Acetylcholin", "Dopamin", "Noradrenalin"]
+    },
+    "card_blurb": "Klarer Kopf für lange Sessions, ohne Crash am Nachmittag.",
+    "colors": {
+      "bg_gradient": "linear-gradient(180deg, #7d1428 0%, #b8322a 30%, #eb7434 44%, #ffc26a 56%, #ffe2a0 100%)",
+      "ink": "#3a160a",
+      "button_ink": "#9a2426",
+      "glow": "rgba(255,190,70,0.4)",
+      "tablet_bottom": "#d9661a",
+      "tablet_mid": "#ffb52e",
+      "tablet_top_blush": "#fff1d0",
+      "card_stops": ["#ffc26a", "#eb7434", "#7d1428"]
+    },
+    "ingredients": [
+      {
+        "name": "Koffein",
+        "dose": "100 mg",
+        "note": "Antagonist an A1 und A2A, hebt die Wachheit."
+      },
+      {
+        "name": "L-Theanin",
+        "dose": "200 mg",
+        "note": "Glättet den Koffein-Peak, weniger Nervosität."
+      },
+      {
+        "name": "Citicolin",
+        "dose": "250 mg",
+        "note": "Liefert Cholin für Acetylcholin und Membranen."
+      },
+      {
+        "name": "L-Tyrosin",
+        "dose": "500 mg",
+        "note": "Vorstufe für Dopamin und Noradrenalin unter Last."
+      }
+    ],
+    "howto": "Eine Tablette morgens oder vor dem Deep-Work-Block. Nicht nach 14 Uhr.",
+    "moments": "Prüfungsphasen. Der Launch-Tag. Vier Stunden Code am Stück.",
+    "rating_PLACEHOLDER": {
+      "avg": "4,8",
+      "count": "1.105",
+      "distribution_5_to_1_percent": [81, 13, 4, 1, 1],
+      "reviews": [
+        {
+          "title": "Fokus ohne Herzrasen",
+          "text": "Kaffee macht mich zittrig, Spark nicht. Vier Stunden Deep Work, ohne ständig aufs Handy zu schauen.",
+          "name": "Niklas W.",
+          "r": 5,
+          "since": "seit 3 Monaten"
+        },
+        {
+          "title": "Hat meine Lernphase gerettet",
+          "text": "Durch die ganze Prüfungsphase genommen. Kein Einbruch mehr um 15 Uhr.",
+          "name": "Clara S.",
+          "r": 5,
+          "since": "seit 7 Wochen"
+        },
+        {
+          "title": "Bloß nicht zu spät nehmen",
+          "text": "Einmal um 17 Uhr genommen und dann bis zwei wach gewesen. Morgens ist sie perfekt.",
+          "name": "Felix H.",
+          "r": 4,
+          "since": "seit 1 Monat"
+        }
+      ]
+    }
+  },
+  {
+    "slug": "bloom",
+    "name": "Bloom",
+    "category": "Stimmung",
+    "price_eur": "26,90",
+    "old_price_eur": "30,90",
+    "pack": "Blister, 14 Tabletten",
+    "hero": {
+      "headline": ["Mehr Licht.", "Weniger Grau."],
+      "subline": "Für Wochen, in denen alles etwas flacher wirkt, als es eigentlich sollte."
+    },
+    "finder": {
+      "prompt": "Alles fühlt sich gerade flach an",
+      "pitch": "Setzt an Serotonin, Stressachse und Neuroplastizität an. Gebaut für Wochen, nicht für Minuten.",
+      "when": "Täglich zum Frühstück",
+      "targets": ["5-HT", "TPH2", "HPA-Achse", "BDNF"]
+    },
+    "card_blurb": "Für Wochen, in denen alles etwas flacher wirkt.",
+    "colors": {
+      "bg_gradient": "linear-gradient(180deg, #073f3c 0%, #0f7266 30%, #34b58f 44%, #9fe8c2 56%, #cff6e0 100%)",
+      "ink": "#08302a",
+      "button_ink": "#0f6a5e",
+      "glow": "rgba(90,240,170,0.34)",
+      "tablet_bottom": "#128a5a",
+      "tablet_mid": "#3fd18f",
+      "tablet_top_blush": "#e6fff1",
+      "card_stops": ["#9fe8c2", "#34b58f", "#073f3c"]
+    },
+    "ingredients": [
+      {
+        "name": "Safranextrakt",
+        "dose": "30 mg",
+        "note": "Serotonerge Modulation über Crocin und Safranal."
+      },
+      {
+        "name": "Vitamin D3",
+        "dose": "25 µg",
+        "note": "Reguliert die Tryptophanhydroxylase 2 im Gehirn."
+      },
+      {
+        "name": "Rhodiola",
+        "dose": "200 mg",
+        "note": "Salidrosid dämpft die HPA-Achse unter Stress."
+      },
+      {
+        "name": "Zink",
+        "dose": "10 mg",
+        "note": "Cofaktor, moduliert NMDA und den BDNF-Signalweg."
+      }
+    ],
+    "howto": "Eine Tablette täglich zum Frühstück, am besten über mehrere Wochen.",
+    "moments": "Graue Monate. Lange Winter. Phasen, in denen dir der Antrieb fehlt.",
+    "rating_PLACEHOLDER": {
+      "avg": "4,6",
+      "count": "731",
+      "distribution_5_to_1_percent": [70, 19, 7, 3, 1],
+      "reviews": [
+        {
+          "title": "Der Winter war leichter",
+          "text": "Nehme sie seit Oktober. Keine Euphorie, eher als hätte jemand das Licht eine Stufe heller gedreht.",
+          "name": "Marie L.",
+          "r": 5,
+          "since": "seit 5 Monaten"
+        },
+        {
+          "title": "Braucht etwas Geduld",
+          "text": "Die ersten zwei Wochen nichts gemerkt, ab Woche drei wurde es besser. Dranbleiben lohnt sich.",
+          "name": "David P.",
+          "r": 4,
+          "since": "seit 2 Monaten"
+        },
+        {
+          "title": "Mehr Antrieb am Morgen",
+          "text": "Ich komm leichter aus dem Bett und schieb weniger Sachen vor mir her.",
+          "name": "Hannah F.",
+          "r": 5,
+          "since": "seit 3 Monaten"
+        }
+      ]
+    }
+  },
+  {
+    "slug": "tide",
+    "name": "Tide",
+    "category": "Erholung",
+    "price_eur": "22,90",
+    "old_price_eur": "26,90",
+    "pack": "Blister, 14 Tabletten",
+    "hero": {
+      "headline": ["Durchatmen.", "Auftanken."],
+      "subline": "Regeneration nach Training, Reisen oder Wochen, die mehr genommen als gegeben haben."
+    },
+    "finder": {
+      "prompt": "Ich bin nach dem Training platt",
+      "pitch": "Füllt Elektrolyte und Cofaktoren nach, die unter Last verloren gehen. Für Muskeln, Nerven und Bindegewebe.",
+      "when": "Nach dem Training",
+      "targets": ["ATP", "Membranpotential", "Calcium-Handling", "Kollagen"]
+    },
+    "card_blurb": "Regeneration nach Training, Reisen und langen Wochen.",
+    "colors": {
+      "bg_gradient": "linear-gradient(180deg, #08245f 0%, #1249a6 30%, #2b8ade 44%, #8dd2ff 56%, #c7ebff 100%)",
+      "ink": "#0b2148",
+      "button_ink": "#1249a6",
+      "glow": "rgba(90,200,255,0.36)",
+      "tablet_bottom": "#1a4fc4",
+      "tablet_mid": "#4aa8ff",
+      "tablet_top_blush": "#e8f5ff",
+      "card_stops": ["#8dd2ff", "#2b8ade", "#08245f"]
+    },
+    "ingredients": [
+      {
+        "name": "Magnesiumcitrat",
+        "dose": "200 mg",
+        "note": "Cofaktor für ATP und über 300 Enzyme."
+      },
+      {
+        "name": "Kalium",
+        "dose": "150 mg",
+        "note": "Hält Membranpotential und Muskelfunktion stabil."
+      },
+      {
+        "name": "Taurin",
+        "dose": "500 mg",
+        "note": "Osmolyt, moduliert das Calcium-Handling im Muskel."
+      },
+      {
+        "name": "Vitamin C",
+        "dose": "200 mg",
+        "note": "Antioxidans und Cofaktor der Kollagensynthese."
+      }
+    ],
+    "howto": "Eine Tablette nach dem Training oder am Abend eines langen Tages.",
+    "moments": "Nach dem Leg Day. Nach Langstreckenflügen. Nach der Woche, die nicht aufhören wollte.",
+    "rating_PLACEHOLDER": {
+      "avg": "4,7",
+      "count": "844",
+      "distribution_5_to_1_percent": [75, 17, 5, 2, 1],
+      "reviews": [
+        {
+          "title": "Deutlich weniger Muskelkater",
+          "text": "Nach dem Leg Day nehm ich direkt eine. Am nächsten Tag kann ich wieder normal Treppen laufen.",
+          "name": "Luca M.",
+          "r": 5,
+          "since": "seit 4 Monaten"
+        },
+        {
+          "title": "Perfekt nach Flügen",
+          "text": "Nach Langstrecke fühl ich mich nicht mehr so ausgelaugt. Wandert jetzt immer ins Handgepäck.",
+          "name": "Sarah K.",
+          "r": 5,
+          "since": "seit 2 Monaten"
+        },
+        {
+          "title": "Solide Basis",
+          "text": "Nichts Spektakuläres, aber ich merk es, wenn ich sie weglasse. Nächtliche Wadenkrämpfe sind weg.",
+          "name": "Jan R.",
+          "r": 4,
+          "since": "seit 6 Monaten"
+        }
+      ]
+    }
+  }
+]

@@ -30,3 +30,7 @@ blob-report/
 
 # agent worktrees / local tooling
 .claude/
+
+# written by `next dev` when it detects an AI agent (generated Next.js boilerplate)
+apps/dashboard/AGENTS.md
+apps/dashboard/CLAUDE.md

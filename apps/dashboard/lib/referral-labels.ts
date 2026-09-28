@@ -2,7 +2,9 @@
  * Labels, tones and pure helpers for the referrals pages. Client-safe.
  * Core decides every rule; these only describe its states.
  */
+import type { invites } from '@jave/core';
 import type { BadgeTone } from '@jave/ui';
+import { plural } from './analytics-view';
 
 export type ReferralStatusKey = 'joined' | 'retained' | 'valid' | 'left' | 'invalid';
 
@@ -100,3 +102,18 @@ export function parseReferralTab(raw: string | undefined): ReferralTab {
 
 /** `?notice=` value set after a campaign is deleted (the page shows fixed copy for it). */
 export const CAMPAIGN_DELETED_NOTICE = 'campaign-deleted';
+
+/** Why a campaign can or cannot be deleted, from core's usage counts (its delete predicate). */
+export function campaignDeletionNote(usage: invites.CampaignUsage): string {
+  if (usage.deletable) {
+    return 'Nothing references it, so it can be removed without losing history.';
+  }
+  if (usage.referrals > 0) {
+    return 'Joins were credited to it. Deactivate it instead: its history stays intact.';
+  }
+  if (usage.referralCodes > 0) {
+    return 'Referral codes were issued for it. Deactivate it instead: its history stays intact.';
+  }
+  const deleted = usage.deletedInvites > 0 ? `, ${usage.deletedInvites} deleted on Discord` : '';
+  return `It still has ${plural(usage.attachedInvites, 'attached invite')}${deleted}. Detach them to delete it, or deactivate it instead.`;
+}

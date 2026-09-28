@@ -90,33 +90,81 @@ async function loadTab(
 
 export interface CampaignPageData {
   campaign: invites.CampaignView;
-  attached: invites.InviteCodeView[];
-  attachedTotal: number;
-  /** Live invites not yet in this campaign (the attach picker). */
+  /** What references the campaign; `deletable` is core's delete predicate. */
+  usage: invites.CampaignUsage;
+  /** Attached invites, live first, then ones Discord has deleted (still detachable). */
+  attached: Page<invites.InviteCodeView>;
+  /** One page of live invites for the attach picker, most used first. */
+  picker: Page<invites.InviteCodeView>;
+  /** The picker page without invites already attached here. */
   attachable: invites.InviteCodeView[];
   inviters: Page<invites.InviterFunnelRow>;
 }
 
-/** Invites offered by the attach picker (most used first). */
-const ATTACHABLE_LIMIT = 100;
+export interface CampaignPageQuery {
+  /** Offset into the per-inviter funnels. */
+  offset: number;
+  /** Offset into the attached invites. */
+  attachedOffset: number;
+  /** Offset into the attach picker's live invites. */
+  pickerOffset: number;
+}
 
-/** One campaign with its attached invites and per-inviter funnels (canViewAnalytics). */
+/** Live invites per attach-picker page (core's page cap). */
+export const ATTACH_PICKER_PAGE_SIZE = 100;
+
+/** Load `offset`; past the end of a non-empty list (a stale link), load the last page instead. */
+async function pageWithin<T>(
+  load: (offset: number) => Promise<Page<T>>,
+  offset: number,
+  pageSize: number,
+): Promise<Page<T>> {
+  const page = await load(offset);
+  if (page.items.length > 0 || page.total === 0) return page;
+  return load(Math.floor((page.total - 1) / pageSize) * pageSize);
+}
+
+/**
+ * One campaign with its attached invites, the attach picker and per-inviter
+ * funnels (canViewAnalytics). The campaign is read first: core authorizes it,
+ * so a refused viewer produces one audited denial and nothing else runs.
+ */
 export async function loadCampaignPage(
   ctx: ServiceContext,
   campaignId: string,
-  offset: number,
+  query: CampaignPageQuery,
 ): Promise<CampaignPageData> {
   const campaign = await invites.getCampaign(ctx, campaignId);
-  const [attached, live, inviters] = await Promise.all([
-    invites.listInviteCodes(ctx, { campaignId, limit: ATTACHABLE_LIMIT }),
-    invites.listInviteCodes(ctx, { limit: ATTACHABLE_LIMIT }),
-    invites.listInviterFunnels(ctx, { campaignId, limit: REFERRALS_PAGE_SIZE, offset }),
+  const [usage, attached, picker, inviters] = await Promise.all([
+    invites.getCampaignUsage(ctx, campaignId),
+    pageWithin(
+      (offset) =>
+        invites.listInviteCodes(ctx, {
+          campaignId,
+          includeDeleted: true,
+          limit: REFERRALS_PAGE_SIZE,
+          offset,
+        }),
+      query.attachedOffset,
+      REFERRALS_PAGE_SIZE,
+    ),
+    pageWithin(
+      (offset) => invites.listInviteCodes(ctx, { limit: ATTACH_PICKER_PAGE_SIZE, offset }),
+      query.pickerOffset,
+      ATTACH_PICKER_PAGE_SIZE,
+    ),
+    invites.listInviterFunnels(ctx, {
+      campaignId,
+      limit: REFERRALS_PAGE_SIZE,
+      offset: query.offset,
+    }),
   ]);
   return {
     campaign,
-    attached: attached.items,
-    attachedTotal: attached.total,
-    attachable: live.items.filter((invite) => invite.campaignId !== campaignId),
+    usage,
+    attached,
+    picker,
+    attachable: picker.items.filter((invite) => invite.campaignId !== campaignId),
     inviters,
   };
 }

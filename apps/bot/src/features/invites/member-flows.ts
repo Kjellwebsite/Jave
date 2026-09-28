@@ -1,5 +1,6 @@
 import { LabelBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import {
+  can,
   DAY,
   getMemberById,
   getSettings,
@@ -43,6 +44,7 @@ export async function showMine(h: HandlerContext, mode: Delivery): Promise<void>
     renderMine(view, {
       retentionDays: analytics.retentionDays,
       validRequiresOnboarding: analytics.validRequiresOnboarding,
+      canViewLeaderboard: can(h.ctx, 'canViewMembers'),
     }),
     mode,
   );

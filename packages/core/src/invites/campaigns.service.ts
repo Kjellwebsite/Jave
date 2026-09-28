@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { campaigns, inviteCodes, referralCodes, referrals } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
@@ -153,32 +153,71 @@ export async function updateCampaign(
   });
 }
 
+/** What references a campaign. Any reference keeps it from being deleted. */
+export interface CampaignUsage {
+  /** Mirrored invites attached to it, including ones Discord has since deleted. */
+  attachedInvites: number;
+  /** Of those, invites Discord no longer lists (they can still be detached). */
+  deletedInvites: number;
+  /** Referral codes issued for it, active or not. */
+  referralCodes: number;
+  /** Referrals credited to it. */
+  referrals: number;
+  /** Nothing references it: deleteCampaign succeeds. */
+  deletable: boolean;
+}
+
+async function loadCampaignUsage(ctx: ServiceContext, campaignId: string): Promise<CampaignUsage> {
+  const countOf = (value: { value: number } | undefined) => value?.value ?? 0;
+  const [[invitesAttached], [invitesDeleted], [codes], [credited]] = await Promise.all([
+    ctx.db
+      .select({ value: count() })
+      .from(inviteCodes)
+      .where(eq(inviteCodes.campaignId, campaignId)),
+    ctx.db
+      .select({ value: count() })
+      .from(inviteCodes)
+      .where(and(eq(inviteCodes.campaignId, campaignId), isNotNull(inviteCodes.deletedAt))),
+    ctx.db
+      .select({ value: count() })
+      .from(referralCodes)
+      .where(eq(referralCodes.campaignId, campaignId)),
+    ctx.db.select({ value: count() }).from(referrals).where(eq(referrals.campaignId, campaignId)),
+  ]);
+  const usage = {
+    attachedInvites: countOf(invitesAttached),
+    deletedInvites: countOf(invitesDeleted),
+    referralCodes: countOf(codes),
+    referrals: countOf(credited),
+  };
+  return {
+    ...usage,
+    deletable: usage.attachedInvites === 0 && usage.referralCodes === 0 && usage.referrals === 0,
+  };
+}
+
+/** What references a campaign, and so whether it can be deleted (canViewAnalytics). */
+export async function getCampaignUsage(
+  ctx: ServiceContext,
+  campaignId: string,
+): Promise<CampaignUsage> {
+  const id = parseInput(z.uuid(), campaignId);
+  await authorize(ctx, 'canViewAnalytics', { type: 'campaign', id });
+  await loadCampaign(ctx, id);
+  return loadCampaignUsage(ctx, id);
+}
+
 /**
- * Delete a campaign that never attributed anything. Campaigns with invites,
- * codes or referrals keep their history: deactivate them instead.
+ * Delete a campaign that nothing references (see getCampaignUsage).
+ * Campaigns with invites, codes or referrals keep their history: detach
+ * their invites, or deactivate them instead.
  */
 export async function deleteCampaign(ctx: ServiceContext, campaignId: string): Promise<void> {
   const id = parseInput(z.uuid(), campaignId);
   await authorize(ctx, 'canManageCampaigns', { type: 'campaign', id });
   const campaign = await loadCampaign(ctx, id);
-  const [[invite], [code], [referral]] = await Promise.all([
-    ctx.db
-      .select({ code: inviteCodes.code })
-      .from(inviteCodes)
-      .where(eq(inviteCodes.campaignId, id))
-      .limit(1),
-    ctx.db
-      .select({ code: referralCodes.code })
-      .from(referralCodes)
-      .where(eq(referralCodes.campaignId, id))
-      .limit(1),
-    ctx.db
-      .select({ id: referrals.id })
-      .from(referrals)
-      .where(eq(referrals.campaignId, id))
-      .limit(1),
-  ]);
-  if (invite || code || referral) {
+  const usage = await loadCampaignUsage(ctx, id);
+  if (!usage.deletable) {
     throw new ConflictError('This campaign has attributed activity. Deactivate it instead.');
   }
   await withTransaction(ctx, async (tx) => {
@@ -238,8 +277,10 @@ export async function listCampaigns(
 }
 
 /**
- * Attach a live Discord invite to a campaign (or detach it). Only future joins
- * through the invite are credited to the campaign; history is not rewritten.
+ * Attach a live Discord invite to a campaign, or detach an invite from its
+ * campaign. Detaching also works for an invite Discord has since deleted, so
+ * no attachment is ever stuck. Only future joins through the invite are
+ * credited to the campaign; history is not rewritten.
  */
 export async function attachInviteToCampaign(
   ctx: ServiceContext,
@@ -247,10 +288,15 @@ export async function attachInviteToCampaign(
 ) {
   const data = parseInput(attachInviteSchema, input);
   await authorize(ctx, 'canManageCampaigns', { type: 'invite', id: data.code });
+  const attaching = data.campaignId !== null;
   const [invite] = await ctx.db
     .select()
     .from(inviteCodes)
-    .where(and(eq(inviteCodes.code, data.code), isNull(inviteCodes.deletedAt)));
+    .where(
+      attaching
+        ? and(eq(inviteCodes.code, data.code), isNull(inviteCodes.deletedAt))
+        : eq(inviteCodes.code, data.code),
+    );
   if (!invite) throw new NotFoundError('Invite');
   if (data.campaignId) await loadCampaign(ctx, data.campaignId);
   if (invite.campaignId === data.campaignId) return invite;

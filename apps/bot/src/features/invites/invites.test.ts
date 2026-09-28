@@ -10,7 +10,7 @@ import {
 } from '@jave/database';
 import { DAY, invites, recordGuildJoin } from '@jave/core';
 import { customId } from '../../interactions/custom-id';
-import type { InteractionUser } from '../../interactions/types';
+import type { InteractionUser, ReplyPayload } from '../../interactions/types';
 import { createBotHarness, discordUser, type BotHarness } from '../../testing/harness';
 
 vi.setConfig({ hookTimeout: 180_000, testTimeout: 60_000 });
@@ -29,6 +29,19 @@ describe('invites feature: commands, components, modals', () => {
   afterEach(async () => {
     await bot.close();
   });
+
+  function componentIds(payload: ReplyPayload): string[] {
+    return (payload.components ?? [])
+      .flatMap((r) => r.components)
+      .map((c) => ('custom_id' in c ? c.custom_id : ''));
+  }
+
+  function selectValues(payload: ReplyPayload, id: string): string[] {
+    const select = (payload.components ?? [])
+      .flatMap((r) => r.components)
+      .find((c) => 'custom_id' in c && c.custom_id === id);
+    return select && 'options' in select ? select.options.map((o) => o.value) : [];
+  }
 
   /** A member who owns a mirrored Discord invite. */
   async function inviter(code: string) {
@@ -98,6 +111,28 @@ describe('invites feature: commands, components, modals', () => {
         ns('codes'),
         ns('board', 'all'),
       ]);
+    });
+  });
+
+  describe('/invites mine for applicants', () => {
+    it('offers no Leaderboard button to someone who cannot view it', async () => {
+      const applicant = await bot.member({ roles: ['applicant'] });
+      expect(applicant.actor.capabilities.has('canViewMembers')).toBe(false);
+      const { interaction } = await bot.run({
+        kind: 'slash',
+        name: 'invites',
+        subcommand: 'mine',
+        user: applicant.user,
+      });
+      expect(interaction.lastText()).toContain('YOUR REFERRAL FUNNEL');
+      const ids = interaction
+        .lastPayload()!
+        .components!.flatMap((r) => r.components)
+        .map((c) => ('custom_id' in c ? c.custom_id : ''));
+      expect(ids).toEqual([ns('codes')]);
+      // A forged press is still refused by core.
+      const forged = await bot.run({ kind: 'button', name: ns('board', 'all'), user: applicant.user });
+      expect(forged.interaction.lastText()).toContain('ACCESS RESTRICTED');
     });
   });
 
@@ -490,10 +525,11 @@ describe('invites feature: commands, components, modals', () => {
       expect(row?.active).toBe(false);
     });
 
-    it('detaches an invite ranked past the first select page of a large campaign', async () => {
+    it('pages attached invites and detaches one ranked past the first page', async () => {
       const staff = await bot.member({ roles: ['core'] });
       await createCampaign(staff.user);
       const [campaign] = await bot.kit.db.select().from(campaigns);
+      const id = campaign!.id;
       const attachedCount = 30;
       // Most used first: the least used invite ranks last, outside the first 25.
       await invites.syncInvites(
@@ -503,20 +539,90 @@ describe('invites feature: commands, components, modals', () => {
           uses: attachedCount - index,
         })),
       );
-      await bot.kit.db.update(inviteCodes).set({ campaignId: campaign!.id });
+      await bot.kit.db.update(inviteCodes).set({ campaignId: id });
+
+      const first = await bot.run({ kind: 'select', name: ns('camp-view'), values: [id], user: staff.user });
+      expect(first.interaction.lastText()).toContain('ATTACHED INVITES · 1–25 OF 30');
+      const firstIds = componentIds(first.interaction.lastPayload()!);
+      expect(firstIds).toContain(ns('camp-view-id', id, 25));
+      expect(firstIds).not.toContain(ns('camp-view-id', id, 0));
+      expect(selectValues(first.interaction.lastPayload()!, ns('inv-detach', id, 0))).not.toContain(
+        'bulk29',
+      );
+
+      const second = await bot.run({
+        kind: 'button',
+        name: ns('camp-view-id', id, 25),
+        user: staff.user,
+      });
+      expect(second.interaction.lastText()).toContain('ATTACHED INVITES · 26–30 OF 30');
+      const secondPayload = second.interaction.lastPayload()!;
+      expect(componentIds(secondPayload)).toContain(ns('camp-view-id', id, 0));
+      expect(selectValues(secondPayload, ns('inv-detach', id, 25))).toContain('bulk29');
 
       const detached = await bot.run({
         kind: 'select',
-        name: ns('inv-detach', campaign!.id),
+        name: ns('inv-detach', id, 25),
         values: ['bulk29'],
         user: staff.user,
       });
       expect(detached.interaction.lastText()).toContain('INVITE DETACHED — BULK29');
+      // The card stays on the page it was on.
+      expect(detached.interaction.lastText()).toContain('ATTACHED INVITES · 26–29 OF 29');
       const [row] = await bot.kit.db
         .select()
         .from(inviteCodes)
         .where(eq(inviteCodes.code, 'bulk29'));
       expect(row?.campaignId).toBeNull();
+    });
+
+    it('shows invites Discord deleted as attached, and detaches them', async () => {
+      const staff = await bot.member({ roles: ['core'] });
+      await inviter('alpha01');
+      await inviter('event02');
+      await createCampaign(staff.user);
+      const [campaign] = await bot.kit.db.select().from(campaigns);
+      const id = campaign!.id;
+      await invites.attachInviteToCampaign(bot.kit.system, { code: 'alpha01', campaignId: id });
+      await invites.attachInviteToCampaign(bot.kit.system, { code: 'event02', campaignId: id });
+      // The event invite expires: the mirror marks it deleted, the attachment stays.
+      await invites.syncInvites(bot.kit.system, [{ code: 'alpha01', uses: 0 }]);
+
+      const card = await bot.run({ kind: 'button', name: ns('camp-view-id', id), user: staff.user });
+      expect(card.interaction.lastText()).toContain('`event02` · 0 uses · deleted on Discord');
+      expect(selectValues(card.interaction.lastPayload()!, ns('inv-detach', id, 0))).toEqual([
+        'alpha01',
+        'event02',
+      ]);
+      const detached = await bot.run({
+        kind: 'select',
+        name: ns('inv-detach', id, 0),
+        values: ['event02'],
+        user: staff.user,
+      });
+      expect(detached.interaction.lastText()).toContain('INVITE DETACHED — EVENT02');
+      const [row] = await bot.kit.db
+        .select()
+        .from(inviteCodes)
+        .where(eq(inviteCodes.code, 'event02'));
+      expect(row?.campaignId).toBeNull();
+    });
+
+    it('a stale page past the end shows the last page instead', async () => {
+      const staff = await bot.member({ roles: ['core'] });
+      await inviter('alpha01');
+      await createCampaign(staff.user);
+      const [campaign] = await bot.kit.db.select().from(campaigns);
+      await invites.attachInviteToCampaign(bot.kit.system, {
+        code: 'alpha01',
+        campaignId: campaign!.id,
+      });
+      const stale = await bot.run({
+        kind: 'button',
+        name: ns('camp-view-id', campaign!.id, 50),
+        user: staff.user,
+      });
+      expect(stale.interaction.lastText()).toContain('`alpha01`');
     });
 
     it('BREAK: forged, stale and malformed campaign controls change nothing', async () => {
@@ -566,11 +672,31 @@ describe('invites feature: commands, components, modals', () => {
       expect(badOffset.interaction.lastText()).toContain('INVALID INPUT');
       const notAttached = await bot.run({
         kind: 'select',
-        name: ns('inv-detach', campaign!.id),
+        name: ns('inv-detach', campaign!.id, 0),
         values: ['alpha01'],
         user: staff.user,
       });
       expect(notAttached.interaction.lastText()).toContain('NOT FOUND');
+      const badDetachOffset = await bot.run({
+        kind: 'select',
+        name: ns('inv-detach', campaign!.id, 'x'),
+        values: ['alpha01'],
+        user: staff.user,
+      });
+      expect(badDetachOffset.interaction.lastText()).toContain('INVALID INPUT');
+      const badCardOffset = await bot.run({
+        kind: 'button',
+        name: ns('camp-view-id', campaign!.id, -1),
+        user: staff.user,
+      });
+      expect(badCardOffset.interaction.lastText()).toContain('INVALID INPUT');
+      const forgedDetach = await bot.run({
+        kind: 'select',
+        name: ns('inv-detach', campaign!.id, 0),
+        values: ['alpha01'],
+        user: member.user,
+      });
+      expect(forgedDetach.interaction.lastText()).toContain('ACCESS RESTRICTED');
       const unknownCampaign = await bot.run({
         kind: 'select',
         name: ns('camp-view'),

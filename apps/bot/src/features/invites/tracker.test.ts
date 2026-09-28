@@ -5,7 +5,7 @@ import { invites } from '@jave/core';
 import { DiscordActionError, type InviteSnapshot } from '../../discord/gateway';
 import type { JoinedMember } from '../../gateway-events/types';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
-import { toSyncInput, trackerFor } from './tracker';
+import { CONSUMED_INVITE_GRACE_MS, toSyncInput, trackerFor } from './tracker';
 
 /** PGlite boots (WASM compile) slowly on a loaded machine; allow for it. */
 vi.setConfig({ hookTimeout: 180_000, testTimeout: 60_000 });
@@ -149,6 +149,78 @@ describe('invites: tracker (gateway listeners)', () => {
     const member = await join('vega');
     expect(await referralOf(member)).toMatchObject({ method: 'invite', inviteCode: 'once04' });
     expect((await mirror()).find((r) => r.code === 'once04')?.deletedAt).not.toBeNull();
+  });
+
+  /** Discord consumes the last use and deletes the invite; its delete event may come first. */
+  function consumeLastUse(code: string) {
+    bot.gateway.invites = bot.gateway.invites.filter((candidate) => candidate.code !== code);
+  }
+
+  it('credits a single-use invite whose delete event arrives before the member add', async () => {
+    bot.gateway.invites = [invite('once04', 0, { maxUses: 1 }), invite('alpha01', 3)];
+    await bot.app.events.ready();
+    consumeLastUse('once04');
+    await bot.app.events.invitesChanged();
+    const member = await join('vega');
+    expect(await referralOf(member)).toMatchObject({
+      method: 'invite',
+      inviteCode: 'once04',
+      inviterDiscordId: INVITER_ID,
+    });
+  });
+
+  it('keeps a consumed invite through an unrelated invite event before the member add', async () => {
+    bot.gateway.invites = [invite('once04', 2, { maxUses: 3 }), invite('alpha01', 3)];
+    await bot.app.events.ready();
+    consumeLastUse('once04');
+    await bot.app.events.invitesChanged();
+    bot.gateway.invites.push(invite('fresh05', 0, { inviterDiscordId: OTHER_INVITER_ID }));
+    await bot.app.events.invitesChanged();
+    const member = await join('altais');
+    expect(await referralOf(member)).toMatchObject({ method: 'invite', inviteCode: 'once04' });
+  });
+
+  it('gives a consumed-invite tombstone exactly one join', async () => {
+    bot.gateway.invites = [invite('once04', 0, { maxUses: 1 }), invite('alpha01', 3)];
+    await bot.app.events.ready();
+    consumeLastUse('once04');
+    await bot.app.events.invitesChanged();
+    const credited = await join('vega');
+    const next = await join('lyra', 'alpha01');
+    expect(await referralOf(credited)).toMatchObject({ inviteCode: 'once04' });
+    expect(await referralOf(next)).toMatchObject({ method: 'invite', inviteCode: 'alpha01' });
+  });
+
+  it('BREAK: a deleted invite with one use left never collects credit after the grace', async () => {
+    bot.gateway.invites = [invite('once04', 0, { maxUses: 1 }), invite('alpha01', 3)];
+    await bot.app.events.ready();
+    // Staff delete the invite; no join follows it.
+    consumeLastUse('once04');
+    await bot.app.events.invitesChanged();
+    bot.kit.clock.advance(CONSUMED_INVITE_GRACE_MS + 1);
+    const member = await join('rigel');
+    expect(await referralOf(member)).toMatchObject({ method: 'unknown', inviteCode: null });
+  });
+
+  it('BREAK: a tombstone never turns a concurrent join into a false credit', async () => {
+    bot.gateway.invites = [invite('once04', 0, { maxUses: 1 }), invite('alpha01', 3)];
+    await bot.app.events.ready();
+    consumeLastUse('once04');
+    await bot.app.events.invitesChanged();
+    // Another member's use lands first: two candidates, so unknown; the tombstone is spent.
+    const other = await join('sirius', 'alpha01');
+    const member = await join('vega');
+    expect(await referralOf(other)).toMatchObject({ method: 'unknown', inviteCode: null });
+    expect(await referralOf(member)).toMatchObject({ method: 'unknown', inviteCode: null });
+  });
+
+  it('BREAK: an invite deleted with uses left is not a tombstone', async () => {
+    bot.gateway.invites = [invite('multi06', 1, { maxUses: 5 }), invite('alpha01', 3)];
+    await bot.app.events.ready();
+    consumeLastUse('multi06');
+    await bot.app.events.invitesChanged();
+    const member = await join('deneb');
+    expect(await referralOf(member)).toMatchObject({ method: 'unknown', inviteCode: null });
   });
 
   it('records unknown rather than guessing when two invites changed', async () => {

@@ -211,7 +211,7 @@ export interface InviteCodeView {
   deletedAt: Date | null;
 }
 
-/** Staff listing of mirrored invites (for attaching invites to campaigns). */
+/** Staff listing of mirrored invites (for attaching invites to campaigns), live first. */
 export async function listInviteCodes(
   ctx: ServiceContext,
   input: z.input<typeof listInviteCodesSchema> = {},
@@ -245,7 +245,8 @@ export async function listInviteCodes(
       .leftJoin(users, eq(users.id, inviteCodes.inviterUserId))
       .leftJoin(members, eq(members.userId, inviteCodes.inviterUserId))
       .where(where)
-      .orderBy(desc(inviteCodes.uses), inviteCodes.code)
+      // Live invites first (when deleted ones are included), then most used.
+      .orderBy(sql`${inviteCodes.deletedAt} is not null`, desc(inviteCodes.uses), inviteCodes.code)
       .limit(q.limit)
       .offset(q.offset),
     ctx.db.select({ value: count() }).from(inviteCodes).where(where),

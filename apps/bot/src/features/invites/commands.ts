@@ -13,6 +13,7 @@ import {
   detachInvite,
   openCampaignModal,
   parseCampaignId,
+  parsePageOffset,
   setCampaignActive,
   showAttachStart,
   showCampaign,
@@ -176,7 +177,9 @@ export const invitesComponents: ComponentHandler = {
       case 'camp-view':
         return showCampaign(h, parseCampaignId(h.interaction.values[0]), 'update');
       case 'camp-view-id':
-        return showCampaign(h, parseCampaignId(args[0]), 'update');
+        return showCampaign(h, parseCampaignId(args[0]), 'update', {
+          offset: parsePageOffset(args[1]),
+        });
       case 'camp-attach':
         return showInvitePicker(h, parseCampaignId(h.interaction.values[0]), '0', 'update');
       case 'camp-active':
@@ -186,7 +189,7 @@ export const invitesComponents: ComponentHandler = {
       case 'inv-pick':
         return attachInvite(h, parseCampaignId(args[0]));
       case 'inv-detach':
-        return detachInvite(h, parseCampaignId(args[0]));
+        return detachInvite(h, parseCampaignId(args[0]), args[1]);
       default:
         return expired(h);
     }

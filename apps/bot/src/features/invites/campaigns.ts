@@ -1,6 +1,15 @@
 import { LabelBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import type { APIEmbedField, APISelectMenuOption } from 'discord.js';
-import { authorize, can, DAY, invites, isUuid, NotFoundError, ValidationError } from '@jave/core';
+import {
+  authorize,
+  can,
+  DAY,
+  invites,
+  isUuid,
+  NotFoundError,
+  type Page,
+  ValidationError,
+} from '@jave/core';
 import type { HandlerContext, ModalPayload, ReplyPayload } from '../../interactions/types';
 import { customId } from '../../interactions/custom-id';
 import { button, field, panel, row, stringSelect } from '../../ui/components';
@@ -11,7 +20,7 @@ import { funnelBlock, INVITES_NS } from './views';
 
 /** Campaigns summarized in the list card (the select offers up to 25). */
 const CAMPAIGNS_IN_LIST = 10;
-/** Invites per picker page (Discord's select-menu cap). */
+/** Invites per picker page and per attached-invites page (Discord's select-menu cap). */
 export const INVITE_PAGE_SIZE = LIMITS.selectOptions;
 const ISO_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_DAY_LENGTH = 10;
@@ -30,6 +39,21 @@ type CampaignView = invites.CampaignView;
 export function parseCampaignId(value: string | undefined): string {
   if (!value || !isUuid(value)) throw new ValidationError('This control is malformed.');
   return value;
+}
+
+/** A page offset from a custom id (absent means the first page). */
+export function parsePageOffset(value: string | undefined): number {
+  const offset = Number(value ?? 0);
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new ValidationError('This control is malformed.');
+  }
+  return offset;
+}
+
+/** "`code` · 3 uses", marked when Discord no longer lists the invite. */
+function attachedLine(invite: invites.InviteCodeView): string {
+  const deleted = invite.deletedAt ? ` ${GLYPH.dot} deleted on Discord` : '';
+  return `\`${invite.code}\` ${GLYPH.dot} ${invite.uses} uses${deleted}`;
 }
 
 function campaignState(campaign: CampaignView, now: Date): string {
@@ -107,9 +131,28 @@ export async function showCampaignList(h: HandlerContext, mode: Delivery): Promi
   );
 }
 
+function attachedFieldName(page: Page<invites.InviteCodeView>): string {
+  if (page.total <= INVITE_PAGE_SIZE) return 'Attached invites';
+  const last = page.offset + page.items.length;
+  return `Attached invites ${GLYPH.dot} ${page.offset + 1}–${last} of ${page.total}`;
+}
+
+function attachedPager(campaignId: string, page: Page<invites.InviteCodeView>) {
+  const nav = [];
+  if (page.offset > 0) {
+    const previous = Math.max(0, page.offset - INVITE_PAGE_SIZE);
+    nav.push(button('Previous', customId(INVITES_NS, 'camp-view-id', campaignId, previous)));
+  }
+  if (page.offset + page.items.length < page.total) {
+    const next = page.offset + INVITE_PAGE_SIZE;
+    nav.push(button('Next', customId(INVITES_NS, 'camp-view-id', campaignId, next)));
+  }
+  return nav;
+}
+
 function detailPayload(
   campaign: CampaignView,
-  attached: readonly invites.InviteCodeView[],
+  attached: Page<invites.InviteCodeView>,
   options: { manage: boolean; now: Date; notice?: string },
 ): ReplyPayload {
   const fields: APIEmbedField[] = [
@@ -117,9 +160,9 @@ function detailPayload(
     field('Window', windowText(campaign), true),
     field('Funnel', funnelBlock(campaign.funnel)),
     field(
-      'Attached invites',
-      attached.length > 0
-        ? attached.map((invite) => `\`${invite.code}\` ${GLYPH.dot} ${invite.uses} uses`).join('\n')
+      attachedFieldName(attached),
+      attached.items.length > 0
+        ? attached.items.map(attachedLine).join('\n')
         : 'None. Joins through attached invites credit this campaign while it accepts.',
     ),
   ];
@@ -135,6 +178,25 @@ function detailPayload(
     embeds.unshift(panel({ title: `${GLYPH.verified} ${options.notice}`, color: COLORS.success }));
   }
   const components: NonNullable<ReplyPayload['components']> = [];
+  if (options.manage && attached.items.length > 0) {
+    components.push(
+      row(
+        stringSelect(
+          customId(INVITES_NS, 'inv-detach', campaign.id, attached.offset),
+          'Detach an invite',
+          attached.items.map((invite) => ({
+            label: invite.code,
+            value: invite.code,
+            description: invite.deletedAt
+              ? `${invite.uses} uses · deleted on Discord`
+              : `${invite.uses} uses`,
+          })),
+        ),
+      ),
+    );
+  }
+  const pager = attachedPager(campaign.id, attached);
+  if (pager.length > 0) components.push(row(...pager));
   if (options.manage) {
     components.push(
       row(
@@ -145,44 +207,41 @@ function detailPayload(
         button('All campaigns', customId(INVITES_NS, 'camp-list')),
       ),
     );
-    if (attached.length > 0) {
-      components.unshift(
-        row(
-          stringSelect(
-            customId(INVITES_NS, 'inv-detach', campaign.id),
-            'Detach an invite',
-            attached.slice(0, LIMITS.selectOptions).map((invite) => ({
-              label: invite.code,
-              value: invite.code,
-              description: `${invite.uses} uses`,
-            })),
-          ),
-        ),
-      );
-    }
   } else {
     components.push(row(button('All campaigns', customId(INVITES_NS, 'camp-list'))));
   }
   return { embeds, components, ephemeral: true };
 }
 
+/** One page of the invites attached to a campaign, deleted ones included (live first). */
+async function attachedPage(h: HandlerContext, campaignId: string, offset: number) {
+  const load = (at: number) =>
+    invites.listInviteCodes(h.ctx, {
+      campaignId,
+      includeDeleted: true,
+      limit: INVITE_PAGE_SIZE,
+      offset: at,
+    });
+  const page = await load(offset);
+  if (page.items.length > 0 || page.total === 0) return page;
+  // A stale card (its last invite on this page was detached): show the last page instead.
+  return load(Math.floor((page.total - 1) / INVITE_PAGE_SIZE) * INVITE_PAGE_SIZE);
+}
+
 export async function showCampaign(
   h: HandlerContext,
   campaignId: string,
   mode: Delivery,
-  notice?: string,
+  options: { notice?: string; offset?: number } = {},
 ): Promise<void> {
   const campaign = await invites.getCampaign(h.ctx, campaignId);
-  const attached = await invites.listInviteCodes(h.ctx, {
-    campaignId: campaign.id,
-    limit: LIMITS.selectOptions,
-  });
+  const attached = await attachedPage(h, campaign.id, options.offset ?? 0);
   await deliver(
     h,
-    detailPayload(campaign, attached.items, {
+    detailPayload(campaign, attached, {
       manage: can(h.ctx, 'canManageCampaigns'),
       now: h.ctx.clock.now(),
-      notice,
+      notice: options.notice,
     }),
     mode,
   );
@@ -197,12 +256,9 @@ export async function setCampaignActive(
   if (flag !== '0' && flag !== '1') throw new ValidationError('This control is malformed.');
   const active = flag === '1';
   await invites.updateCampaign(h.ctx, { campaignId, active });
-  await showCampaign(
-    h,
-    campaignId,
-    'update',
-    active ? 'CAMPAIGN ACTIVATED' : 'CAMPAIGN DEACTIVATED',
-  );
+  await showCampaign(h, campaignId, 'update', {
+    notice: active ? 'CAMPAIGN ACTIVATED' : 'CAMPAIGN DEACTIVATED',
+  });
 }
 
 function inviteOption(invite: invites.InviteCodeView, campaignId: string): APISelectMenuOption {
@@ -227,9 +283,7 @@ export async function showInvitePicker(
   mode: Delivery,
 ): Promise<void> {
   await authorize(h.ctx, 'canManageCampaigns', { type: 'campaign', id: campaignId });
-  const offset = Number(offsetArg ?? 0);
-  if (!Number.isInteger(offset) || offset < 0)
-    throw new ValidationError('This control is malformed.');
+  const offset = parsePageOffset(offsetArg);
   const campaign = await invites.getCampaign(h.ctx, campaignId);
   const page = await invites.listInviteCodes(h.ctx, { limit: INVITE_PAGE_SIZE, offset });
   const components: NonNullable<ReplyPayload['components']> = [];
@@ -284,14 +338,15 @@ export async function showInvitePicker(
 export async function attachInvite(h: HandlerContext, campaignId: string): Promise<void> {
   const [code] = h.interaction.values;
   const invite = await invites.attachInviteToCampaign(h.ctx, { code: code ?? '', campaignId });
-  await showCampaign(h, campaignId, 'update', `INVITE ATTACHED — ${invite.code}`);
+  await showCampaign(h, campaignId, 'update', { notice: `INVITE ATTACHED — ${invite.code}` });
 }
 
-/** Whether `code` is attached to `campaignId` now (the card may be stale). */
+/** Whether `code` is attached to `campaignId` now, deleted or not (the card may be stale). */
 async function isAttached(h: HandlerContext, campaignId: string, code: string): Promise<boolean> {
   for (let page = 0; page < ATTACHED_SCAN_MAX_PAGES; page++) {
     const result = await invites.listInviteCodes(h.ctx, {
       campaignId,
+      includeDeleted: true,
       limit: ATTACHED_SCAN_PAGE,
       offset: page * ATTACHED_SCAN_PAGE,
     });
@@ -301,13 +356,21 @@ async function isAttached(h: HandlerContext, campaignId: string, code: string): 
   return false;
 }
 
-/** Detach an invite from this campaign (only one that is attached to it). */
-export async function detachInvite(h: HandlerContext, campaignId: string): Promise<void> {
+/** Detach an invite from this campaign (only one that is attached to it), then reshow that page. */
+export async function detachInvite(
+  h: HandlerContext,
+  campaignId: string,
+  offsetArg: string | undefined,
+): Promise<void> {
   const [code] = h.interaction.values;
+  const offset = parsePageOffset(offsetArg);
   await authorize(h.ctx, 'canManageCampaigns', { type: 'campaign', id: campaignId });
   if (!code || !(await isAttached(h, campaignId, code))) throw new NotFoundError('Invite');
   const invite = await invites.attachInviteToCampaign(h.ctx, { code, campaignId: null });
-  await showCampaign(h, campaignId, 'update', `INVITE DETACHED — ${invite.code}`);
+  await showCampaign(h, campaignId, 'update', {
+    notice: `INVITE DETACHED — ${invite.code}`,
+    offset,
+  });
 }
 
 /** Staff: choose which campaign to attach an invite to. */
@@ -415,5 +478,5 @@ export async function createCampaignFromModal(h: HandlerContext): Promise<void> 
     startsAt: parseCampaignDay(modal.text('starts'), 'starts'),
     endsAt: parseCampaignDay(modal.text('ends'), 'ends'),
   });
-  await showCampaign(h, campaign.id, 'reply', `CAMPAIGN CREATED — ${campaign.key}`);
+  await showCampaign(h, campaign.id, 'reply', { notice: `CAMPAIGN CREATED — ${campaign.key}` });
 }

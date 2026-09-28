@@ -83,6 +83,11 @@ export interface LifecycleRules {
   validRequiresOnboarding: boolean;
 }
 
+export interface MineViewOptions extends LifecycleRules {
+  /** Offer the leaderboard button (hint only: core authorizes the leaderboard). */
+  canViewLeaderboard: boolean;
+}
+
 function lifecycleCopy(rules: LifecycleRules): string {
   const valid = rules.validRequiresOnboarding
     ? 'VALID once the member has completed onboarding, unless it is held for review'
@@ -91,7 +96,7 @@ function lifecycleCopy(rules: LifecycleRules): string {
 }
 
 /** The member's own referral card (ephemeral). */
-export function renderMine(view: invites.MyReferralsView, rules: LifecycleRules): ReplyPayload {
+export function renderMine(view: invites.MyReferralsView, options: MineViewOptions): ReplyPayload {
   const activeCodes = view.codes.filter((code) => code.active);
   const fields: APIEmbedField[] = [
     field('Funnel', funnelBlock(view.funnel)),
@@ -120,14 +125,16 @@ export function renderMine(view: invites.MyReferralsView, rules: LifecycleRules)
       panel({
         kicker: 'JVLN REFERRALS',
         title: 'Your referral funnel',
-        description: lifecycleCopy(rules),
+        description: lifecycleCopy(options),
         fields,
       }),
     ],
     components: [
       row(
         button('Referral code', customId(INVITES_NS, 'codes'), 'primary'),
-        button('Leaderboard', customId(INVITES_NS, 'board', 'all')),
+        ...(options.canViewLeaderboard
+          ? [button('Leaderboard', customId(INVITES_NS, 'board', 'all'))]
+          : []),
       ),
     ],
     ephemeral: true,

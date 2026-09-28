@@ -8,7 +8,28 @@
  * Activity-only details. Everything else comes from @jave/ui tokens.
  * The Activity runs in a Discord iframe: no page-level horizontal scroll
  * and safe-area padding for mobile clients.
+ *
+ * Safe areas: inside Discord's mobile clients the Activity is a cross-origin
+ * iframe, where env(safe-area-inset-*) is usually 0. Discord publishes its own
+ * insets as --discord-safe-area-inset-* custom properties; the larger of the
+ * two wins, and outside Discord both fall back to 0.
  */
+:root {
+  --activity-safe-top: max(env(safe-area-inset-top, 0px), var(--discord-safe-area-inset-top, 0px));
+  --activity-safe-right: max(
+    env(safe-area-inset-right, 0px),
+    var(--discord-safe-area-inset-right, 0px)
+  );
+  --activity-safe-bottom: max(
+    env(safe-area-inset-bottom, 0px),
+    var(--discord-safe-area-inset-bottom, 0px)
+  );
+  --activity-safe-left: max(
+    env(safe-area-inset-left, 0px),
+    var(--discord-safe-area-inset-left, 0px)
+  );
+}
+
 @layer base {
   html,
   body,
@@ -18,9 +39,20 @@
 
   body {
     overflow-x: hidden;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
-      env(safe-area-inset-left);
+    padding: var(--activity-safe-top) var(--activity-safe-right) var(--activity-safe-bottom)
+      var(--activity-safe-left);
   }
+}
+
+/*
+ * Sticky bars stop below the top inset instead of sliding under Discord's
+ * overlay; a canvas-coloured shadow fills the inset so content scrolling
+ * past never shows through above the bar.
+ */
+@utility sticky-below-safe-area {
+  position: sticky;
+  top: var(--activity-safe-top);
+  box-shadow: 0 calc(var(--activity-safe-top) * -1) 0 0 var(--color-canvas);
 }
 
 /* Countdown ring: the progress arc follows server time between renders. */

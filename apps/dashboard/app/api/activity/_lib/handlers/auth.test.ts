@@ -1,14 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { and, eq, like } from 'drizzle-orm';
+import { anonymousActor, ExternalServiceError } from '@jave/core';
 import { createTestKit, nextDiscordId, type TestKit } from '@jave/core/testing';
-import { auditLogs, members, users } from '@jave/database';
+import { auditLogs, members, rateLimitBuckets, users } from '@jave/database';
 import type {
   ActivityErrorBody,
   ActivityTokenResponse,
   DevPersonasResponse,
   MissionControlResponse,
 } from '../contract';
-import { createActivityDiscordClient } from '../discord';
+import { type ActivityDiscordClient, createActivityDiscordClient } from '../discord';
 import type { FetchLike } from '@/server/auth/discord-oauth';
 import { ACTIVITY_RATE_LIMITS } from '../limits';
 import {
@@ -151,12 +152,15 @@ describe('POST /api/activity/token', () => {
     expect(discord.exchanged).toHaveLength(0);
   });
 
-  it('BREAK: the per-client budget answers 429 with Retry-After', async () => {
+  it('BREAK: the per-client circuit breaker answers 429 with Retry-After and spares Discord', async () => {
     const discord = fakeDiscord({ discordId: nextDiscordId(), username: 'x' });
-    const deps = testDeps(kit, { discord });
+    const logger = kit.as(anonymousActor).logger.child({});
+    const warn = vi.spyOn(logger, 'warn');
+    const deps = testDeps(kit, { discord, context: () => ({ ...kit.as(anonymousActor), logger }) });
     const headers = { 'x-forwarded-for': '203.0.113.9' };
+    const { limit } = ACTIVITY_RATE_LIMITS.token;
     let last: Response | null = null;
-    for (let i = 0; i <= ACTIVITY_RATE_LIMITS.token.limit; i++) {
+    for (let i = 0; i <= limit; i++) {
       last = await handleTokenExchange(
         exchange({ code: 'nope', instanceId: INSTANCE }, headers),
         deps,
@@ -164,6 +168,67 @@ describe('POST /api/activity/token', () => {
     }
     expect(last!.status).toBe(429);
     expect(Number(last!.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(discord.exchanged).toHaveLength(limit);
+    // Operators hear about it once per window, not once per refused request.
+    const exhausted = warn.mock.calls.filter(
+      ([, message]) => message === 'activity budget exhausted',
+    );
+    expect(exhausted).toHaveLength(1);
+    expect(JSON.stringify(exhausted)).not.toContain('203.0.113.9');
+  });
+
+  it('BREAK: requests that can never reach Discord spend nothing of the shared budget', async () => {
+    const discord = fakeDiscord({ discordId: nextDiscordId(), username: 'orbit' });
+    const deps = testDeps(kit, { discord });
+    // What a member can fire from devtools inside the Activity: no body, junk, wrong shapes.
+    const junk = () => [
+      apiRequest('POST', '/token'),
+      apiRequest('POST', '/token', { rawBody: '' }),
+      apiRequest('POST', '/token', { rawBody: '{not json' }),
+      exchange({ code: 'valid-code' }),
+      exchange({ code: '', instanceId: INSTANCE }),
+    ];
+    for (let round = 0; round <= ACTIVITY_RATE_LIMITS.token.limit / junk().length; round++) {
+      for (const request of junk())
+        expect((await handleTokenExchange(request, deps)).status).not.toBe(200);
+    }
+    const spent = await kit.db
+      .select()
+      .from(rateLimitBuckets)
+      .where(like(rateLimitBuckets.key, 'activity:token:%'));
+    expect(spent).toEqual([]);
+    expect(discord.exchanged).toHaveLength(0);
+    const signedIn = await handleTokenExchange(
+      exchange({ code: 'valid-code', instanceId: INSTANCE }),
+      deps,
+    );
+    expect(signedIn.status).toBe(200);
+  });
+
+  it('a whole event launching in the same minute through one proxy address all get in', async () => {
+    const launches = 75;
+    const accounts = new Map<string, string>();
+    const discord: ActivityDiscordClient = {
+      async exchange(code) {
+        const discordId = accounts.get(code);
+        if (!discordId) throw new ExternalServiceError('discord', 'Discord token exchange failed.');
+        return {
+          accessToken: `at-${code}`,
+          profile: { discordId, username: code, displayName: code, avatarHash: null, isBot: false },
+        };
+      },
+    };
+    const deps = testDeps(kit, { discord });
+    const proxy = { 'x-forwarded-for': '198.51.100.20' };
+    for (let i = 0; i < launches; i++) {
+      const code = `launch-${i}`;
+      accounts.set(code, nextDiscordId());
+      const response = await handleTokenExchange(
+        exchange({ code, instanceId: INSTANCE }, proxy),
+        deps,
+      );
+      expect(response.status, code).toBe(200);
+    }
   });
 });
 

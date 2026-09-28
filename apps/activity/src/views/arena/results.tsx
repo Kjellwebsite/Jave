@@ -2,12 +2,11 @@ import { CircleSlash, LogIn, Swords } from 'lucide-react';
 import { Badge, Button, Card, cx, EmptyState, formatCount } from '@jave/ui';
 import type { ArenaSessionWire } from '../../api/contract';
 import type { ArenaAction } from '../../hooks/use-arena';
-import { type PodiumSpot, standings } from '../../lib/arena';
+import { podium, type PodiumPlace, standings } from '../../lib/arena';
 import { ordinal } from '../../lib/format';
 import { configSummary, endReasonText } from './copy';
 
-/** Podium order on screen: second, first, third. */
-const PODIUM_ORDER = [1, 0, 2] as const;
+/** Plate height per podium tier (first, second, third and below). */
 const PODIUM_HEIGHT = ['h-28 sm:h-36', 'h-20 sm:h-24', 'h-14 sm:h-16'] as const;
 
 export interface NextStepProps {
@@ -37,7 +36,7 @@ function NextStep({ canHost, nextLobby, pending, onOpen }: NextStepProps) {
   return null;
 }
 
-function PodiumPlate({ spot, rank }: { spot: PodiumSpot; rank: number }) {
+function PodiumPlate({ spot }: { spot: PodiumPlace }) {
   const first = spot.placement === 1;
   return (
     <li className="flex min-w-0 flex-1 flex-col items-center gap-2" data-testid="podium-spot">
@@ -46,7 +45,7 @@ function PodiumPlate({ spot, rank }: { spot: PodiumSpot; rank: number }) {
       <div
         className={cx(
           'flex w-full flex-col items-center justify-start rounded-t-md border border-b-0 pt-3',
-          PODIUM_HEIGHT[rank],
+          PODIUM_HEIGHT[spot.tier],
           first ? 'border-line-strong bg-surface-raised' : 'border-line bg-surface',
           spot.isYou && 'border-fg-faint',
         )}
@@ -72,9 +71,6 @@ export interface ResultsProps extends NextStepProps {
 /** FINAL STANDINGS: the podium, every placement, and the viewer's own result. */
 export function Results({ session, ...next }: ResultsProps) {
   const all = standings(session);
-  const podium = PODIUM_ORDER.map((index) => all[index]).filter(
-    (spot): spot is PodiumSpot => spot !== undefined,
-  );
   const you = all.find((spot) => spot.isYou) ?? null;
   return (
     <section
@@ -99,8 +95,8 @@ export function Results({ session, ...next }: ResultsProps) {
             aria-label="Podium"
             className="mx-auto flex w-full max-w-md items-end gap-2 border-b border-line-strong"
           >
-            {podium.map((spot) => (
-              <PodiumPlate key={spot.key} spot={spot} rank={all.indexOf(spot)} />
+            {podium(all).map((spot) => (
+              <PodiumPlate key={spot.key} spot={spot} />
             ))}
           </ol>
         </div>

@@ -139,7 +139,10 @@ export interface MissionControlResponse {
   serverNow: number;
   /** Null when the account has no JAVELIN profile yet. */
   profile: ProfileWire | null;
+  /** The active missions due soonest (at most five); the dashboard lists the rest. */
   missions: MissionWire[];
+  /** How many missions are active in all (`missions` may show fewer). */
+  missionsTotal: number;
   /** The member's running (or next scheduled) trial. Never adversarial information. */
   trial: TrialWire | null;
   events: EventWire[];
@@ -225,6 +228,17 @@ export interface ArenaSessionWire {
   endReason: string | null;
 }
 
+/**
+ * A difficulty a lobby can be opened with. Only difficulties the question bank
+ * can fill for the minimum round count are listed.
+ */
+export interface ArenaDifficultyWire {
+  /** `mixed`, or a question difficulty (`easy`, `medium`, `hard`). */
+  value: string;
+  /** Most rounds the bank can fill at this difficulty (never above the engine's maximum). */
+  maxRounds: number;
+}
+
 export interface ArenaResponse {
   serverNow: number;
   session: ArenaSessionWire | null;
@@ -232,6 +246,8 @@ export interface ArenaResponse {
   liveSessionId: string | null;
   /** You may open a lobby (canHostGames, good standing). */
   canHost: boolean;
+  /** What the Open Lobby form may offer: every listed choice opens a lobby. */
+  difficulties: ArenaDifficultyWire[];
 }
 
 export interface ArenaBoardEntryWire {

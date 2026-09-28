@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivityHost, AuthSession } from '../platform/hosts';
-import { ApiClient, type ApiError, type FetchFn } from './client';
-import { ActivitySession, REFRESH_MARGIN_MS, ServerClock } from './session';
+import { ApiClient, ApiError, type FetchFn } from './client';
+import { ActivitySession, REFRESH_MARGIN_MS, REFRESH_RETRY_MS, ServerClock } from './session';
 
 interface Call {
   url: string;
@@ -141,5 +141,67 @@ describe('ActivitySession', () => {
     expect(h.signIns).toBe(2);
     await expect(session.call('GET', '/activity/me')).rejects.toMatchObject({ status: 401 });
     expect(h.signIns).toBe(3);
+  });
+
+  it('BREAK: a throttled silent refresh keeps the still-valid token and backs off', async () => {
+    let local = 0;
+    const clock = new ServerClock(() => local);
+    const retryAfterSeconds = 45;
+    const outcomes: (AuthSession | ApiError)[] = [
+      auth('t1', REFRESH_MARGIN_MS + 30_000),
+      new ApiError(429, 'RATE_LIMITED', 'Slow down.', null, retryAfterSeconds),
+      auth('t2', 10 * REFRESH_MARGIN_MS),
+    ];
+    let signIns = 0;
+    const flaky: ActivityHost = {
+      mode: 'discord',
+      instanceId: 'i-1',
+      async signIn() {
+        const next = outcomes[signIns++]!;
+        if (next instanceof ApiError) throw next;
+        return next;
+      },
+    };
+    const fetch = stubFetch(Array.from({ length: 4 }, () => Response.json({})));
+    const session = new ActivitySession(flaky, new ApiClient('/api', fetch), clock);
+    const bearer = (index: number) =>
+      (fetch.calls[index]!.init.headers as Record<string, string>).Authorization;
+
+    await session.call('GET', '/activity/trivia/session');
+    local += 60_000; // inside the refresh margin; JAVELIN answers 429
+    await session.call('GET', '/activity/trivia/session');
+    expect(signIns).toBe(2);
+    expect(bearer(1)).toBe('Bearer t1');
+    local += REFRESH_RETRY_MS; // still backing off: Retry-After asked for longer
+    await session.call('GET', '/activity/trivia/session');
+    expect(signIns).toBe(2);
+    expect(bearer(2)).toBe('Bearer t1');
+    local += retryAfterSeconds * 1000;
+    await session.call('GET', '/activity/trivia/session');
+    expect(signIns).toBe(3);
+    expect(bearer(3)).toBe('Bearer t2');
+  });
+
+  it('BREAK: once the token has expired, a failed sign-in fails the call', async () => {
+    let local = 0;
+    const clock = new ServerClock(() => local);
+    let signIns = 0;
+    const flaky: ActivityHost = {
+      mode: 'discord',
+      instanceId: 'i-1',
+      async signIn() {
+        signIns++;
+        if (signIns > 1) throw new ApiError(429, 'RATE_LIMITED', 'Slow down.', null, 5);
+        return auth('t1', 1_000);
+      },
+    };
+    const session = new ActivitySession(
+      flaky,
+      new ApiClient('/api', stubFetch([Response.json({})])),
+      clock,
+    );
+    await session.call('GET', '/activity/me');
+    local = 1_000;
+    await expect(session.call('GET', '/activity/me')).rejects.toMatchObject({ status: 429 });
   });
 });

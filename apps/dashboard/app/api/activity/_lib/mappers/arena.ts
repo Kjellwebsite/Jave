@@ -1,6 +1,7 @@
 import { games } from '@jave/core';
 import type {
   ArenaBoardEntryWire,
+  ArenaDifficultyWire,
   ArenaSessionWire,
   TriviaConfigWire,
   TriviaScoreWire,
@@ -150,4 +151,32 @@ export function toBoardEntry(
     bestScore: entry.bestScore,
     sessions: entry.sessions,
   };
+}
+
+const MIXED_DIFFICULTY = 'mixed';
+
+/** Most rounds core's own trivia config accepts at this difficulty; null when none. */
+function maxRoundsAt(difficulty: string): number | null {
+  const { TRIVIA_MIN_ROUNDS, TRIVIA_MAX_ROUNDS, triviaConfigSchema } = games.trivia;
+  for (let rounds = TRIVIA_MAX_ROUNDS; rounds >= TRIVIA_MIN_ROUNDS; rounds--) {
+    if (triviaConfigSchema.safeParse({ rounds, difficulty }).success) return rounds;
+  }
+  return null;
+}
+
+let difficultyOptions: readonly ArenaDifficultyWire[] | null = null;
+
+/**
+ * The difficulties a lobby can be opened with, decided by core's config
+ * validation (the question bank itself never leaves core). A difficulty the
+ * bank cannot fill even for the minimum round count is not offered, so the
+ * Open Lobby form never shows a choice that always fails. The bank is static,
+ * so this is computed once per process.
+ */
+export function triviaDifficultyOptions(): ArenaDifficultyWire[] {
+  difficultyOptions ??= [MIXED_DIFFICULTY, ...games.trivia.TRIVIA_DIFFICULTIES].flatMap((value) => {
+    const maxRounds = maxRoundsAt(value);
+    return maxRounds === null ? [] : [{ value, maxRounds }];
+  });
+  return difficultyOptions.map((option) => ({ ...option }));
 }

@@ -95,6 +95,30 @@ export function standings(session: ArenaSessionWire): PodiumSpot[] {
     .sort((a, b) => a.placement - b.placement || b.score - a.score || a.key.localeCompare(b.key));
 }
 
+/** Plate heights: 0 is the tallest (first place), 2 the lowest (third and below). */
+export type PodiumTier = 0 | 1 | 2;
+
+export interface PodiumPlace extends PodiumSpot {
+  tier: PodiumTier;
+}
+
+/** Podium order on screen: second, first, third. */
+const PODIUM_ORDER = [1, 0, 2] as const;
+
+/**
+ * The top three in podium order. A plate's height comes from the placement,
+ * never the position in the list: players tied for a place stand at the same
+ * height, and tied leaders stand side by side (left of and on the centre plate).
+ */
+export function podium(all: readonly PodiumSpot[]): PodiumPlace[] {
+  return PODIUM_ORDER.flatMap((index) => {
+    const spot = all[index];
+    if (!spot) return [];
+    const tier: PodiumTier = spot.placement <= 1 ? 0 : spot.placement === 2 ? 1 : 2;
+    return [{ ...spot, tier }];
+  });
+}
+
 export type ArenaStage =
   'none' | 'lobby' | 'question' | 'reveal' | 'starting' | 'completed' | 'abandoned';
 

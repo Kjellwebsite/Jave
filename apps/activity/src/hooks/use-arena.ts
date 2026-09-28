@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client';
 import type { ArenaResponse, ArenaSessionWire, TriviaConfigWire } from '../api/contract';
 import type { ActivitySession } from '../api/session';
-import { newerResponse, pollDelay, shouldTick } from '../lib/arena';
+import { pollDelay, shouldTick } from '../lib/arena';
+import { ArenaFeed } from '../lib/arena-feed';
 
 export type ArenaAction = 'open' | 'start' | 'leave' | 'close' | 'answer';
 export type Connection = 'connecting' | 'live' | 'reconnecting';
@@ -33,7 +34,6 @@ export interface ArenaController {
   clearError(): void;
 }
 
-const HTTP_NOT_FOUND = 404;
 const MS_PER_SECOND = 1000;
 const STATE_PATH = '/activity/trivia/session';
 
@@ -62,29 +62,21 @@ export function useArena(session: ActivitySession): ArenaController {
   const [pending, setPending] = useState<ArenaAction | null>(null);
   const [actionError, setActionError] = useState<ApiError | null>(null);
   const [locked, setLocked] = useState<LockedAnswer | null>(null);
-  const latest = useRef<ArenaResponse | null>(null);
-  /** The session this viewer follows; null follows whatever is live in the instance. */
-  const following = useRef<string | null>(null);
+  /** Orders polls against actions; see ArenaFeed. */
+  const [feed] = useState(() => new ArenaFeed());
   const busy = useRef(false);
 
-  const apply = useCallback((next: ArenaResponse) => {
-    const merged = newerResponse(latest.current, next);
-    latest.current = merged;
-    following.current = merged.session?.id ?? null;
-    setResponse(merged);
-  }, []);
-
   const pollOnce = useCallback(async (): Promise<ArenaResponse> => {
-    const current = latest.current?.session ?? null;
+    const current = feed.latest?.session ?? null;
     if (current && shouldTick(current, session.clock.now())) {
       return session.call<ArenaResponse>('POST', '/activity/trivia/tick', {
         body: { sessionId: current.id },
       });
     }
     return session.call<ArenaResponse>('GET', STATE_PATH, {
-      query: { sessionId: following.current },
+      query: { sessionId: feed.following },
     });
-  }, [session]);
+  }, [session, feed]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,22 +84,24 @@ export function useArena(session: ActivitySession): ArenaController {
     let failures = 0;
     const run = async () => {
       let delay: number;
+      const stamp = feed.stamp();
       try {
         const next = await pollOnce();
         if (cancelled) return;
         failures = 0;
-        apply(next);
+        // Null: an action's result landed while this poll was in flight; it is stale.
+        const applied = feed.pollResult(stamp, next);
+        if (applied) setResponse(applied);
         setConnection('live');
         setPollError(null);
-        delay = pollDelay(latest.current?.session ?? null, 0);
+        delay = pollDelay(feed.latest?.session ?? null, 0);
       } catch (error) {
         if (cancelled) return;
         failures += 1;
-        // The followed session is gone (or out of scope): fall back to the live one.
-        if (error instanceof ApiError && error.status === HTTP_NOT_FOUND) following.current = null;
+        feed.pollFailed(stamp, error instanceof ApiError ? error.status : null);
         setConnection('reconnecting');
         setPollError(asApiError(error));
-        delay = retryDelay(error, latest.current?.session ?? null, failures);
+        delay = retryDelay(error, feed.latest?.session ?? null, failures);
       }
       timer = window.setTimeout(() => void run(), delay);
     };
@@ -116,7 +110,7 @@ export function useArena(session: ActivitySession): ArenaController {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [pollOnce, apply]);
+  }, [pollOnce, feed]);
 
   const act = useCallback(
     async (action: ArenaAction, path: string, body: unknown) => {
@@ -125,7 +119,7 @@ export function useArena(session: ActivitySession): ArenaController {
       setPending(action);
       setActionError(null);
       try {
-        apply(await session.call<ArenaResponse>('POST', path, { body }));
+        setResponse(feed.actionResult(await session.call<ArenaResponse>('POST', path, { body })));
       } catch (error) {
         setActionError(asApiError(error));
         if (action === 'answer') setLocked(null);
@@ -134,7 +128,7 @@ export function useArena(session: ActivitySession): ArenaController {
         setPending(null);
       }
     },
-    [session, apply],
+    [session, feed],
   );
 
   const sessionId = response?.session?.id ?? null;
@@ -154,7 +148,7 @@ export function useArena(session: ActivitySession): ArenaController {
   }, [act, sessionId]);
   const answer = useCallback(
     (choice: number) => {
-      const current = latest.current?.session;
+      const current = feed.latest?.session;
       const view = current?.trivia;
       if (!current?.youArePlayer || !view || view.phase !== 'question' || view.you?.answered) {
         return;
@@ -166,7 +160,7 @@ export function useArena(session: ActivitySession): ArenaController {
         choice,
       });
     },
-    [act],
+    [act, feed],
   );
   const clearError = useCallback(() => setActionError(null), []);
 

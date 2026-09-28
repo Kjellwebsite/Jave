@@ -76,6 +76,12 @@ cookies) ever verifies as one. Claims `{ v, sub: userId, iid: instanceId, iat, e
 - A `dev` token stops working the moment dev auth is switched off.
 - Kept in memory only (never `localStorage`, never a cookie). The Activity signs in again silently
   five minutes before expiry (the full flow above, `prompt: 'none'`), and once more after a 401.
+  If that silent refresh fails (JAVELIN busy, connection lost) while the current token is still
+  valid, the Activity keeps using it and tries again after at least 30 s (longer when the server's
+  `Retry-After` asks for it), so a throttled refresh never interrupts a running game.
+- A throttled sign-in (429) is not a lost connection: the launch screen says JAVELIN IS BUSY,
+  counts down the server's `Retry-After` (clamped to 1–60 s) and retries on its own, up to five
+  times before it offers Try again.
 - **Instance scope**: a token acts only on game sessions whose `activity_instance_id` equals its
   `iid`. Sessions of another instance or a Discord channel answer 404, like sessions that do not exist.
 
@@ -87,20 +93,20 @@ fields refused), body caps enforced on the declared length and on the bytes actu
 `{ error: { code, message, reference?, retryAfterSeconds? } }`; unexpected failures return only an
 `E-XXXXXXXX` reference that matches the server log line.
 
-| Method | Path                                        | Who                                  | Budget (per minute)                           | Core call                                                                         |
-| ------ | ------------------------------------------- | ------------------------------------ | --------------------------------------------- | --------------------------------------------------------------------------------- |
-| POST   | `/api/activity/token`                       | anyone with a Discord code           | 60 per client IP, then 10 per Discord account | Discord exchange, `upsertDiscordUser`, `ensureMember`                             |
-| GET    | `/api/activity/dev-token`                   | MOCK / DEV ONLY (404 unless enabled) | —                                             | persona list                                                                      |
-| POST   | `/api/activity/dev-token`                   | MOCK / DEV ONLY (404 unless enabled) | 60 per client IP                              | `provisionDevPersona`, audited `auth.dev_login`                                   |
-| GET    | `/api/activity/me`                          | signed in                            | 30                                            | `getProfile`, `missions.listMyMissions`, `trials.myTrials`, `calendar.listEvents` |
-| GET    | `/api/activity/trivia/session[?sessionId=]` | signed in                            | 150 (polls and nudges)                        | `games.findLiveSession` / `games.getSessionView`                                  |
-| POST   | `/api/activity/trivia/session`              | signed in                            | 20 (lobby actions)                            | `games.joinSession`, or `games.createSession` (surface `activity`)                |
-| POST   | `/api/activity/trivia/start`                | host, or event staff                 | 20                                            | `games.startSession`                                                              |
-| POST   | `/api/activity/trivia/leave`                | player                               | 20                                            | `games.leaveSession`                                                              |
-| POST   | `/api/activity/trivia/close`                | host, or event staff                 | 20                                            | `games.abandonSession`                                                            |
-| POST   | `/api/activity/trivia/move`                 | player                               | 40                                            | `games.submitMove`                                                                |
-| POST   | `/api/activity/trivia/tick`                 | host or player                       | 150                                           | `games.tickSession`                                                               |
-| GET    | `/api/activity/trivia/leaderboard`          | signed in                            | 20                                            | `games.getLeaderboard` (trivia, wins, top 10, audience `viewer`)                  |
+| Method | Path                                        | Who                                  | Budget (per minute)                            | Core call                                                                         |
+| ------ | ------------------------------------------- | ------------------------------------ | ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| POST   | `/api/activity/token`                       | anyone with a Discord code           | 600 per client IP, then 10 per Discord account | Discord exchange, `upsertDiscordUser`, `ensureMember`                             |
+| GET    | `/api/activity/dev-token`                   | MOCK / DEV ONLY (404 unless enabled) | —                                              | persona list                                                                      |
+| POST   | `/api/activity/dev-token`                   | MOCK / DEV ONLY (404 unless enabled) | 60 per client IP                               | `provisionDevPersona`, audited `auth.dev_login`                                   |
+| GET    | `/api/activity/me`                          | signed in                            | 30                                             | `getProfile`, `missions.listMyMissions`, `trials.myTrials`, `calendar.listEvents` |
+| GET    | `/api/activity/trivia/session[?sessionId=]` | signed in                            | 150 (polls and nudges)                         | `games.findLiveSession` / `games.getSessionView`                                  |
+| POST   | `/api/activity/trivia/session`              | signed in                            | 20 (lobby actions)                             | `games.joinSession`, or `games.createSession` (surface `activity`)                |
+| POST   | `/api/activity/trivia/start`                | host, or event staff                 | 20                                             | `games.startSession`                                                              |
+| POST   | `/api/activity/trivia/leave`                | player                               | 20                                             | `games.leaveSession`                                                              |
+| POST   | `/api/activity/trivia/close`                | host, or event staff                 | 20                                             | `games.abandonSession`                                                            |
+| POST   | `/api/activity/trivia/move`                 | player                               | 40                                             | `games.submitMove`                                                                |
+| POST   | `/api/activity/trivia/tick`                 | host or player                       | 150                                            | `games.tickSession`                                                               |
+| GET    | `/api/activity/trivia/leaderboard`          | signed in                            | 20                                             | `games.getLeaderboard` (trivia, wins, top 10, audience `viewer`)                  |
 
 Body caps: token 2 KB, session requests 1 KB, moves 512 B.
 
@@ -115,6 +121,10 @@ values.
 
 `GET /me` composes four core reads as the caller. A panel the caller may not see (for example a
 restricted account) renders empty instead of failing the screen; anything unexpected still fails.
+Missions: the five active missions due soonest (core's order), plus `missionsTotal`; when there are
+more, the panel reads `5 OF 8` and says how many more the dashboard lists. Events: core's upcoming
+list includes events already running (scheduled or live, not yet ended); those read `ENDS IN 1H`,
+never `OVERDUE`.
 The trial is the member's own running (or teams-assigned) trial from `trials.myTrials` — a
 member-safe summary; the adversarial module is never read. `canHostGames` mirrors core's
 `createSession` requirement so the Arena shows the right entry point.
@@ -125,9 +135,18 @@ member-safe summary; the adversarial module is never read. `canHostGames` mirror
   nothing is live, opens one (`canHostGames`, good standing; ranges enforced by the trivia engine:
   5–15 rounds, 10–30 s, difficulty). Two players opening at the same instant end up in one lobby:
   the loser of core's unique index joins the winner's lobby.
+- **Only fillable settings are offered.** Every Arena response lists `difficulties`:
+  `{ value, maxRounds }` for each difficulty the question bank can fill for at least the minimum
+  round count, computed by probing core's own `triviaConfigSchema` (the bank never leaves core).
+  The Open Lobby form offers exactly those, and disables round counts above `maxRounds`. Today the
+  bank holds 3 hard questions, so HARD is not offered until it holds at least 5; a test opens a
+  lobby for every advertised choice and proves every unadvertised difficulty fails.
 - **Polling, no websockets.** `GET /trivia/session` every second while a session is live, every
   three seconds otherwise; exponential backoff (1 → 8 s) after failures, honouring `Retry-After`.
-  Responses can arrive out of order (a poll racing an answer): the higher `version` wins.
+  Responses can arrive out of order (a poll racing an answer): within a session the higher
+  `version` wins. Across sessions there is no version to compare, so a poll that was sent before
+  an action's result was applied (open, join, start, answer…) is dropped (`ArenaFeed`): a stale
+  poll can never switch "Open new lobby" back to the finished game.
 - **Timers are the server's.** The bot worker's `games.tick` job closes each round at its deadline.
   Players and the host `POST /trivia/tick` only once a transition is 2.25 s overdue; core accepts
   player ticks at ≥ 2 s, so a lagging worker never stalls a game and nobody sees a question before
@@ -142,6 +161,9 @@ member-safe summary; the adversarial module is never read. `canHostGames` mirror
   it). Event staff (`canManageEvents`) can start or close any lobby of their instance — core audits
   it (`game.started_by_staff`, `game.abandoned`). A running game always finishes on its timers.
 - Fewer than two players is practice: never ranked, never a win (core).
+- **Podium**: plate heights follow the placement, not the list position. Players tied for a
+  place (core shares placements on ties) stand at the same height; tied leaders stand side by
+  side.
 
 ### Who appears on which board
 
@@ -231,7 +253,7 @@ dashboard, which needs `DISCORD_CLIENT_SECRET`). Vite accepts `*.trycloudflare.c
 ## Tests
 
 ```bash
-pnpm --filter @jave/activity test                                   # unit: client, session, launch, arena logic, format
+pnpm --filter @jave/activity test                                   # unit: client, session, sign-in, launch, arena logic and ordering, lobby choices, format
 cd apps/dashboard && npx vitest run app/api/activity --maxWorkers=2  # API handlers on PGlite
 JAVE_TEST_BACKEND=postgres JAVE_TEST_POSTGRES_URL=postgres://… npx vitest run app/api/activity --maxWorkers=2
 pnpm --filter @jave/activity test:e2e                               # Playwright, real Postgres
@@ -248,11 +270,13 @@ table they played at but never reaches a member's board).
 
 The end-to-end suite resets, migrates and seeds `jave_e2e_activity` (it refuses any database
 without `e2e` in its name; the seed also plays six finished Arena games among the staff personas
-through core, on a manual clock two days back, and gives the founder a staff-only profile),
-starts `next dev` with dev auth and the Vite dev server, and plays a full five-round game with
-two browser contexts (1280×720 and 390×844), plus BREAK cases: a lost connection shown and
-recovered, the all-time board hiding the staff-only founder from a member while staff see it,
-an unknown persona refused.
+through core, on a manual clock two days back, gives the founder a staff-only profile, the
+moderator seven active missions and the calendar an event already running), starts `next dev`
+with dev auth and the Vite dev server, and plays a full five-round EASY game with two browser
+contexts (1280×720 and 390×844), plus: `5 OF 7` missions, a running event reading `ENDS IN 1H`,
+Discord's mobile safe-area insets applied to the page and the sticky bar, and BREAK cases: a
+throttled sign-in retried on its own, a lost connection shown and recovered, the all-time board
+hiding the staff-only founder from a member while staff see it, an unknown persona refused.
 
 ## Deployment
 
@@ -276,6 +300,10 @@ an unknown persona refused.
    MISSION CONTROL shows your profile.
 2. A second account launches in the same channel → JVLN ARENA shows the lobby → start → play.
 3. The dashboard audit log shows `auth.login` with `method: discord_activity` for both.
+4. On a phone (iOS and Android Discord): the brand and tab bar sit below Discord's own overlay and
+   the notch, and the last answer tile and the lobby buttons clear the bottom edge. The Activity
+   pads by the larger of `env(safe-area-inset-*)` and Discord's `--discord-safe-area-inset-*`
+   custom properties; this could not be checked on a device while building (see Limitations).
 
 ## Limitations
 
@@ -289,7 +317,18 @@ an unknown persona refused.
   next request, because every request re-resolves the account through core). Rotating
   `JAVE_SESSION_SECRET` ends every Activity session at once.
 - **Client IPs are Discord's.** Requests arrive through Discord's proxy, so the per-IP budget on
-  `/token` is close to a global budget; the per-account budget does the fine-grained work.
+  `/token` is in effect one budget for every member. It is a circuit breaker, not the fine-grained
+  limit: only well-formed requests that are about to call Discord spend it (malformed or empty
+  requests are refused first and spend nothing), it is sized at 600 per minute so a whole event
+  launching together stays far below it, and the per-account budget (10 per minute) does the
+  fine-grained work once Discord has named the user. The request that exhausts a window is logged
+  once (`activity budget exhausted`, with the hashed caller key). Residual risk: a member who
+  scripts well-formed junk codes at more than 10 per second can still hold the breaker open;
+  everyone launching then sees JAVELIN IS BUSY and retries on their own, while members already
+  inside keep playing on their current token for up to an hour. The breaker stays because
+  forwarding such a flood would get JAVELIN's credentials throttled by Discord instead.
+  EXTENSION POINT: an `InstanceVerifier` that confirms the instance with Discord before the
+  exchange would let the budget be keyed per instance.
 - **Polling** costs one request (and one rate-limit row update) per player per second while a game
   is live. Fine at JAVELIN scale; a push channel keyed by session `version` can replace it without
   changing the contract.
@@ -298,4 +337,6 @@ an unknown persona refused.
 - **Discord live launch was not exercised in this build environment** (`discord.com` is
   unreachable here). Everything up to the Discord boundary is tested: the code exchange with a
   stubbed Discord, the Activity with the SDK's own mock client, the API against real Postgres.
-  Follow "Verify after deployment".
+  The mobile safe-area handling is tested by injecting the `--discord-safe-area-inset-*`
+  properties into the page; whether every Discord client sets them is part of "Verify after
+  deployment".

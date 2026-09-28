@@ -31,6 +31,18 @@ export function formatRelative(ms: number): string {
   return `in ${Math.floor(ms / MINUTE)}m`;
 }
 
+/**
+ * Where an event stands, for lists of upcoming events: `IN 3D` before it
+ * starts, `ENDS IN 1H` while it runs, `ENDING` in its last minute, `ENDED`
+ * once over. Never `OVERDUE`: an event that has started is running, not late.
+ */
+export function formatEventTiming(startsAt: number, endsAt: number, now: number): string {
+  if (now >= endsAt) return 'ENDED';
+  if (now < startsAt) return formatRelative(startsAt - now).toUpperCase();
+  const left = endsAt - now;
+  return left < MINUTE ? 'ENDING' : `ENDS ${formatRelative(left).toUpperCase()}`;
+}
+
 /** `YYYY-MM-DD HH:mm` in the viewer's time zone (DESIGN.md timestamps). */
 export function formatTimestamp(epochMs: number): string {
   const date = new Date(epochMs);

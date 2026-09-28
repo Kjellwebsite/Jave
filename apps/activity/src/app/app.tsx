@@ -20,6 +20,7 @@ function SignedIn({ boot }: { boot: ReadyBoot }) {
           title={state.problem.title}
           description={state.problem.description}
           reference={state.problem.reference}
+          retryAt={state.retryAt}
           onRetry={retry}
         />
       ) : null}

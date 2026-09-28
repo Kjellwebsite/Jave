@@ -106,6 +106,7 @@ function StageContent({ arena, clock, active }: Omit<ArenaViewProps, 'board'>) {
       return (
         <OpenLobby
           canHost={response.canHost}
+          difficulties={response.difficulties}
           opening={pending === 'open'}
           onOpen={(config) => arena.open(config)}
         />

@@ -85,6 +85,11 @@ test.describe('Mission Control', () => {
       await expect(view.getByText('Paper teardown')).toBeVisible();
       await expect(view.getByText('Build night')).toBeVisible();
       await expect(view.getByText('meet.example.com')).toBeVisible();
+      // An event that already started reads as running, never as overdue.
+      const running = view.getByRole('listitem').filter({ hasText: 'Orbit review' });
+      await expect(running).toContainText('LIVE');
+      await expect(running).toContainText(/ENDS IN 1H/);
+      await expect(view).not.toContainText(/OVERDUE/i);
       await expect(page.locator('body')).not.toContainText(/adversarial/i);
       await expectNoHorizontalScroll(page);
       await capture(page, 'mission-control');
@@ -95,6 +100,68 @@ test.describe('Mission Control', () => {
       await page.context().close();
     });
   }
+
+  test('says how many missions are active when it lists only the soonest', async ({ browser }) => {
+    const page = await launch(browser, 'moderator', uniqueInstance('mc-backlog'), PHONE);
+    const view = page.getByTestId('mission-control');
+    await expect(view.getByTestId('missions-count')).toHaveText('5 OF 7');
+    await expect(view.getByText('ACTIVE · SOONEST DUE')).toBeVisible();
+    await expect(view.getByText('Field report 1', { exact: true })).toBeVisible();
+    await expect(view.getByText('Field report 6', { exact: true })).toHaveCount(0);
+    await expect(view.getByTestId('missions-more')).toContainText('2 more missions');
+    await expectNoHorizontalScroll(page);
+    await view.getByTestId('missions-more').scrollIntoViewIfNeeded();
+    await capture(page, 'mission-control-backlog');
+    await page.context().close();
+  });
+
+  test('BREAK: a throttled sign-in says JAVELIN is busy and retries on its own', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({ viewport: PHONE });
+    const page = await context.newPage();
+    let throttled = 0;
+    await page.route('**/api/activity/dev-token', async (route) => {
+      if (route.request().method() !== 'POST' || throttled > 0) return route.fallback();
+      throttled++;
+      return route.fulfill({
+        status: 429,
+        headers: { 'retry-after': '2' },
+        json: { error: { code: 'RATE_LIMITED', message: 'Slow down.', retryAfterSeconds: 2 } },
+      });
+    });
+    await page.goto(`/?persona=member&instance=${uniqueInstance('busy')}`);
+    await expect(page.getByText('JAVELIN IS BUSY')).toBeVisible();
+    await expect(page.getByTestId('retry-countdown')).toContainText('RETRYING');
+    await expect(page.getByText('CONNECTION LOST')).toHaveCount(0);
+    await capture(page, 'sign-in-busy');
+    await expect(page.getByTestId('mission-control')).toBeVisible();
+    expect(throttled).toBe(1);
+    await context.close();
+  });
+
+  test('keeps the bar and content inside Discord’s mobile safe areas', async ({ browser }) => {
+    const page = await launch(browser, 'verified', uniqueInstance('safe-area'), PHONE);
+    await expect(page.getByTestId('mission-control')).toBeVisible();
+    // What Discord's mobile clients inject into the Activity frame.
+    await page.addStyleTag({
+      content:
+        ':root { --discord-safe-area-inset-top: 44px; --discord-safe-area-inset-bottom: 30px; }',
+    });
+    const insets = await page.evaluate(() => {
+      const body = getComputedStyle(document.body);
+      const bar = getComputedStyle(document.querySelector('header')!);
+      return { top: body.paddingTop, bottom: body.paddingBottom, sticky: bar.top };
+    });
+    expect(insets).toEqual({ top: '44px', bottom: '30px', sticky: '44px' });
+    await page.mouse.wheel(0, 600);
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.querySelector('header')!.getBoundingClientRect().top),
+      )
+      .toBe(44);
+    await page.context().close();
+  });
 
   test('a member without records sees calm empty states', async ({ browser }) => {
     const page = await launch(browser, 'member', uniqueInstance('mc-empty'), PHONE);
@@ -124,9 +191,13 @@ test.describe('JVLN Arena · trivia', () => {
       .getByRole('group', { name: 'TIME PER QUESTION' })
       .getByText('10 S', { exact: true })
       .click();
+    // Only difficulties the question bank can fill are offered, every one of them selectable.
+    const difficulty = host.getByRole('group', { name: 'DIFFICULTY' });
+    await expect(difficulty.getByRole('radio', { disabled: true })).toHaveCount(0);
+    await difficulty.getByText('EASY', { exact: true }).click();
     await host.getByRole('button', { name: 'Open lobby' }).click();
     await expect(host.getByTestId('lobby')).toContainText('PRACTICE · NOT RANKED');
-    await expect(host.getByTestId('lobby')).toContainText('5 ROUNDS · 10 S PER QUESTION');
+    await expect(host.getByTestId('lobby')).toContainText('5 ROUNDS · 10 S PER QUESTION · EASY');
 
     // The guest's Activity finds the live lobby on its own and joins it.
     await guest.getByRole('tab', { name: /JVLN ARENA/ }).click();

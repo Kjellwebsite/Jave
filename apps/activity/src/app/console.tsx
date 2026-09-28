@@ -49,7 +49,7 @@ export function Console({ session, auth }: { session: ActivitySession; auth: Aut
       }}
       className="flex flex-1 flex-col"
     >
-      <header className="sticky top-0 z-30 border-b border-line bg-canvas">
+      <header className="sticky-below-safe-area z-30 border-b border-line bg-canvas">
         <div className="mx-auto grid w-full max-w-[1280px] grid-cols-[auto_minmax(0,1fr)] items-center gap-x-8 px-4 sm:px-6 md:grid-cols-[auto_auto_minmax(0,1fr)]">
           <span
             className="col-start-1 row-start-1 flex h-12 items-center gap-2.5 md:h-14"

@@ -3,9 +3,11 @@
  *
  * Provisions the dashboard's dev personas (MOCK / DEVELOPMENT ONLY) and gives
  * the VERIFIED persona a lived-in Mission Control: claims and verified ranks,
- * two missions, a running trial and upcoming events; plays finished Arena games
- * among the staff personas (the founder's profile is staff-only). Every write
- * goes through a core service, so audit, history and events are genuine.
+ * two missions, a running trial, an event in progress and upcoming events;
+ * gives the MODERATOR more active missions than Mission Control lists; plays
+ * finished Arena games among the staff personas (the founder's profile is
+ * staff-only). Every write goes through a core service, so audit, history and
+ * events are genuine.
  */
 import {
   calendar,
@@ -13,6 +15,7 @@ import {
   createContext,
   DAY,
   HOUR,
+  MINUTE,
   missions,
   resolveUserActor,
   type ServiceContext,
@@ -28,6 +31,11 @@ import { seedArenaHistory } from './seed-arena';
 
 const MISSION_HOURS = 72;
 const URGENT_MISSION_HOURS = 18;
+/** More than Mission Control lists (five), so it shows `5 OF 7`. */
+const BACKLOG_MISSIONS = 7;
+/** The event in progress started this long ago and runs for two hours. */
+const LIVE_EVENT_STARTED_MS = 20 * MINUTE;
+const LIVE_EVENT_LENGTH_MS = 2 * HOUR;
 const TRIAL_MINUTES = 180;
 const TRIAL_STATEMENT = 'I ship working software under pressure and I want to prove it here.';
 
@@ -87,6 +95,20 @@ async function seedMissions(operations: ServiceContext, memberId: string): Promi
   }
 }
 
+async function seedMissionBacklog(operations: ServiceContext, memberId: string): Promise<void> {
+  for (let index = 1; index <= BACKLOG_MISSIONS; index++) {
+    const draft = await missions.createMission(operations, {
+      title: `Field report ${index}`,
+      brief: 'File a short field report on what you built this week and what broke.',
+      type: 'build',
+      evidenceRequired: false,
+      durationHours: index * 24,
+    });
+    await missions.publishMission(operations, { missionId: draft.id, announce: false });
+    await missions.assignMission(operations, { missionId: draft.id, memberIds: [memberId] });
+  }
+}
+
 async function seedTrial(operations: ServiceContext, players: ServiceContext[]): Promise<void> {
   const trial = await trials.createTrial(operations, {
     title: 'Night Build',
@@ -129,6 +151,21 @@ async function seedEvents(operations: ServiceContext, attendee: ServiceContext):
     location: 'https://meet.example.com/demo',
   });
   await calendar.rsvp(attendee, { eventId: workshop.id, status: 'going' });
+
+  // Already running: scheduled from a clock set before its start, then taken live now.
+  const startsAt = now - LIVE_EVENT_STARTED_MS;
+  const earlier: ServiceContext = {
+    ...operations,
+    clock: { now: () => new Date(startsAt - MINUTE) },
+  };
+  const running = await calendar.scheduleEvent(earlier, {
+    title: 'Orbit review',
+    kind: 'talk',
+    startsAt: new Date(startsAt),
+    endsAt: new Date(startsAt + LIVE_EVENT_LENGTH_MS),
+    location: 'Voice: Mission room',
+  });
+  await calendar.markEventLive(operations, { eventId: running.id });
 }
 
 export async function seedActivityFixtures(databaseUrl: string): Promise<void> {
@@ -146,6 +183,7 @@ export async function seedActivityFixtures(databaseUrl: string): Promise<void> {
 
     await seedRanks(founder, verified);
     await seedMissions(operations, memberIdOf(verified));
+    await seedMissionBacklog(operations, memberIdOf(await persona('moderator')));
     await seedTrial(operations, [verified]);
     await seedEvents(operations, verified);
     await seedArenaHistory(system, users);

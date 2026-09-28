@@ -1,83 +1,65 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ApiError } from '../api/client';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ActivitySession } from '../api/session';
-import { AuthMismatchError, type AuthSession } from '../platform/hosts';
+import type { AuthSession } from '../platform/hosts';
+import { describeSignInFailure, type SignInProblem } from './sign-in-failure';
 
 export type SignInState =
   | { status: 'pending' }
   | { status: 'ready'; auth: AuthSession }
-  | { status: 'failed'; problem: SignInProblem };
+  /** `retryAt` (local epoch ms): an automatic retry is scheduled for then. */
+  | { status: 'failed'; problem: SignInProblem; retryAt: number | null };
 
-export interface SignInProblem {
-  title: string;
-  description: string;
-  reference: string | null;
-}
+/** Automatic retries after a 429 before the member is asked to try again. */
+export const MAX_AUTO_RETRIES = 5;
 
-const HTTP_NOT_FOUND = 404;
-const HTTP_FORBIDDEN = 403;
-
-/** Calm, specific copy for the ways sign-in fails. Never echoes raw error text from Discord. */
-export function describeSignInFailure(error: unknown, mode: 'discord' | 'dev'): SignInProblem {
-  if (error instanceof AuthMismatchError) {
-    return {
-      title: 'SIGN-IN REFUSED',
-      description: 'Discord and JAVELIN disagree about who is signed in. Relaunch the Activity.',
-      reference: null,
-    };
-  }
-  if (error instanceof ApiError) {
-    if (mode === 'dev' && error.status === HTTP_NOT_FOUND) {
-      return {
-        title: 'DEV SIGN-IN DISABLED',
-        description:
-          'The dashboard refuses dev personas. Start it with JAVE_DEV_AUTH=true outside production.',
-        reference: null,
-      };
-    }
-    if (error.status === HTTP_FORBIDDEN) {
-      return { title: 'ACCESS RESTRICTED', description: error.message, reference: null };
-    }
-    if (error.transient) {
-      return {
-        title: 'CONNECTION LOST',
-        description: 'JAVELIN could not be reached. Check the connection and try again.',
-        reference: error.reference,
-      };
-    }
-    return { title: 'SIGN-IN FAILED', description: error.message, reference: error.reference };
-  }
-  return {
-    title: 'SIGN-IN FAILED',
-    description:
-      mode === 'discord'
-        ? 'Discord did not complete the sign-in. Relaunch the Activity to try again.'
-        : 'The mock Discord client did not start.',
-    reference: null,
-  };
-}
-
-/** Runs the host's sign-in once on mount; `retry` runs it again after a failure. */
+/**
+ * Runs the host's sign-in once on mount; `retry` runs it again after a
+ * failure. A throttled sign-in (429) retries on its own after the server's
+ * Retry-After, a bounded number of times.
+ */
 export function useSignIn(session: ActivitySession, mode: 'discord' | 'dev') {
   const [state, setState] = useState<SignInState>({ status: 'pending' });
   const [attempt, setAttempt] = useState(0);
+  const autoRetries = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
+    let timer: number | undefined;
     session
       .signIn()
       .then((auth) => {
-        if (!cancelled) setState({ status: 'ready', auth });
+        if (cancelled) return;
+        autoRetries.current = 0;
+        setState({ status: 'ready', auth });
       })
       .catch((error: unknown) => {
-        if (!cancelled) setState({ status: 'failed', problem: describeSignInFailure(error, mode) });
+        if (cancelled) return;
+        const problem = describeSignInFailure(error, mode);
+        const wait =
+          problem.retryAfterMs !== null && autoRetries.current < MAX_AUTO_RETRIES
+            ? problem.retryAfterMs
+            : null;
+        setState({
+          status: 'failed',
+          problem,
+          retryAt: wait === null ? null : Date.now() + wait,
+        });
+        if (wait !== null) {
+          autoRetries.current += 1;
+          timer = window.setTimeout(() => {
+            setState({ status: 'pending' });
+            setAttempt((value) => value + 1);
+          }, wait);
+        }
       });
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [session, mode, attempt]);
 
   const retry = useCallback(() => {
+    autoRetries.current = 0;
     setState({ status: 'pending' });
     setAttempt((value) => value + 1);
   }, []);

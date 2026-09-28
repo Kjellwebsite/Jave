@@ -15,7 +15,7 @@ import { members as membersTable, trials as trialsTable } from '@jave/database';
 import type { ActivityErrorBody, MissionControlResponse } from '../contract';
 import { apiRequest, readJson, testDeps, tokenFor } from '../testing/support';
 import { ACTIVITY_TOKEN_TTL_MS } from '../token';
-import { handleMissionControl } from './mission-control';
+import { handleMissionControl, MISSION_CONTROL_MISSIONS } from './mission-control';
 
 let kit: TestKit;
 
@@ -140,6 +140,7 @@ describe('GET /api/activity/me', () => {
     expect(body_.status).toBe('unknown');
 
     expect(body.missions).toHaveLength(1);
+    expect(body.missionsTotal).toBe(1);
     expect(body.missions[0]).toMatchObject({ title: 'Prototype sprint', status: 'assigned' });
     expect(body.missions[0]!.dueAt).toBe(kit.clock.now().getTime() + 72 * HOUR);
 
@@ -151,6 +152,40 @@ describe('GET /api/activity/me', () => {
     expect(body.events[0]!.location).toEqual({ kind: 'text', label: 'Lab 3, Berlin' });
     // Links are reduced to their host: no path, no query string, nothing clickable.
     expect(body.events[1]!.location).toEqual({ kind: 'url', label: 'meet.example.com' });
+  });
+
+  it('shows the missions due soonest and says how many are active in all', async () => {
+    const operations = await kit.member({ roles: ['operations'] });
+    const member = await kit.member({ roles: ['member'] });
+    const extra = 3;
+    const durations = Array.from(
+      { length: MISSION_CONTROL_MISSIONS + extra },
+      (_, index) => (MISSION_CONTROL_MISSIONS + extra - index) * 24,
+    );
+    for (const [index, durationHours] of durations.entries()) {
+      const draft = await missions.createMission(kit.as(operations), {
+        title: `Mission ${index + 1}`,
+        brief: 'Ship it and document what you learned along the way.',
+        type: 'build',
+        evidenceRequired: false,
+        durationHours,
+      });
+      await missions.publishMission(kit.as(operations), { missionId: draft.id, announce: false });
+      await missions.assignMission(kit.as(operations), {
+        missionId: draft.id,
+        memberIds: [member.memberId!],
+      });
+    }
+    const body = await readJson<MissionControlResponse>(
+      await missionControl(tokenFor(kit, member)),
+    );
+    expect(body.missionsTotal).toBe(MISSION_CONTROL_MISSIONS + extra);
+    expect(body.missions).toHaveLength(MISSION_CONTROL_MISSIONS);
+    const due = body.missions.map((mission) => mission.dueAt!);
+    expect(due).toEqual([...due].sort((a, b) => a - b));
+    // The shortest deadlines were created last: the soonest-due are the ones shown.
+    expect(body.missions[0]!.title).toBe(`Mission ${MISSION_CONTROL_MISSIONS + extra}`);
+    expect(body.missions.map((mission) => mission.title)).not.toContain('Mission 1');
   });
 
   it('BREAK: never carries adversarial, staff-only or account data', async () => {
@@ -181,7 +216,13 @@ describe('GET /api/activity/me', () => {
     const body = await readJson<MissionControlResponse>(
       await missionControl(tokenFor(kit, outsider)),
     );
-    expect(body).toMatchObject({ profile: null, missions: [], trial: null, events: [] });
+    expect(body).toMatchObject({
+      profile: null,
+      missions: [],
+      missionsTotal: 0,
+      trial: null,
+      events: [],
+    });
     expect(body.canHostGames).toBe(false);
   });
 

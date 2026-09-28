@@ -6,7 +6,7 @@ import type { ArenaResponse } from '../contract';
 import { activityHandler } from '../handler';
 import { json, readJsonBody } from '../http';
 import { BODY_LIMITS, spendActivityBudget } from '../limits';
-import { type ArenaViewer, toArenaSession } from '../mappers/arena';
+import { type ArenaViewer, toArenaSession, triviaDifficultyOptions } from '../mappers/arena';
 import { requireInstanceSession } from '../scope';
 
 const TRIVIA_KEY = games.trivia.TRIVIA_KEY;
@@ -65,6 +65,7 @@ function respond(
     session: session ? toArenaSession(session, viewerOf(caller)) : null,
     liveSessionId,
     canHost: canHost(caller),
+    difficulties: triviaDifficultyOptions(),
   });
 }
 

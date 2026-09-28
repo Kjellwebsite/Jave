@@ -1,7 +1,7 @@
 import { CalendarDays, Hash, Link2, MapPin } from 'lucide-react';
 import { Badge, EmptyState, Icon, Panel } from '@jave/ui';
 import type { EventWire } from '../../api/contract';
-import { enumLabel, formatRelative } from '../../lib/format';
+import { enumLabel, formatEventTiming } from '../../lib/format';
 
 const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short' });
 const TIME = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' });
@@ -22,10 +22,11 @@ function DateBlock({ at }: { at: number }) {
   );
 }
 
-/** The next events on the JAVELIN calendar, with the viewer's RSVP. */
+/** The next events on the JAVELIN calendar (including any running now), with the viewer's RSVP. */
 export function EventsPanel({ events, now }: { events: EventWire[]; now: number }) {
+  const running = events.some((event) => event.startsAt <= now && now < event.endsAt);
   return (
-    <Panel title="Events" eyebrow="UPCOMING" flush>
+    <Panel title="Events" eyebrow={running ? 'NOW · UPCOMING' : 'UPCOMING'} flush>
       {events.length === 0 ? (
         <EmptyState
           compact
@@ -56,7 +57,7 @@ export function EventsPanel({ events, now }: { events: EventWire[]; now: number 
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
                 <span className="type-eyebrow text-fg-muted">
-                  {formatRelative(event.startsAt - now).toUpperCase()}
+                  {formatEventTiming(event.startsAt, event.endsAt, now)}
                 </span>
                 {event.myRsvp ? <Badge tone="info">{enumLabel(event.myRsvp)}</Badge> : null}
               </div>

@@ -3,6 +3,9 @@ import type { ActivityHost, AuthSession } from '../platform/hosts';
 
 /** Re-authenticate this long before the JAVE token expires. */
 export const REFRESH_MARGIN_MS = 5 * 60_000;
+/** After a failed silent refresh, wait at least this long before the next attempt. */
+export const REFRESH_RETRY_MS = 30_000;
+const MS_PER_SECOND = 1000;
 
 /**
  * Server time as seen from the client. Every API response carries
@@ -30,6 +33,8 @@ export class ServerClock {
 export class ActivitySession {
   private current: AuthSession | null = null;
   private pending: Promise<AuthSession> | null = null;
+  /** Server epoch ms before which no new silent refresh is attempted (after a failed one). */
+  private refreshNotBefore = 0;
 
   constructor(
     private readonly host: ActivityHost,
@@ -55,12 +60,27 @@ export class ActivitySession {
     return this.pending;
   }
 
+  /**
+   * The token for the next request. Inside the refresh margin the session
+   * signs in again silently; if that fails (JAVELIN busy, connection lost)
+   * while the current token is still valid, the current token is used and
+   * the refresh waits before trying again, so a throttled sign-in never
+   * interrupts a game that is running.
+   */
   private async token(): Promise<string> {
     const session = this.current;
-    if (!session || session.expiresAt - this.clock.now() <= REFRESH_MARGIN_MS) {
-      return (await this.signIn()).token;
+    const now = this.clock.now();
+    if (!session || session.expiresAt <= now) return (await this.signIn()).token;
+    if (session.expiresAt - now > REFRESH_MARGIN_MS || now < this.refreshNotBefore) {
+      return session.token;
     }
-    return session.token;
+    try {
+      return (await this.signIn()).token;
+    } catch (error) {
+      const asked = error instanceof ApiError ? (error.retryAfterSeconds ?? 0) * MS_PER_SECOND : 0;
+      this.refreshNotBefore = now + Math.max(REFRESH_RETRY_MS, asked);
+      return session.token;
+    }
   }
 
   async call<T>(

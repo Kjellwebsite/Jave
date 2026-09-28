@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enumLabel, formatCountdown, formatRelative, ordinal } from './format';
+import { enumLabel, formatCountdown, formatEventTiming, formatRelative, ordinal } from './format';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -21,6 +21,20 @@ describe('format', () => {
     expect(formatRelative(12 * MINUTE)).toBe('in 12m');
     expect(formatRelative(5 * HOUR)).toBe('in 5h');
     expect(formatRelative(3 * DAY)).toBe('in 3d');
+  });
+
+  it('BREAK: an event already running reads as running, never overdue', () => {
+    const start = 10 * DAY;
+    const end = start + 2 * HOUR;
+    expect(formatEventTiming(start, end, start - 3 * DAY)).toBe('IN 3D');
+    expect(formatEventTiming(start, end, start - 30 * SECOND)).toBe('NOW');
+    expect(formatEventTiming(start, end, start + 20 * MINUTE)).toBe('ENDS IN 1H');
+    expect(formatEventTiming(start, end, end - 12 * MINUTE)).toBe('ENDS IN 12M');
+    expect(formatEventTiming(start, end, end - 30 * SECOND)).toBe('ENDING');
+    expect(formatEventTiming(start, end, end)).toBe('ENDED');
+    for (const now of [start, start + HOUR, end - SECOND]) {
+      expect(formatEventTiming(start, end, now)).not.toBe('OVERDUE');
+    }
   });
 
   it('labels enums and ordinals', () => {

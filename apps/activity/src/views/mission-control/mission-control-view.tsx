@@ -99,7 +99,7 @@ export function MissionControlView({ session }: { session: ActivitySession }) {
       key="lists"
       className="grid items-start gap-4 md:grid-cols-2 lg:col-span-7 lg:col-start-6 lg:row-start-2"
     >
-      <MissionsPanel missions={data.missions} now={now} />
+      <MissionsPanel missions={data.missions} total={data.missionsTotal} now={now} />
       <EventsPanel events={data.events} now={now} />
     </div>
   );

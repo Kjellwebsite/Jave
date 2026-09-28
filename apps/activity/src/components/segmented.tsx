@@ -4,6 +4,8 @@ import { cx } from '@jave/ui';
 export interface SegmentedOption<T extends string | number> {
   value: T;
   label: string;
+  /** Shown but not selectable (the combination cannot work right now). */
+  disabled?: boolean;
 }
 
 export interface SegmentedProps<T extends string | number> {
@@ -39,6 +41,7 @@ export function Segmented<T extends string | number>({
               name={name}
               className="peer sr-only"
               checked={option.value === value}
+              disabled={option.disabled}
               onChange={() => onChange(option.value)}
             />
             <span

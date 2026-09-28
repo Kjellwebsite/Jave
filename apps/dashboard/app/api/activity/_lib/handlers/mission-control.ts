@@ -54,6 +54,7 @@ export const handleMissionControl = activityHandler('activity.me', async (reques
     serverNow: ctx.clock.now().getTime(),
     profile: null,
     missions: [],
+    missionsTotal: 0,
     trial: null,
     events: [],
     canHostGames: false,
@@ -74,7 +75,9 @@ export const handleMissionControl = activityHandler('activity.me', async (reques
   return json<MissionControlResponse>({
     ...empty,
     profile: profile ? toProfileWire(profile) : null,
+    // Core lists active missions soonest-due first: the panel shows those, and the total.
     missions: activeMissions.slice(0, MISSION_CONTROL_MISSIONS).map(toMissionWire),
+    missionsTotal: activeMissions.length,
     trial: pickCurrentTrial(trialHistory),
     events: upcoming.map(toEventWire),
     canHostGames: canHostGames(ctx),

@@ -323,6 +323,36 @@ describe('JVLN Arena · trivia', () => {
     expect(await status(await open(token))).toEqual([403, 'FORBIDDEN']);
   });
 
+  it('offers exactly the difficulties and round counts that open a lobby', async () => {
+    const { TRIVIA_MIN_ROUNDS, TRIVIA_MAX_ROUNDS, TRIVIA_DIFFICULTIES } = games.trivia;
+    const hostActor = await kit.member({ roles: ['member'] });
+    const token = tokenFor(kit, hostActor);
+    const { difficulties } = await ok(await state(token));
+    expect(difficulties.map((option) => option.value)).toContain('mixed');
+    const tryOpen = async (difficulty: string, rounds: number) => {
+      const response = await open(token, { config: { rounds, difficulty } });
+      // One minute per attempt keeps the lobby budget out of the way.
+      kit.clock.advance(ACTIVITY_RATE_LIMITS.lobby.windowSeconds * 1000);
+      if (response.status !== 200) return response.status;
+      const { session } = await ok(response);
+      expect(session!.config).toMatchObject({ rounds, difficulty });
+      await ok(await close(token, session!.id));
+      return 200;
+    };
+    for (const { value, maxRounds } of difficulties) {
+      expect(maxRounds).toBeGreaterThanOrEqual(TRIVIA_MIN_ROUNDS);
+      expect(maxRounds).toBeLessThanOrEqual(TRIVIA_MAX_ROUNDS);
+      expect(await tryOpen(value, TRIVIA_MIN_ROUNDS), value).toBe(200);
+      expect(await tryOpen(value, maxRounds), value).toBe(200);
+      if (maxRounds < TRIVIA_MAX_ROUNDS) expect(await tryOpen(value, maxRounds + 1)).toBe(400);
+    }
+    // A difficulty the bank cannot fill is never offered: opening it always fails.
+    const offered = new Set(difficulties.map((option) => option.value));
+    for (const value of TRIVIA_DIFFICULTIES.filter((difficulty) => !offered.has(difficulty))) {
+      expect(await tryOpen(value, TRIVIA_MIN_ROUNDS), value).toBe(400);
+    }
+  });
+
   it('BREAK: invalid configs and bodies are refused', async () => {
     const member = await kit.member({ roles: ['member'] });
     const token = tokenFor(kit, member);

@@ -120,11 +120,15 @@ async function provisionDiscordUser(
  * POST /api/activity/token — `commands.authorize` code → Discord access token
  * + JAVE token bound to the user and the Activity instance. The Discord token
  * is returned for `commands.authenticate` and never stored or logged.
+ *
+ * The body is validated before any budget is spent: behind Discord's proxy
+ * the per-IP budget is shared by every member, so a request that can never
+ * reach Discord must not be able to use it up.
  */
 export const handleTokenExchange = activityHandler('activity.token', async (request, deps, ctx) => {
-  await spendActivityBudget(ctx, 'token', clientKey(request, deps));
   const body = await readJsonBody(request, tokenRequestSchema, BODY_LIMITS.token);
   if (!deps.discord) throw new DisabledError('Discord sign-in');
+  await spendActivityBudget(ctx, 'token', clientKey(request, deps));
   const { accessToken, profile } = await exchangeCode(ctx, deps.discord, body.code);
   if (profile.isBot) throw new ForbiddenError('Bot accounts cannot use the Activity.');
   await spendActivityBudget(ctx, 'tokenUser', profile.discordId);
@@ -161,8 +165,8 @@ export const handleDevPersonas = activityHandler(
  */
 export const handleDevToken = activityHandler('activity.dev-token', async (request, deps, ctx) => {
   if (!deps.devAuthEnabled) throw notAvailable();
-  await spendActivityBudget(ctx, 'token', clientKey(request, deps));
   const body = await readJsonBody(request, devTokenRequestSchema, BODY_LIMITS.token);
+  await spendActivityBudget(ctx, 'devToken', clientKey(request, deps));
   const persona = findDevPersona(body.persona);
   if (!persona) throw new ValidationError('Unknown persona.');
   const system = withActor(ctx, systemActor('dev-login'));

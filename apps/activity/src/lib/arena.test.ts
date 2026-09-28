@@ -6,6 +6,8 @@ import {
   LIVE_POLL_MS,
   MAX_BACKOFF_MS,
   newerResponse,
+  podium,
+  type PodiumSpot,
   pollDelay,
   remainingFraction,
   secondsLeft,
@@ -106,6 +108,7 @@ describe('arena state', () => {
     session: s,
     liveSessionId: s?.id ?? null,
     canHost: true,
+    difficulties: [],
   });
 
   it('BREAK: an out-of-order older response never rolls the view back', () => {
@@ -156,5 +159,37 @@ describe('arena state', () => {
       ['p1', 2],
       ['p3', 2],
     ]);
+  });
+
+  it('BREAK: players tied for a place stand at the same height on the podium', () => {
+    const spot = (key: string, placement: number, score: number): PodiumSpot => ({
+      key,
+      displayName: key,
+      score,
+      placement,
+      isYou: false,
+    });
+    const layout = (spots: PodiumSpot[]) => podium(spots).map((p) => [p.key, p.placement, p.tier]);
+    // Tied leaders: both on the tallest plate, side by side in the middle.
+    expect(layout([spot('a', 1, 500), spot('b', 1, 500), spot('c', 3, 200)])).toEqual([
+      ['b', 1, 0],
+      ['a', 1, 0],
+      ['c', 3, 2],
+    ]);
+    // A shared second place: both second plates, first in the centre.
+    expect(layout([spot('a', 1, 500), spot('b', 2, 300), spot('c', 2, 300)])).toEqual([
+      ['b', 2, 1],
+      ['a', 1, 0],
+      ['c', 2, 1],
+    ]);
+    expect(
+      layout([spot('a', 1, 500), spot('b', 2, 300), spot('c', 3, 100), spot('d', 4, 0)]),
+    ).toEqual([
+      ['b', 2, 1],
+      ['a', 1, 0],
+      ['c', 3, 2],
+    ]);
+    expect(layout([spot('solo', 1, 100)])).toEqual([['solo', 1, 0]]);
+    expect(layout([])).toEqual([]);
   });
 });

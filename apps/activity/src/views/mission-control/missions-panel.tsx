@@ -12,16 +12,30 @@ function dueTone(dueAt: number, now: number): string {
   return 'text-fg-muted';
 }
 
-/** Active missions with their deadlines; the dashboard holds the full list. */
-export function MissionsPanel({ missions, now }: { missions: MissionWire[]; now: number }) {
+export interface MissionsPanelProps {
+  /** The active missions due soonest (the server sends at most five). */
+  missions: MissionWire[];
+  /** Every active mission, including the ones not listed here. */
+  total: number;
+  now: number;
+}
+
+/**
+ * Active missions with their deadlines, soonest first. When there are more
+ * than the panel lists, it says so and points to the dashboard's full list.
+ */
+export function MissionsPanel({ missions, total, now }: MissionsPanelProps) {
+  const hidden = Math.max(0, total - missions.length);
   return (
     <Panel
       title="Missions"
-      eyebrow="ACTIVE"
+      eyebrow={hidden > 0 ? 'ACTIVE · SOONEST DUE' : 'ACTIVE'}
       flush
       actions={
         missions.length > 0 ? (
-          <span className="type-data text-small text-fg-subtle">{missions.length}</span>
+          <span className="type-data text-small text-fg-subtle" data-testid="missions-count">
+            {hidden > 0 ? `${missions.length} OF ${total}` : missions.length}
+          </span>
         ) : null
       }
     >
@@ -60,6 +74,12 @@ export function MissionsPanel({ missions, now }: { missions: MissionWire[]; now:
               </p>
             </li>
           ))}
+          {hidden > 0 ? (
+            <li className="px-5 py-3 text-small text-fg-subtle" data-testid="missions-more">
+              {hidden === 1 ? '1 more mission' : `${hidden} more missions`}, due later or without a
+              deadline. The dashboard lists every active mission.
+            </li>
+          ) : null}
         </ul>
       )}
     </Panel>

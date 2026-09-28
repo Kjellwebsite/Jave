@@ -1,35 +1,39 @@
 import { useState } from 'react';
 import { Radio, Swords } from 'lucide-react';
 import { Button, Card, Emblem, EmptyState } from '@jave/ui';
-import type { TriviaConfigWire } from '../../api/contract';
+import type { ArenaDifficultyWire, TriviaConfigWire } from '../../api/contract';
 import { Segmented } from '../../components/segmented';
 import {
-  DEFAULT_DIFFICULTY,
-  DEFAULT_PACE,
-  DEFAULT_ROUNDS,
-  DIFFICULTY_CHOICES,
-  type DifficultyChoice,
-  PACE_CHOICES,
-  type PaceChoice,
-  ROUND_CHOICES,
-  type RoundChoice,
-  SCORING_NOTE,
-} from './copy';
+  DEFAULT_ROUND_COUNT,
+  difficultyChoices,
+  effectiveDifficulty,
+  fitRounds,
+  maxRoundsAt,
+  roundChoices,
+  type RoundCount,
+} from '../../lib/lobby';
+import { DEFAULT_PACE, PACE_CHOICES, type PaceChoice, SCORING_NOTE } from './copy';
 
 export interface OpenLobbyProps {
   canHost: boolean;
+  /** What the server says a lobby can be opened with (the question bank decides). */
+  difficulties: ArenaDifficultyWire[];
   opening: boolean;
   onOpen: (config: TriviaConfigWire) => void;
 }
 
 /**
  * Nothing is live in this Activity. Hosts pick the settings and open a
- * lobby; everyone else waits here and the lobby appears on its own.
+ * lobby; everyone else waits here and the lobby appears on its own. Only
+ * combinations the server can fill are selectable.
  */
-export function OpenLobby({ canHost, opening, onOpen }: OpenLobbyProps) {
-  const [rounds, setRounds] = useState<RoundChoice>(DEFAULT_ROUNDS);
+export function OpenLobby({ canHost, difficulties, opening, onOpen }: OpenLobbyProps) {
+  const [chosenRounds, setRounds] = useState<RoundCount>(DEFAULT_ROUND_COUNT);
   const [pace, setPace] = useState<PaceChoice>(DEFAULT_PACE);
-  const [difficulty, setDifficulty] = useState<DifficultyChoice>(DEFAULT_DIFFICULTY);
+  const [chosenDifficulty, setDifficulty] = useState<string | null>(null);
+  const difficulty = effectiveDifficulty(difficulties, chosenDifficulty);
+  const maxRounds = maxRoundsAt(difficulties, difficulty);
+  const rounds = fitRounds(chosenRounds, maxRounds);
 
   if (!canHost) {
     return (
@@ -70,10 +74,17 @@ export function OpenLobby({ canHost, opening, onOpen }: OpenLobbyProps) {
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            onOpen({ rounds, secondsPerQuestion: pace, difficulty });
+            if (difficulty !== null && rounds !== null) {
+              onOpen({ rounds, secondsPerQuestion: pace, difficulty });
+            }
           }}
         >
-          <Segmented label="ROUNDS" value={rounds} options={ROUND_CHOICES} onChange={setRounds} />
+          <Segmented
+            label="ROUNDS"
+            value={rounds ?? chosenRounds}
+            options={roundChoices(maxRounds)}
+            onChange={setRounds}
+          />
           <Segmented
             label="TIME PER QUESTION"
             value={pace}
@@ -82,8 +93,8 @@ export function OpenLobby({ canHost, opening, onOpen }: OpenLobbyProps) {
           />
           <Segmented
             label="DIFFICULTY"
-            value={difficulty}
-            options={DIFFICULTY_CHOICES}
+            value={difficulty ?? ''}
+            options={difficultyChoices(difficulties)}
             onChange={setDifficulty}
           />
           <Button
@@ -92,6 +103,7 @@ export function OpenLobby({ canHost, opening, onOpen }: OpenLobbyProps) {
             size="lg"
             iconLeft={Swords}
             loading={opening}
+            disabled={difficulty === null || rounds === null}
             className="w-full"
           >
             Open lobby

@@ -1,5 +1,6 @@
 import { games } from '@jave/core';
 import type {
+  ArenaBoardEntryWire,
   ArenaSessionWire,
   TriviaConfigWire,
   TriviaScoreWire,
@@ -130,5 +131,23 @@ export function toArenaSession(session: SessionView, viewer: ArenaViewer): Arena
     })),
     trivia: isTriviaView(session.view) ? toTrivia(session.view, names, viewerUserId) : null,
     endReason: session.endReason,
+  };
+}
+
+/**
+ * One row of the all-time board. Core already filtered it by the viewer's
+ * profile visibility; the member id is only compared, never sent.
+ */
+export function toBoardEntry(
+  entry: games.LeaderboardEntry,
+  viewerMemberId: string | null,
+): ArenaBoardEntryWire {
+  return {
+    rank: entry.rank,
+    displayName: entry.displayName,
+    isYou: viewerMemberId !== null && entry.memberId === viewerMemberId,
+    wins: entry.wins,
+    bestScore: entry.bestScore,
+    sessions: entry.sessions,
   };
 }

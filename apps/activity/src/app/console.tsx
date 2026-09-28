@@ -3,7 +3,8 @@ import { Emblem, Tabs, TabsContent, TabsList, TabsTrigger, Wordmark } from '@jav
 import type { ActivitySession } from '../api/session';
 import { LiveIndicator } from '../components/live-indicator';
 import { useArena } from '../hooks/use-arena';
-import { isLive } from '../lib/arena';
+import { useArenaBoard } from '../hooks/use-arena-board';
+import { boardRefreshKey, isLive } from '../lib/arena';
 import type { AuthSession } from '../platform/hosts';
 import { ArenaView } from '../views/arena/arena-view';
 import { MissionControlView } from '../views/mission-control/mission-control-view';
@@ -28,6 +29,7 @@ function isTab(value: string): value is Tab {
  */
 export function Console({ session, auth }: { session: ActivitySession; auth: AuthSession }) {
   const arena = useArena(session);
+  const board = useArenaBoard(session, boardRefreshKey(arena.session));
   const [tab, setTab] = useState<Tab | null>(null);
 
   useEffect(() => {
@@ -87,7 +89,12 @@ export function Console({ session, auth }: { session: ActivitySession; auth: Aut
           <MissionControlView session={session} />
         </TabsContent>
         <TabsContent value="arena" forceMount className={VIEW}>
-          <ArenaView arena={arena} clock={session.clock} active={current === 'arena'} />
+          <ArenaView
+            arena={arena}
+            board={board}
+            clock={session.clock}
+            active={current === 'arena'}
+          />
         </TabsContent>
       </main>
     </Tabs>

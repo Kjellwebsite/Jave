@@ -8,5 +8,5 @@
       "@jave/activity-contract": ["../dashboard/app/api/activity/_lib/contract.ts"]
     }
   },
-  "include": ["src", "e2e", "*.ts"]
+  "include": ["src", "e2e", "scripts", "*.ts"]
 }

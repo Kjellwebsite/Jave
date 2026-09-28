@@ -3,8 +3,9 @@
  *
  * Provisions the dashboard's dev personas (MOCK / DEVELOPMENT ONLY) and gives
  * the VERIFIED persona a lived-in Mission Control: claims and verified ranks,
- * two missions, a running trial and upcoming events. Every write goes through
- * a core service, so audit, history and events are genuine.
+ * two missions, a running trial and upcoming events; plays finished Arena games
+ * among the staff personas (the founder's profile is staff-only). Every write
+ * goes through a core service, so audit, history and events are genuine.
  */
 import {
   calendar,
@@ -23,6 +24,7 @@ import {
 } from '@jave/core';
 import { createDatabase } from '@jave/database';
 import { DEV_PERSONAS, provisionDevPersona } from '../../dashboard/server/auth/dev-personas';
+import { seedArenaHistory } from './seed-arena';
 
 const MISSION_HOURS = 72;
 const URGENT_MISSION_HOURS = 18;
@@ -146,6 +148,7 @@ export async function seedActivityFixtures(databaseUrl: string): Promise<void> {
     await seedMissions(operations, memberIdOf(verified));
     await seedTrial(operations, [verified]);
     await seedEvents(operations, verified);
+    await seedArenaHistory(system, users);
   } finally {
     await database.close();
   }

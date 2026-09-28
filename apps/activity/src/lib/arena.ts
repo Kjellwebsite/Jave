@@ -33,6 +33,14 @@ export function shouldTick(session: ArenaSessionWire | null, serverNow: number):
   return deadline !== null && serverNow >= deadline + TICK_AFTER_OVERDUE_MS;
 }
 
+/**
+ * The all-time board only changes when a game completes: its refresh key
+ * changes once per completed game (and back when the next game goes live).
+ */
+export function boardRefreshKey(session: ArenaSessionWire | null): string {
+  return session?.status === 'completed' ? `completed:${session.id}` : 'live';
+}
+
 export function pollDelay(session: ArenaSessionWire | null, failures: number): number {
   if (failures > 0) return Math.min(MAX_BACKOFF_MS, LIVE_POLL_MS * 2 ** (failures - 1));
   return isLive(session) ? LIVE_POLL_MS : IDLE_POLL_MS;

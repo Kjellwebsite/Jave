@@ -234,6 +234,27 @@ export interface ArenaResponse {
   canHost: boolean;
 }
 
+export interface ArenaBoardEntryWire {
+  /** Competition rank over the rows the viewer may see (ties share a rank; hidden rows leave no gap). */
+  rank: number;
+  displayName: string;
+  isYou: boolean;
+  wins: number;
+  bestScore: number;
+  sessions: number;
+}
+
+/**
+ * The all-time trivia board, exactly as core's leaderboard shows it to this
+ * viewer: ranked games only, opted-in members in good standing, and never a
+ * profile the viewer could not open.
+ */
+export interface ArenaBoardResponse {
+  serverNow: number;
+  gameName: string;
+  entries: ArenaBoardEntryWire[];
+}
+
 export interface ArenaOpenRequest {
   config?: Partial<TriviaConfigWire>;
 }

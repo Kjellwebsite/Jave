@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ArenaResponse, ArenaSessionWire, TriviaViewWire } from '../api/contract';
 import {
+  boardRefreshKey,
   IDLE_POLL_MS,
   LIVE_POLL_MS,
   MAX_BACKOFF_MS,
@@ -118,6 +119,16 @@ describe('arena state', () => {
     const other = response(session({ id: 's2', version: 1 }), 13);
     expect(newerResponse(current, other).session!.id).toBe('s2');
     expect(newerResponse(current, response(null)).session).toBeNull();
+  });
+
+  it('refreshes the all-time board once per completed game', () => {
+    expect(boardRefreshKey(null)).toBe('live');
+    expect(boardRefreshKey(session({ status: 'lobby', trivia: null }))).toBe('live');
+    expect(boardRefreshKey(session())).toBe('live');
+    const done = boardRefreshKey(session({ status: 'completed' }));
+    expect(done).not.toBe('live');
+    expect(boardRefreshKey(session({ id: 's2', status: 'completed' }))).not.toBe(done);
+    expect(boardRefreshKey(session({ status: 'abandoned' }))).toBe('live');
   });
 
   it('maps sessions to stages', () => {

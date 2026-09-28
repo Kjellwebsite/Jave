@@ -23,6 +23,8 @@ export const ACTIVITY_RATE_LIMITS = {
   move: { limit: 40, windowSeconds: 60 },
   /** Open / join / start / leave, per user. */
   lobby: { limit: 20, windowSeconds: 60 },
+  /** All-time board reads (on launch and after each game), per user. */
+  board: { limit: 20, windowSeconds: 60 },
 } as const;
 
 export type ActivityRateLimit = keyof typeof ACTIVITY_RATE_LIMITS;

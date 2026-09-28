@@ -5,10 +5,10 @@ Discord iframe through the [Embedded App SDK](https://github.com/discord/embedde
 Its API lives in the dashboard (`apps/dashboard/app/api/activity/**`); every rule
 stays in `@jave/core`.
 
-| View                    | What the member sees                                                                                                                                                                                      |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **MISSION CONTROL**     | Their own JVLN profile: peak rank per domain as VERIFIED / CLAIMED / UNKNOWN (never a total), facets, record; active missions with deadlines; their running trial with a live countdown; the next events. |
-| **JVLN ARENA · TRIVIA** | One live trivia session per Activity instance: lobby, start, question with four options and a countdown ring, locked-in state, reveal with the correct answer and a fact, live standings, final podium.   |
+| View                    | What the member sees                                                                                                                                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **MISSION CONTROL**     | Their own JVLN profile: peak rank per domain as VERIFIED / CLAIMED / UNKNOWN (never a total), facets, record; active missions with deadlines; their running trial with a live countdown; the next events.               |
+| **JVLN ARENA · TRIVIA** | One live trivia session per Activity instance: lobby, start, question with four options and a countdown ring, locked-in state, reveal with the correct answer and a fact, live standings, final podium, all-time board. |
 
 Arena points are game points. They never change capability ranks, and the UI
 says so wherever scoring is explained.
@@ -45,7 +45,9 @@ apps/bot worker: games.tick advances timers on schedule, games.sweep closes idle
 | `apps/dashboard/app/api/activity/**/route.ts`      | One-line route files that bind a handler to the runtime (`activityDeps()`).                                                                                         |
 
 The bundle contains no `@jave/core` code: the trivia bank (the answers) and the
-engine state never leave the server (asserted by checking the production build).
+engine state never leave the server. The build enforces it: `scripts/check-bundle.ts` runs after
+`vite build` and fails when the output contains any trivia bank prompt, answer or fact, the name
+of a server secret, or a server-only library.
 
 ## Sign-in
 
@@ -98,6 +100,7 @@ fields refused), body caps enforced on the declared length and on the bytes actu
 | POST   | `/api/activity/trivia/close`                | host, or event staff                 | 20                                            | `games.abandonSession`                                                            |
 | POST   | `/api/activity/trivia/move`                 | player                               | 40                                            | `games.submitMove`                                                                |
 | POST   | `/api/activity/trivia/tick`                 | host or player                       | 150                                           | `games.tickSession`                                                               |
+| GET    | `/api/activity/trivia/leaderboard`          | signed in                            | 20                                            | `games.getLeaderboard` (trivia, wins, top 10, audience `viewer`)                  |
 
 Body caps: token 2 KB, session requests 1 KB, moves 512 B.
 
@@ -139,6 +142,19 @@ member-safe summary; the adversarial module is never read. `canHostGames` mirror
   it). Event staff (`canManageEvents`) can start or close any lobby of their instance — core audits
   it (`game.started_by_staff`, `game.abandoned`). A running game always finishes on its timers.
 - Fewer than two players is practice: never ranked, never a win (core).
+
+### Who appears on which board
+
+- **Session standings** (lobby seats, live standings, podium) list everyone seated at this
+  table, exactly like the bot's live game panel: they joined a shared game in a shared voice
+  channel. Players are seat keys (`p1`, `p2`, …) with display names; no account ids.
+- **The all-time board** is core's `getLeaderboard` with audience `viewer` (the Activity is the
+  member's own screen, like the dashboard's `/games`): ranked games only, opted-in members
+  (`showOnLeaderboards`) in good standing, and never a profile the viewer could not open
+  (`visibleProfilesCondition`) — a staff-only profile is invisible to members and leaves no gap
+  in the ranks; the member still sees their own row. Staff see every profile on their own
+  screen. The board loads on launch and again whenever a game completes; it carries display
+  names, ranks and counts only (no member ids, handles or Discord ids).
 
 ## Discord Developer Portal configuration
 
@@ -220,22 +236,28 @@ cd apps/dashboard && npx vitest run app/api/activity --maxWorkers=2  # API handl
 JAVE_TEST_BACKEND=postgres JAVE_TEST_POSTGRES_URL=postgres://… npx vitest run app/api/activity --maxWorkers=2
 pnpm --filter @jave/activity test:e2e                               # Playwright, real Postgres
 JAVE_SCREENSHOTS=1 pnpm --filter @jave/activity test:e2e            # also refreshes docs/screenshots/activity-*.png
+pnpm --filter @jave/activity check:bundle                           # bundle guard on an existing dist/
 ```
 
 The API tests drive every handler with constructed `Request`s against a TestKit database: token
 sign/verify/expiry/tamper/purpose, the Discord exchange (stubbed `fetch`), dev tokens, Mission
 Control (including what must never appear), a full two-player game, lobby races, staff control,
-instance scope, spectators, restricted and banned members, malformed and oversized bodies, budgets.
+instance scope, spectators, restricted and banned members, malformed and oversized bodies, budgets,
+and the all-time board (visibility, opt-out, no gaps, no ids; a staff-only player stays on the
+table they played at but never reaches a member's board).
 
 The end-to-end suite resets, migrates and seeds `jave_e2e_activity` (it refuses any database
-without `e2e` in its name), starts `next dev` with dev auth and the Vite dev server, and plays a
-full five-round game with two browser contexts (1280×720 and 390×844), plus BREAK cases: a lost
-connection shown and recovered, an unknown persona refused.
+without `e2e` in its name; the seed also plays six finished Arena games among the staff personas
+through core, on a manual clock two days back, and gives the founder a staff-only profile),
+starts `next dev` with dev auth and the Vite dev server, and plays a full five-round game with
+two browser contexts (1280×720 and 390×844), plus BREAK cases: a lost connection shown and
+recovered, the all-time board hiding the staff-only founder from a member while staff see it,
+an unknown persona refused.
 
 ## Deployment
 
 - **Build**: `VITE_DISCORD_CLIENT_ID=<application id> pnpm --filter @jave/activity build` →
-  `apps/activity/dist/`. Serve it from any static host or CDN over HTTPS; that host is the root
+  `apps/activity/dist/` (the bundle guard runs as part of it). Serve it from any static host or CDN over HTTPS; that host is the root
   URL mapping target.
 - **Headers on the Activity host**: Discord frames the Activity, so do not send
   `X-Frame-Options: DENY` or `frame-ancestors 'none'`. If you set `frame-ancestors`, allow
@@ -262,6 +284,10 @@ connection shown and recovered, an unknown persona refused.
   user). EXTENSION POINT: `InstanceVerifier` in `_lib/instance.ts` — a stricter verifier can call
   `GET /applications/{application id}/activity-instances/{instance id}` with the bot token; the
   dashboard deliberately does not hold the bot token today.
+- **Activity tokens are stateless.** Signing out of the dashboard does not end an Activity
+  session: a token lives at most one hour (ban, quarantine and role changes still apply on the
+  next request, because every request re-resolves the account through core). Rotating
+  `JAVE_SESSION_SECRET` ends every Activity session at once.
 - **Client IPs are Discord's.** Requests arrive through Discord's proxy, so the per-IP budget on
   `/token` is close to a global budget; the per-account budget does the fine-grained work.
 - **Polling** costs one request (and one rate-limit row update) per player per second while a game

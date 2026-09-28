@@ -50,6 +50,10 @@ async function expectNoHorizontalScroll(page: Page): Promise<void> {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
+function board(page: Page) {
+  return page.getByTestId('arena-board');
+}
+
 function round(page: Page) {
   return page.getByTestId('round');
 }
@@ -111,6 +115,9 @@ test.describe('JVLN Arena · trivia', () => {
     // The host opens a short lobby.
     await host.getByRole('tab', { name: /JVLN ARENA/ }).click();
     await expect(host.getByTestId('arena-open')).toBeVisible();
+    // The all-time board from the seeded games, as a member may see it.
+    await expect(board(host)).toContainText('Dev Moderator');
+    await expect(board(host)).not.toContainText('Dev Founder');
     await capture(host, 'arena-open');
     await host.getByRole('group', { name: 'ROUNDS' }).getByText('5', { exact: true }).click();
     await host
@@ -182,6 +189,12 @@ test.describe('JVLN Arena · trivia', () => {
         .getByTestId('podium-spot')
         .evaluateAll((spots) => spots.map((spot) => spot.firstElementChild?.textContent));
     expect(await order(host)).toEqual(await order(guest));
+    // The finished game joins the all-time board; each viewer is marked on it.
+    for (const page of [host, guest]) {
+      await expect(board(page)).toContainText('Dev Verified');
+      await expect(board(page)).toContainText('Dev Member');
+      await expect(board(page).getByText('YOU', { exact: true })).toHaveCount(1);
+    }
     await capture(host, 'arena-results');
     await capture(guest, 'arena-results');
     await host.context().close();
@@ -206,6 +219,24 @@ test.describe('JVLN Arena · trivia', () => {
     await host.getByRole('button', { name: 'Close lobby' }).click();
     await expect(host.getByTestId('ended')).toContainText('Stopped by the host.');
     await host.context().close();
+  });
+
+  test('BREAK: the all-time board never shows members a staff-only profile', async ({
+    browser,
+  }) => {
+    // The seeded founder won the most games but keeps a staff-only profile.
+    const staff = await launch(browser, 'operations', uniqueInstance('board-staff'), DESKTOP);
+    await staff.getByRole('tab', { name: /JVLN ARENA/ }).click();
+    await expect(board(staff).getByRole('listitem').first()).toContainText('Dev Founder');
+    await staff.context().close();
+
+    const member = await launch(browser, 'member', uniqueInstance('board-member'), PHONE);
+    await member.getByRole('tab', { name: /JVLN ARENA/ }).click();
+    await expect(board(member).getByRole('listitem').first()).toContainText('Dev Moderator');
+    await expect(board(member).getByRole('listitem').first()).toContainText(/^01/);
+    await expect(board(member)).not.toContainText('Dev Founder');
+    await expectNoHorizontalScroll(member);
+    await member.context().close();
   });
 
   test('BREAK: an unknown persona gets no token', async ({ browser }) => {

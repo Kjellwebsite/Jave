@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { testBackend } from '@jave/database/testing';
 import { listAiRequests, getUsageByUser } from '../ai/requests.service';
 import { getOrgUsage, getUsage } from '../ai/usage.service';
+import { getServerOverview } from '../analytics/overview.service';
+import { getJavelinProgress } from '../analytics/progress.service';
 import { listAuditLogs } from '../audit/audit.service';
 import { getProfile } from '../identity/profile.service';
 import { listMembers } from '../identity/users.service';
@@ -182,6 +184,16 @@ describe.skipIf(testBackend() !== 'postgres')(
              ${aiNow} - (g * interval '15 minutes')
       from generate_series(1, ${FOCUS_AI_REQUESTS}) g;
     `);
+      // Join and leave history for analytics: one join per member, one in ten left again.
+      await q(`
+      insert into guild_member_events (user_id, type, account_age_days, occurred_at)
+      select u.id, 'join', 400, m.joined_guild_at
+      from users u join members m on m.user_id = u.id where u.username like 'perf_user_%';
+      insert into guild_member_events (user_id, type, occurred_at)
+      select u.id, 'leave', m.joined_guild_at + interval '3 days'
+      from users u join members m on m.user_id = u.id
+      where u.username like 'perf_user_%' and substr(u.username, 11)::int % 10 = 0;
+    `);
       await q('analyze');
 
       captured = [];
@@ -218,6 +230,10 @@ describe.skipIf(testBackend() !== 'postgres')(
       await run('ai usage today', () => getUsage(as(focus)));
       await run('ai usage by member', () => getUsageByUser(as(founder), { limit: 25 }));
       await run('ai org usage', () => getOrgUsage(as(founder), { days: 1 }));
+      await run('analytics overview (30 days)', () =>
+        getServerOverview(as(founder), { rangeDays: 30 }),
+      );
+      await run('javelin progress', () => getJavelinProgress(as(founder)));
       await run('job claim', () =>
         claimJobs(db, { workerId: 'perf', limit: 10, now: kit.clock.now(), types: ['perf.noop'] }),
       );
@@ -249,7 +265,7 @@ describe.skipIf(testBackend() !== 'postgres')(
           seqScans: r.seqScans.map((scan) => `${scan.table} (${scan.rows})`).join(', ') || '-',
         })),
       );
-      expect(new Set(reports.map((r) => r.label)).size).toBe(17);
+      expect(new Set(reports.map((r) => r.label)).size).toBe(19);
       const unboundedScans = reports.flatMap((r) =>
         r.seqScans
           .filter((scan) => UNBOUNDED_TABLES.has(scan.table) && scan.rows > SCAN_BUDGET_ROWS)

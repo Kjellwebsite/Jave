@@ -155,6 +155,12 @@ Postgres-backed (`jobs` table, `FOR UPDATE SKIP LOCKED`) — no Redis.
 Only the bot process runs a worker. The dashboard enqueues; the bot executes.
 Job types prefixed `discord.` are Discord side effects handled in `apps/bot`.
 
+`system.housekeeping` runs daily and prunes operational rows in bounded batches
+(finished jobs, ended sessions, rate-limit buckets, webhook delivery logs; see
+RUNBOOK.md). The organization's record (audit log, cases, ranks, results) is
+never pruned. Queue statistics read only live and dead jobs, through the status
+index, so they stay cheap however many finished jobs accumulate.
+
 ### Settings
 
 `server_settings` holds one validated JSON document per section (branding,
@@ -162,6 +168,23 @@ roles, channels, moderation, security, tickets, applications, trials, ai,
 integrations, notifications, analytics). Every field has a default, so an
 empty database works. Updates are validated, audited with a field-level diff
 and invalidate the per-process cache. Secrets never live in settings.
+
+### Pagination and counts
+
+List services take `limit`/`offset` and return `{ items, total }`. On tables that
+grow without bound (audit log, jobs) the total is **capped**: `cappedCount`
+counts at most 10,000 rows past the offset and the page reports
+`totalCapped: true`, so a deep filter never scans the whole table; the UI shows
+`10,000+`.
+
+### Privacy
+
+`privacy` exports a member's own data (founders: anyone's, with a reason),
+erases a departed member's personal data while keeping the organization's
+record pseudonymous, and controls dashboard sessions. Erasure is one
+transaction that scrubs names from kept records, replaces what the member wrote,
+deletes personal rows and pseudonymizes the identity; the Discord ID stays so a
+ban holds. See docs/modules/privacy.md.
 
 ### Notifications
 
@@ -183,7 +206,12 @@ extension points: recorded as `skipped` until a provider exists.
   active role grant per member/role, one live job per dedupe key).
 - `pnpm db:migrate` applies migrations and idempotent reference data.
 - Tests run against **PGlite** (Postgres compiled to WASM) with the committed
-  migrations applied — real SQL, no mocks, no server required.
+  migrations applied — real SQL, no mocks, no server required — and, with
+  `JAVE_TEST_BACKEND=postgres`, against a real PostgreSQL 16 through the
+  production driver (postgres-js), one database per test cloned from a template
+  per migration set. Both are release gates: PGlite runs one transaction at a
+  time, so only the real server exercises row-lock races, and it accepts
+  values postgres-js rejects.
 
 ## Testing
 
@@ -193,6 +221,18 @@ extension points: recorded as `skipped` until a provider exists.
   to run the job queue.
 - Tests prefixed `BREAK:` are adversarial: they try privilege escalation,
   self-verification, injection-shaped input, and similar.
+- **Gauntlet suites** (`packages/core/src/gauntlet`): one member's whole path
+  through the organization with every job handler and subscriber running
+  (seams between modules), and a real-Postgres performance gauntlet that seeds
+  volume and checks the query plans and latency of the hot read paths.
+- The privacy erasure test scans every text column of every table, built from
+  the schema, so a new table that stores personal text is caught.
+- Bot: `createBotHarness()` (below). Dashboard: Vitest for server code and
+  Playwright end-to-end specs against a production build and a real, seeded
+  PostgreSQL database (`pnpm test:e2e`), including a visual gauntlet at 1440 and
+  390 px that fails on horizontal overflow.
+- `COMMANDS.md` is generated from the command definitions; a test fails when it
+  drifts.
 
 ## Security principles
 
@@ -242,10 +282,32 @@ Worker (same process) ──► core job handlers + feature 'discord.*' handlers
   `allowedMentions: { parse: [] }`.
 - **Replies** are ephemeral unless the content is meant for the channel; staff-only
   data is never posted publicly.
-- **Health**: `/healthz` (liveness) and `/readyz` (Discord, database, queue,
-  webhooks) on `BOT_HEALTH_PORT`; `/jave status` renders the same report.
+- **Health**: `/healthz` (liveness) and `/readyz` (Discord and database are
+  critical; queue and AI degrade the report without failing readiness) on
+  `BOT_HEALTH_PORT`; `/jave status` renders the same report.
 - **Build**: esbuild bundles the bot and all dependencies into `dist/main.mjs`;
   the container needs only Node.js.
 - **Testing**: `createBotHarness()` = TestKit + FakeDiscordGateway + the real app
   composition. `bot.run({ kind, name, user, options })` drives the router exactly
   as Discord would.
+
+## Dashboard (`apps/dashboard`)
+
+- **Reads** are React Server Components calling core services with the
+  request's `ServiceContext` (session cookie → hashed session row → actor with
+  current roles and standing, resolved on every request).
+- **Writes** are Server Actions wrapped in `runAction`: same-origin check, a live
+  session, then core. Authorization happens in core, never in the UI; controls
+  are hidden by capability only as a convenience.
+- **Downloads** (ticket transcripts, data exports) are `POST` route handlers:
+  same-origin check, small-body limit, then core authorizes and audits; the
+  response is an attachment with `no-store`, `nosniff` and a sandboxing CSP.
+- **Inbound webhooks** (`/api/webhooks/*`) read the raw body, cap its size, and
+  hand it to core, which verifies the signature before parsing anything.
+- **Sign-in** is Discord OAuth2 with state and PKCE; sessions are random 256-bit
+  tokens of which only a SHA-256 hash is stored. `JAVE_DEV_AUTH` persona login
+  exists for development and tests only and is refused in production.
+- **Security headers**: per-request CSP nonce with `strict-dynamic`,
+  `frame-ancestors 'none'`, HSTS in production, strict referrer policy.
+- **Errors**: domain errors show their user-safe message; anything else shows an
+  8-character reference that is also logged next to the stack trace.

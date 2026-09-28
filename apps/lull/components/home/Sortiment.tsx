@@ -31,6 +31,8 @@ export function Sortiment({ showRatings }: { showRatings: boolean }) {
         {PRODUCTS.map((product) => {
           const [light, mid, dark] = product.colors.card_stops;
           const rating = showRatings ? productRating(product) : null;
+          // More than four actives: tighter rows so the list stays above the product name.
+          const dense = product.ingredients.length > 4;
           return (
             <li key={product.slug} className="w-[248px] shrink-0 snap-start xl:w-auto">
               <Link
@@ -57,14 +59,16 @@ export function Sortiment({ showRatings }: { showRatings: boolean }) {
                     <span className="btab-score w-[60px]! h-[3px]!" />
                   </TabletFace>
                 </div>
-                <div className="card-ing absolute top-6 left-5 flex w-[calc(100%-40px)] flex-col gap-[9px]">
+                <div
+                  className={`card-ing absolute left-5 flex w-[calc(100%-40px)] flex-col ${dense ? 'top-[18px] gap-[5px]' : 'top-6 gap-[9px]'}`}
+                >
                   <span className="font-display text-[12px] font-bold tracking-[0.5px] opacity-85">
                     Pro Tablette
                   </span>
                   {product.ingredients.map((ingredient) => (
                     <span
                       key={ingredient.name}
-                      className="flex justify-between gap-2 border-b border-white/25 pb-2 text-[13px] leading-[1.3]"
+                      className={`flex justify-between gap-2 border-b border-white/25 ${dense ? 'pb-1 text-[12px] leading-[1.25]' : 'pb-2 text-[13px] leading-[1.3]'}`}
                     >
                       <span>{ingredient.name}</span>
                       <span className="font-display font-bold whitespace-nowrap">

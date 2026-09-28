@@ -173,6 +173,7 @@ function IngredientZoom({
   onClose: () => void;
   panelRef: RefObject<HTMLDivElement | null>;
 }) {
+  const perSide = Math.ceil(product.ingredients.length / 2);
   return (
     <div
       ref={panelRef}
@@ -180,26 +181,37 @@ function IngredientZoom({
       role="region"
       aria-label={`Inhaltsstoffe von Lull ${product.name}`}
       className="zoom-panel"
+      data-dense={perSide > 2 || undefined}
     >
       <ul className="flex flex-col gap-7 pt-2 lg:block lg:pt-0">
         {product.ingredients.map((ingredient, k) => {
-          const delay = 0.7 + (k % 2) * 0.2 + (k >= 2 ? 0.1 : 0);
+          // The first half sits left of the tablet, the rest right, top to bottom.
+          const left = k < perSide;
+          const row = left ? k : k - perSide;
+          const rows = left ? perSide : product.ingredients.length - perSide;
+          const delay = 0.7 + row * 0.2 + (left ? 0 : 0.1);
           return (
             <li
               key={ingredient.name}
               className="zoom-item ingr-item"
-              data-side={k < 2 ? 'left' : 'right'}
-              data-row={k % 2}
-              style={{ animationDelay: `${delay.toFixed(1)}s` }}
+              data-side={left ? 'left' : 'right'}
+              data-row={row}
+              style={{
+                animationDelay: `${delay.toFixed(1)}s`,
+                ['--row' as string]: row,
+                ['--step' as string]: rows > 1 ? 495 / (rows - 1) : 0,
+              }}
             >
               <span className="flex grow flex-col gap-1.5">
                 <span className="font-display text-[15px] font-bold opacity-85">
                   {ingredient.dose}
                 </span>
-                <span className="font-serif text-[30px] leading-none lg:text-[34px]">
+                <span className="zoom-name font-serif text-[30px] leading-none lg:text-[34px]">
                   {ingredient.name}
                 </span>
-                <span className="text-[15px] leading-[1.45] opacity-90">{ingredient.note}</span>
+                <span className="zoom-note text-[15px] leading-[1.45] opacity-90">
+                  {ingredient.note}
+                </span>
               </span>
               <span
                 aria-hidden="true"

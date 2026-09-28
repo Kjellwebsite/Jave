@@ -9,8 +9,8 @@ const BARRIER_COLOR = '#8e86b8';
 
 const LEVELS: Record<number, string> = {
   3: 'Meta-Analyse am Menschen',
-  2: 'Randomisierte Studie am Menschen',
-  1: 'Tierstudie',
+  2: 'Studie am Menschen',
+  1: 'Tier- oder Zellstudie',
 };
 
 function Source({ label, href }: { label: string; href?: string }) {
@@ -59,6 +59,7 @@ export function ReleaseMatrix({
   ] as const;
   const withEffects = product.ingredients.find((i) => i.evidence?.effects?.length);
   const halfLifeOf = product.ingredients.find((i) => i.name === copy.halfLife.ingredient);
+  const withStat = product.ingredients.find((i) => i.layer === 1 && i.evidence?.stat);
   const byLayer = (layer: number) => product.ingredients.filter((i) => i.layer === layer);
 
   return (
@@ -110,14 +111,13 @@ export function ReleaseMatrix({
                     <span className="text-[12px] leading-[1.4] opacity-75 sm:text-[13px]">
                       {layer.text}
                     </span>
-                    {actives.map((active) => (
-                      <span
-                        key={active.name}
-                        className="text-[12px] leading-[1.4] font-semibold sm:text-[13px]"
-                      >
-                        {active.name} {active.dose}
+                    {actives.length > 0 && (
+                      <span className="text-[12px] leading-[1.4] font-semibold sm:text-[13px]">
+                        {actives
+                          .map((i) => (/\d/.test(i.dose) ? `${i.name} ${i.dose}` : i.name))
+                          .join(' · ')}
                       </span>
-                    ))}
+                    )}
                   </span>
                 </li>
               );
@@ -161,6 +161,14 @@ export function ReleaseMatrix({
             )}
             {phase.id === 'durchschlafen' && (
               <>
+                {withStat?.evidence?.stat && (
+                  <div className="rm-stat">
+                    <strong>{withStat.evidence.stat.value}</strong>
+                    <span>
+                      {withStat.evidence.stat.label} mit {withStat.name} {withStat.dose}
+                    </span>
+                  </div>
+                )}
                 <StageBar />
                 <p className="rm-cite">
                   Anteile am Schlaf in der typischen Nacht oben, daneben der Richtwert für gesunde
@@ -271,6 +279,12 @@ export function ReleaseMatrix({
                   {ingredient.name}{' '}
                   <span className="font-semibold opacity-60">{ingredient.dose}</span>
                 </h4>
+                {ingredient.evidence.stat && (
+                  <div className="rm-stat">
+                    <strong>{ingredient.evidence.stat.value}</strong>
+                    <span>{ingredient.evidence.stat.label}</span>
+                  </div>
+                )}
                 <p className="m-0 text-[15px] leading-[1.55]">{ingredient.evidence.finding}</p>
                 <Source label={ingredient.evidence.source} href={ingredient.evidence.url} />
               </article>

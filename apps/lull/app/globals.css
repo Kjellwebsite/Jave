@@ -1647,6 +1647,26 @@
       right: 0;
       top: calc(var(--u) * 790);
     }
+    /* Five to eight actives: up to four rows per side, a little smaller. */
+    .zoom-panel[data-dense] .zoom-item {
+      top: calc(var(--u) * (150 + var(--row) * var(--step)));
+    }
+    .zoom-panel[data-dense] .zoom-name {
+      font-size: max(24px, calc(var(--u) * 28));
+    }
+    .zoom-panel[data-dense] .zoom-note {
+      font-size: 14px;
+    }
+    .zoom-panel[data-dense] .zoom-close {
+      top: calc(var(--u) * 830);
+    }
+  }
+  /* Between 1024 and 1279 px seven actives only fit with name and dose; the notes stay in the
+     ingredient matrix further down. */
+  @media (min-width: 1024px) and (max-width: 1279px) {
+    .zoom-panel[data-dense] .zoom-note {
+      display: none;
+    }
   }
   @media (max-width: 1023px) {
     .zoom-line {
@@ -2048,10 +2068,10 @@
     top: calc(var(--tab-s) * 0.28);
   }
   .ex-labels-static .ex-label:nth-child(2) {
-    top: calc(var(--tab-s) * 0.72);
+    top: calc(var(--tab-s) * 0.74);
   }
   .ex-labels-static .ex-label:nth-child(3) {
-    top: calc(var(--tab-s) * 1.18);
+    top: calc(var(--tab-s) * 1.24);
   }
   @media (max-width: 767px) {
     .ex-labels-static .ex-label {
@@ -2290,6 +2310,27 @@
   }
   .rm-level span[data-on] {
     background: #4a4fd8;
+  }
+  .rm-stat {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  .rm-stat strong {
+    font-size: 40px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.5px;
+  }
+  .rm-stat span {
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0.75;
+  }
+  /* An odd number of studies: the last card takes the full row. */
+  .rm-evidence > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
   .rm-level-legend {
     display: flex;

@@ -13,7 +13,7 @@ export const HERO = {
 
 export const STAT_NOTES = {
   formulas: 'Eine für jeden Zustand, von Ruhe bis Regeneration.',
-  ingredients: 'Jeder mit bekanntem Signalweg und Humandaten.',
+  ingredients: 'Jeder mit bekanntem Signalweg.',
   layers: 'Getrennt gepresst, gestaffelt freigesetzt.',
   tablets: 'Pro Blister, jede einzeln versiegelt.',
 } as const;

@@ -24,13 +24,15 @@ export interface Effect {
 
 /** The best study behind an ingredient. Studies used the single ingredient, not the product. */
 export interface Evidence {
-  /** 3 meta-analysis in humans, 2 randomized controlled trial in humans, 1 animal study. */
+  /** 3 meta-analysis in humans, 2 study in humans, 1 animal or cell study. */
   level: 1 | 2 | 3;
   kind: string;
   finding: string;
   source: string;
   url: string;
   effects?: Effect[];
+  /** One headline number of the study, e.g. "+7,6 %" with "NREM-Schlaf im EEG". */
+  stat?: { value: string; label: string };
 }
 
 export interface IngredientRole {
@@ -210,6 +212,10 @@ function parseIngredient(value: unknown, where: string): void {
     if (![1, 2, 3].includes(level)) fail(`${at}.level`, 'expected 1, 2 or 3');
     for (const key of ['kind', 'finding', 'source']) text(evidence, key, at);
     url(evidence, 'url', at);
+    if (evidence.stat !== undefined) {
+      const stat = object(evidence.stat, `${at}.stat`);
+      for (const key of ['value', 'label']) text(stat, key, `${at}.stat`);
+    }
     if (evidence.effects !== undefined) {
       list(evidence, 'effects', at).forEach((item, i) => {
         const effect = object(item, `${at}.effects[${i}]`);
@@ -313,7 +319,9 @@ function parseProduct(value: unknown, index: number): Product {
   }
 
   const ingredients = list(p, 'ingredients', where);
-  if (ingredients.length !== 4) fail(`${where}.ingredients`, 'the design expects four');
+  if (ingredients.length < 4 || ingredients.length > 8) {
+    fail(`${where}.ingredients`, 'the design takes four to eight');
+  }
   ingredients.forEach((item, i) => parseIngredient(item, `${where}.ingredients[${i}]`));
 
   for (const key of ['name', 'category', 'pack', 'card_blurb', 'howto', 'moments']) {

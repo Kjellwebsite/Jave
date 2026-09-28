@@ -89,8 +89,10 @@ Abschnitte der Produktseite frei, aktuell bei Calm und Drift:
   Halbwertszeit) und getestet. Die Diagrammfarben sind auf Farbenblindheit und Kontrast geprüft
   (`chartTokens.ts`).
 
-Eine neue Rezeptur ist damit nur eine Änderung an `data/products.json`. Der Parser verlangt
-weiterhin genau vier Wirkstoffe pro Produkt, weil Layout und Schichtgrafik dafür gebaut sind.
+Eine neue Rezeptur ist damit nur eine Änderung an `data/products.json`. Der Parser erlaubt vier
+bis acht Wirkstoffe pro Produkt. Ab fünf rückt die Zutaten-Ansicht um die Tablette auf bis zu vier
+Zeilen pro Seite zusammen (zwischen 1024 und 1279 px nur Name und Dosis), und die Liste auf der
+Sortimentskarte wird enger.
 
 ## Vor dem Launch offen
 
@@ -122,18 +124,31 @@ Beim Bauen zusätzlich aufgefallen:
   „EU-Health-Claim“ markierten Sätze zugelassene Angaben (Melatonin 1 mg, Magnesium). Die
   Studien wurden mit einzelnen Wirkstoffen gemacht, nicht mit Drift; die Magnolien-Daten stammen
   aus einer Tierstudie.
-- **Drift-Rezeptur:** Melatonin 1 mg, L-Theanin 200 mg, Magnolienrinde 200 mg (Honokiol),
-  Magnesium 100 mg. Melatonin stufen BfArM und BfR in Deutschland dosisunabhängig als
-  Arzneimittel ein, die Rechtslage ist umstritten: vor Launch klären, sonst ohne Melatonin.
-  Für Magnolienrinde Novel-Food-Status und Einstufung prüfen, Extrakt und Dosis fachlich
-  festlegen. Freisetzungsprofil und Schichtaufbau sind Zielwerte, mit Dissolution-Tests belegen.
-  „Blueberry Moon“ ist der Geschmack der Hülle, weil die Tablette unzerkaut geschluckt wird.
-- **Geschmack:** „Raspberry Clouds“ passt zu einer Kau- oder Lutschtablette, die
-  Verzehrempfehlung von Calm sagt aber „mit Wasser“. Darreichungsform klären.
-- **Wirkstoffe:** Nur Stoffe, die in Nahrungsergänzungsmitteln zulässig sind. Arzneistoffe,
-  nicht zugelassene Novel Foods und Research Chemicals gehören nicht in den Shop. Deshalb fehlen
-  GB-115, DHH-B und 8β-(4′-Hydroxytigloyloxy)costunolid, ebenso Venetron (Apocynum-venetum-
-  Extrakt, keine EU-Zulassung gefunden).
+- **Drift-Rezeptur:** Melatonin 1 mg, L-Theanin 200 mg, Honokiol 200 mg, DHH-B 10 mg,
+  8β-(4′-Hydroxytigloyloxy)costunolid (Dosis offen), Venetron 50 mg, Magnesium 100 mg.
+  - Melatonin stufen BfArM und BfR in Deutschland dosisunabhängig als Arzneimittel ein, die
+    Rechtslage ist umstritten.
+  - Honokiol, DHH-B und das Costunolid sind isolierte Pflanzenstoffe. Als Lebensmittel
+    brauchen sie eine Zulassung als neuartiges Lebensmittel (VO (EU) 2015/2283), die es nicht
+    gibt. Für DHH-B und das Costunolid gibt es nur Tier- und Zelldaten, keine am Menschen.
+  - Das Costunolid hemmte im Zellversuch die Orexin-Rezeptoren, also das Wirkprinzip
+    verschreibungspflichtiger Schlafmittel wie Suvorexant. Das Risiko, als Arzneimittel
+    eingestuft zu werden, ist hoch. Die Dosis fehlt. Der Warnhinweis zur Korbblütler-Allergie
+    ist ergänzt, weil Sesquiterpenlactone Allergien auslösen können.
+  - Venetron (Apocynum-venetum-Blattextrakt): Status als neuartiges Lebensmittel in der EU
+    klären. In den USA gilt es als selbst erklärtes GRAS, die FDA hatte dazu Sicherheitsfragen.
+  - Honokiol 200 mg und DHH-B 10 mg sind übliche Marktdosen, fachlich festlegen. Mit rund
+    700 mg Magnesiumbisglycinat für 100 mg Magnesium wird die Tablette groß: Gewicht und
+    Schluckbarkeit mit dem Hersteller prüfen.
+  - Freisetzungsprofil und Schichtaufbau sind Zielwerte, mit Dissolution-Tests belegen.
+    „Blueberry Moon“ ist der Geschmack der Hülle, weil die Tablette unzerkaut geschluckt wird.
+- **Markenversprechen:** „Dosis nach Studienlage“ auf der Startseite spricht von Humanstudien.
+  Für DHH-B und das Costunolid gibt es keine, also Versprechen anpassen oder die Stoffe
+  weglassen. Die Zahlen-Notiz „Jeder mit bekanntem Signalweg und Humandaten“ ist schon
+  entsprechend gekürzt.
+- **Wirkstoffe:** Verkauft werden dürfen nur Stoffe, die in Nahrungsergänzungsmitteln zulässig
+  sind. Arzneistoffe und Research Chemicals wie GB-115 sind nicht im Shop; die Pflanzenstoffe von
+  Drift oben brauchen vor dem Verkauf eine rechtliche Klärung.
 - **Kontrast:** Bei Drift steht der Blister-Text im Prototyp auf mittlerem Violett
   (Kontrast etwa 2:1). Das Design ist so übernommen und sollte geprüft werden.
 

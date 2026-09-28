@@ -34,8 +34,8 @@ describe('product data', () => {
 
   it('counts distinct active ingredients for the home page stat', () => {
     // L-Theanin is in Calm, Drift and Spark, Safranextrakt in Calm and Bloom.
-    expect(allIngredients()).toHaveLength(20);
-    expect(distinctIngredientCount()).toBe(17);
+    expect(allIngredients()).toHaveLength(23);
+    expect(distinctIngredientCount()).toBe(20);
   });
 
   it('prices every product below its old price', () => {
@@ -75,6 +75,11 @@ describe('flavor, explainer and warnings', () => {
       const layer = drift.release!.layers[ingredient.layer!]!;
       expect(layer.end).toBeGreaterThan(layer.start!);
       expect(ingredient.evidence?.url).toMatch(/^https:\/\//);
+    }
+    expect(drift.ingredients).toHaveLength(7);
+    // Animal and cell data must say that human data is missing.
+    for (const ingredient of drift.ingredients.filter((i) => i.evidence?.level === 1)) {
+      expect(ingredient.evidence?.finding).toMatch(/Menschen|Humandaten/);
     }
     const melatonin = drift.ingredients.find((i) => i.name === 'Melatonin')!;
     expect(melatonin.dose).toBe('1 mg');

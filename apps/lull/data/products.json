@@ -112,7 +112,7 @@
       "prompt": "Mein Kopf ist nachts zu laut",
       "pitch": "Zwei Freisetzungen in einer Tablette: eine fürs Einschlafen, eine für die Stunden danach. Am Morgen ist nichts mehr übrig.",
       "when": "Kurz vor dem Schlafengehen",
-      "targets": ["Einschlafzeit", "GABA-A", "NREM-Schlaf", "Nervensystem"]
+      "targets": ["Einschlafzeit", "GABA-A", "Orexin", "NREM-Schlaf"]
     },
     "card_blurb": "Runterfahren, einschlafen, durchschlafen.",
     "colors": {
@@ -190,14 +190,14 @@
         }
       },
       {
-        "name": "Magnolienrinde",
+        "name": "Honokiol",
         "dose": "200 mg",
-        "note": "Extrakt mit Honokiol, das im Tiermodell an der Benzodiazepin-Stelle des GABA-A-Rezeptors ansetzt.",
-        "layer": 1,
+        "note": "Aus Magnolienrinde. Setzt im Tiermodell an der Benzodiazepin-Stelle des GABA-A-Rezeptors an.",
+        "layer": 0,
         "roles": [
           {
-            "phase": "durchschlafen",
-            "text": "Honokiol verlängerte im Maus-EEG den NREM-Schlaf."
+            "phase": "einschlafen",
+            "text": "Verkürzte im Maus-EEG die Zeit bis zum NREM-Schlaf und verlängerte ihn."
           }
         ],
         "evidence": {
@@ -206,6 +206,67 @@
           "finding": "Honokiol (10 und 20 mg/kg) verkürzte die Zeit bis zum NREM-Schlaf und verlängerte ihn. Flumazenil hob den Effekt auf. Humandaten zu Schlafphasen gibt es noch nicht.",
           "source": "Qu et al., British Journal of Pharmacology 2012",
           "url": "https://bpspubs.onlinelibrary.wiley.com/doi/10.1111/j.1476-5381.2012.02010.x"
+        }
+      },
+      {
+        "name": "DHH-B",
+        "dose": "10 mg",
+        "note": "Dihydrohonokiol-B, aus Honokiol gewonnen. Wirkt im Tiermodell über den GABA-A-Rezeptor angstlösend.",
+        "layer": 1,
+        "roles": [
+          {
+            "phase": "durchschlafen",
+            "text": "Verstärkte im Tiermodell die Wirkung von GABA am GABA-A-Rezeptor."
+          }
+        ],
+        "evidence": {
+          "level": 1,
+          "kind": "Tierstudie · Maus",
+          "finding": "Wirkte bei Mäusen angstlösend und verstärkte im Hirngewebe den GABA-gesteuerten Chlorid-Einstrom. Studien am Menschen gibt es nicht.",
+          "source": "Maruyama et al., Journal of Pharmacy and Pharmacology 2001",
+          "url": "https://onlinelibrary.wiley.com/doi/abs/10.1211/0022357011775848"
+        }
+      },
+      {
+        "name": "8β-(4′-Hydroxy\u00adtigloyl\u00adoxy)\u00adcostunolid",
+        "dose": "Dosis folgt",
+        "note": "Sesquiterpenlacton aus Korbblütlern. Hemmt im Zellversuch die Orexin-Rezeptoren, die wach halten.",
+        "layer": 1,
+        "roles": [
+          {
+            "phase": "durchschlafen",
+            "text": "Hemmte im Zellversuch beide Orexin-Rezeptoren, die den Wachzustand halten."
+          }
+        ],
+        "evidence": {
+          "level": 1,
+          "kind": "Zebrafisch und Zellversuch",
+          "finding": "Zebrafische verhielten sich wie unter Suvorexant, einem Schlafmittel, das Orexin blockiert. Im Zellversuch hemmte der Stoff beide Orexin-Rezeptoren. Humandaten gibt es noch nicht.",
+          "source": "Yamanaka et al., European Review for Medical and Pharmacological Sciences 2020",
+          "url": "https://www.europeanreview.org/article/21207"
+        }
+      },
+      {
+        "name": "Venetron",
+        "dose": "50 mg",
+        "note": "Extrakt aus den Blättern von Apocynum venetum (Luobuma). Im Schlaf-EEG mehr NREM-Schlaf.",
+        "layer": 1,
+        "roles": [
+          {
+            "phase": "durchschlafen",
+            "text": "Verlängerte im Schlaf-EEG den NREM-Schlaf um 7,6 %."
+          }
+        ],
+        "evidence": {
+          "level": 2,
+          "kind": "EEG-Studie · Mensch",
+          "finding": "Im Schlaf-EEG verlängerten 50 mg Apocynum-venetum-Blattextrakt den NREM-Schlaf um 7,6 %.",
+          "source": "Yamatsu et al., Journal of Nutritional Science and Vitaminology 2015",
+          "url": "https://www.jstage.jst.go.jp/article/jnsv/61/2/61_182/_article",
+          "stat": {
+            "value": "+7,6 %",
+            "label": "NREM-Schlaf im EEG"
+          }
         }
       },
       {
@@ -273,7 +334,7 @@
         {
           "id": "durchschlafen",
           "title": "Durchschlafen",
-          "text": "Tiefschlaf (N3) liegt vor allem in den ersten beiden Schlafzyklen. Genau dann gibt der Kern ab."
+          "text": "Tiefschlaf (N3) liegt vor allem in den ersten beiden Schlafzyklen. Genau dann gibt der Kern ab, mit Venetron, DHH-B, dem Costunolid und Magnesium."
         },
         {
           "id": "aufwachen",
@@ -293,6 +354,7 @@
       "Kann müde machen. Nach der Einnahme kein Fahrzeug führen und keine Maschinen bedienen.",
       "Nicht zusammen mit Alkohol, Schlafmitteln oder anderen dämpfenden Substanzen einnehmen.",
       "Nicht geeignet für Schwangere, Stillende sowie Kinder und Jugendliche.",
+      "Nicht geeignet bei einer Allergie gegen Korbblütler (zum Beispiel Kamille oder Arnika).",
       "Wenn du Medikamente nimmst oder chronisch krank bist, sprich vorher mit deiner Ärztin oder deinem Arzt."
     ],
     "rating_PLACEHOLDER": {

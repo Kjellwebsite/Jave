@@ -51,6 +51,23 @@
     ],
     "howto": "Eine Tablette mit Wasser, etwa 45 Minuten bevor es losgeht. Maximal zwei pro Tag.",
     "moments": "Das erste Date. Die Präsentation vor dem Team. Die Party, auf der du genau eine Person kennst.",
+    "flavor": {
+      "name": "Raspberry Clouds",
+      "note": "Himbeere, weich und luftig. Fruchtig, ohne süß zu sein.",
+      "colors": ["#ff3d8b", "#ff9cc6", "#ffe3f0"]
+    },
+    "explainer": {
+      "eyebrow": "Anti-Überreizung",
+      "title": "Weniger Überreizung.",
+      "lead": "Unter Anspannung feuern Nervenzellen schneller, als du sortieren kannst. Erregung über Glutamat gewinnt, die Bremse über GABA kommt nicht hinterher. Calm setzt an vier Stellen an, damit die Balance wieder kippen kann.",
+      "busy": "Angespannt",
+      "calm": "Mit Calm"
+    },
+    "warnings": [
+      "Nicht zusammen mit Alkohol oder anderen dämpfenden Substanzen einnehmen.",
+      "Nicht geeignet für Schwangere, Stillende sowie Kinder und Jugendliche.",
+      "Wenn du Medikamente nimmst, sprich vorher mit deiner Ärztin oder deinem Arzt."
+    ],
     "rating_PLACEHOLDER": {
       "avg": "4,8",
       "count": "1.284",
@@ -213,6 +230,10 @@
     ],
     "howto": "Eine Tablette morgens oder vor dem Deep-Work-Block. Nicht nach 14 Uhr.",
     "moments": "Prüfungsphasen. Der Launch-Tag. Vier Stunden Code am Stück.",
+    "warnings": [
+      "Enthält Koffein (100 mg pro Tablette). Für Kinder und schwangere Frauen nicht empfohlen.",
+      "Nicht mit weiteren koffeinhaltigen Produkten kombinieren."
+    ],
     "rating_PLACEHOLDER": {
       "avg": "4,8",
       "count": "1.105",

@@ -21,6 +21,9 @@ import {
 } from '@/lib/products';
 import { motes } from '@/lib/random';
 import { Blister } from './Blister';
+import { Explainer } from './Explainer';
+import { FlavorClouds } from './FlavorClouds';
+import { Notices } from './Notices';
 import { Reviews } from './Reviews';
 import { RollingPrice } from './RollingPrice';
 
@@ -355,7 +358,7 @@ function ProductScene({ product, showReviews }: { product: Product; showReviews:
           <div className="pp-copy-cell">
             <div className="hero-copy flex flex-col gap-[22px] lg:gap-[26px]" inert={zoom}>
               <p
-                className={`${text} m-0 flex items-center gap-3 font-display text-[15px]`}
+                className={`${text} m-0 flex flex-wrap items-center gap-x-3 gap-y-2 font-display text-[15px]`}
                 style={{ animationDelay: '0.08s' }}
               >
                 <span
@@ -365,6 +368,16 @@ function ProductScene({ product, showReviews }: { product: Product; showReviews:
                 />
                 <span className="font-bold tracking-[0.4px]">Lull {product.name}</span>
                 <span className="opacity-80">{product.category}</span>
+                {product.flavor && (
+                  <span
+                    className="flavor-chip"
+                    style={{
+                      background: `linear-gradient(90deg, ${product.flavor.colors[0]}cc, ${product.flavor.colors[1]}99)`,
+                    }}
+                  >
+                    {product.flavor.name}
+                  </span>
+                )}
               </p>
               <h1
                 id="pp-title"
@@ -527,6 +540,22 @@ function ProductScene({ product, showReviews }: { product: Product; showReviews:
               <p className="m-0 text-[17px] leading-[1.6]">{product.moments}</p>
             </section>
           </div>
+        </div>
+
+        {product.flavor && <FlavorClouds flavor={product.flavor} ink={ink} textClass={text} />}
+
+        <div className="wrap-wide ink-fade" style={{ color: ink, ['--focus' as string]: ink }}>
+          {product.explainer && (
+            <>
+              {!product.flavor && (
+                <div aria-hidden="true" className="ink-fade h-px" style={{ background: line }} />
+              )}
+              <Explainer product={product} copy={product.explainer} textClass={text} />
+            </>
+          )}
+
+          <div aria-hidden="true" className="ink-fade h-px" style={{ background: line }} />
+          <Notices product={product} textClass={text} />
 
           {showReviews && (
             <>

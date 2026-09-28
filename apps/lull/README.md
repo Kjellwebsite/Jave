@@ -67,6 +67,21 @@ Production-Domain fallen weg
 
 Die strukturierten Produktdaten (JSON-LD) enthalten bewusst keine Bewertungen.
 
+**Geschmack, Wirkweise, Hinweise.** Drei optionale Felder in `data/products.json` schalten
+weitere Abschnitte der Produktseite frei, aktuell bei Calm:
+
+- `flavor` (Name, Beschreibung, drei Farben): Chip im Hero und das Wolkenband „Raspberry Clouds“
+  unter der Beschreibung (`components/product/FlavorClouds.tsx`).
+- `explainer` (Texte): „Anti-Überreizung“ mit der Grafik angespannt/ruhiger
+  (`ArousalGraphic.tsx`). Schematisch, ohne Messwerte. Mit reduzierter Bewegung bleibt sie
+  statisch und umschaltbar, ohne JavaScript zeigt sie den angespannten Zustand.
+- `warnings`: produktspezifische Warnhinweise. Sie stehen in „Gut zu wissen“ zusammen mit der
+  Verzehrempfehlung und den Pflichthinweisen nach § 4 NemV (`SUPPLEMENT_NOTICES` in
+  `lib/content.ts`), die auf jeder Produktseite erscheinen.
+
+Eine neue Rezeptur ist damit nur eine Änderung an `data/products.json`. Der Parser verlangt
+weiterhin genau vier Wirkstoffe pro Produkt, weil Layout und Schichtgrafik dafür gebaut sind.
+
 ## Vor dem Launch offen
 
 Aus dem Handoff, nicht selbst erfunden:
@@ -77,8 +92,11 @@ Aus dem Handoff, nicht selbst erfunden:
   Prototyp ist als absolutes Sicherheitsversprechen gestrichen.
 - **Fachlich bestätigen:** Wirkstoffe, Dosierungen, Preise, Versandzeiten und Versandländer
   (Checkout aktuell nur Deutschland, `SHIPPING_COUNTRIES` in `lib/checkout.ts`).
-- **Pflichtangaben:** Verzehrempfehlung, Warnhinweise, Impressum, Datenschutz, AGB, Widerruf.
-  Die vier Seiten existieren als Platzhalter (`noindex`), der Text muss vom Betreiber kommen.
+- **Pflichtangaben:** Impressum, Datenschutz, AGB, Widerruf existieren als Platzhalter
+  (`noindex`), der Text muss vom Betreiber kommen. Verzehrempfehlung, Pflichthinweise nach
+  § 4 NemV und Warnhinweise stehen auf jeder Produktseite. Die Warnhinweise (Calm: Alkohol und
+  dämpfende Substanzen, Schwangerschaft, Medikamente; Spark: Koffein nach LMIV Anhang III) sind
+  Vorschläge und müssen fachlich bestätigt werden.
 - **Kontakt:** Ziel für „Frag uns direkt“ (`CONTACT_URL` in `lib/launch.ts`).
 
 Beim Bauen zusätzlich aufgefallen:
@@ -88,7 +106,13 @@ Beim Bauen zusätzlich aufgefallen:
   an den Preisen.
 - **Wirkaussagen:** Formulierungen wie „verkürzt die Einschlaflatenz“ oder „dämpft die
   HPA-Achse“ sind gesundheitsbezogene Angaben. Für Nahrungsergänzungsmittel sind nur zugelassene
-  Health Claims erlaubt (VO (EG) 1924/2006), also vor Launch rechtlich prüfen lassen.
+  Health Claims erlaubt (VO (EG) 1924/2006), also vor Launch rechtlich prüfen lassen. Das gilt
+  auch für den Abschnitt „Anti-Überreizung“ und seine Grafik („Mit Calm: weniger Signale, mehr
+  Hemmung“).
+- **Geschmack:** „Raspberry Clouds“ passt zu einer Kau- oder Lutschtablette, die
+  Verzehrempfehlung von Calm sagt aber „mit Wasser“. Darreichungsform klären.
+- **Wirkstoffe:** Nur Stoffe, die in Nahrungsergänzungsmitteln zulässig sind. Arzneistoffe,
+  nicht zugelassene Novel Foods und Research Chemicals (z. B. GB-115) gehören nicht in den Shop.
 - **Kontrast:** Bei Drift steht der Blister-Text im Prototyp auf mittlerem Violett
   (Kontrast etwa 2:1). Das Design ist so übernommen und sollte geprüft werden.
 

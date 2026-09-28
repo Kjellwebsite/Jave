@@ -1785,6 +1785,242 @@
     box-shadow: 0 26px 50px rgba(20, 10, 60, 0.16);
   }
 
+  /* ---------- Product page: flavor band (components/product/FlavorClouds.tsx) ---------- */
+
+  .flavor-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 12px;
+    border-radius: 999px;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+  }
+  .flavor-band {
+    --pu: max(0.55px, min(1px, 100vw / 1440));
+    position: relative;
+    display: grid;
+    place-items: center;
+    margin-top: -30px;
+    /* Room for the far clouds above and the near clouds below the copy. */
+    padding: calc(150 * var(--pu) + 10px) var(--gutter) calc(250 * var(--pu) + 20px);
+  }
+  .flavor-sky {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(
+      180deg,
+      transparent 0%,
+      #000 8%,
+      #000 90%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(180deg, transparent 0%, #000 8%, #000 90%, transparent 100%);
+  }
+  .flavor-haze {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(
+        ellipse 55% 45% at 50% 52%,
+        color-mix(in srgb, var(--fl-light) 80%, transparent),
+        transparent 72%
+      ),
+      radial-gradient(
+        ellipse 80% 40% at 50% 85%,
+        color-mix(in srgb, var(--fl-mid) 38%, transparent),
+        transparent 75%
+      );
+  }
+  .puff {
+    position: absolute;
+    left: var(--x);
+    width: calc(var(--w) * var(--pu));
+    aspect-ratio: 240 / 130;
+    animation: puffdrift 40s ease-in-out infinite alternate;
+  }
+  .puff[data-depth='0'] {
+    opacity: 0.85;
+    filter: blur(1.5px);
+  }
+  .puff[data-depth='1'] {
+    opacity: 0.96;
+    z-index: 2;
+  }
+  .puff-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .flavor-spark {
+    position: absolute;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ffffff 0 30%, var(--fl-mid) 60%, transparent 72%);
+    box-shadow: 0 0 10px var(--fl-mid);
+    opacity: 0;
+    animation: sparkrise 8s ease-in-out infinite;
+  }
+  .flavor-copy {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+  }
+  .flavor-title {
+    font-size: clamp(58px, 8vw, 116px);
+    line-height: 0.95;
+    font-style: italic;
+    padding: 0 0.08em;
+    background: linear-gradient(90deg, #c2185b, var(--fl-deep) 45%, #8a4de8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 2px 14px rgba(255, 255, 255, 0.7));
+  }
+  @media (max-width: 767px) {
+    .puff-wide {
+      display: none;
+    }
+  }
+
+  /* ---------- Product page: arousal schematic (components/product/ArousalGraphic.tsx) ---------- */
+
+  .arousal {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 22px;
+    border-radius: 32px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 24px 60px rgba(20, 10, 60, 0.14);
+    color: var(--color-ink);
+    --focus: var(--color-ink);
+  }
+  .arousal-toggle {
+    align-self: flex-start;
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(28, 21, 72, 0.07);
+  }
+  .arousal-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      background 0.3s ease,
+      box-shadow 0.3s ease;
+  }
+  .arousal-option[data-active] {
+    background: #ffffff;
+    box-shadow: 0 6px 16px rgba(20, 10, 60, 0.12);
+  }
+  .arousal-brain {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+  .brain-fill {
+    fill: rgba(255, 255, 255, 0.7);
+  }
+  .brain-outline {
+    fill: none;
+    stroke: rgba(28, 21, 72, 0.42);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+  }
+  .brain-sulcus {
+    fill: none;
+    stroke: rgba(28, 21, 72, 0.16);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+  }
+  .arousal-eeg {
+    display: grid;
+    gap: 2px;
+    padding: 8px 0 4px;
+    border-radius: 14px;
+    background: rgba(28, 21, 72, 0.05);
+    overflow: hidden;
+  }
+  .arousal-eeg svg {
+    display: block;
+    width: 100%;
+    height: 56px;
+  }
+  .arousal-caption {
+    padding: 0 12px;
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.55;
+  }
+  .arousal-balance {
+    display: grid;
+    gap: 10px;
+  }
+  .arousal-meter {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .arousal-track {
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(28, 21, 72, 0.08);
+    overflow: hidden;
+  }
+  .arousal-bar {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+  }
+  .arousal-note {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .notice-card {
+    padding: 22px;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 14px 34px rgba(20, 10, 60, 0.08);
+  }
+  @media (min-width: 768px) {
+    .notice-card {
+      padding: 34px 36px;
+    }
+    .arousal {
+      padding: 28px;
+    }
+  }
+
   /* ---------- Cart drawer ---------- */
 
   .drawer {
@@ -2354,6 +2590,31 @@
   }
 }
 
+@keyframes puffdrift {
+  0% {
+    transform: translate3d(-3vw, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -8px, 0);
+  }
+  100% {
+    transform: translate3d(3vw, 0, 0);
+  }
+}
+@keyframes sparkrise {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-90px) scale(1);
+  }
+}
+
 /* ---------- Reduced motion: everything settles in its final state ---------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -2404,8 +2665,12 @@
   .blister,
   .drawer[open],
   .menu-panel,
-  .cart-count {
+  .cart-count,
+  .puff {
     animation: none !important;
+  }
+  .flavor-spark {
+    display: none;
   }
   .ex-label {
     animation: none;

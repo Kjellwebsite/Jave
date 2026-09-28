@@ -44,6 +44,24 @@ export interface ProductColors {
   card_stops: [string, string, string];
 }
 
+/** Taste of the tablet, shown with a band of clouds in its colors. */
+export interface Flavor {
+  name: string;
+  note: string;
+  /** Deep, middle and light tint of the clouds, #rrggbb. */
+  colors: [string, string, string];
+}
+
+/** Copy of the mechanism explainer and its graphic (tense vs. calmer nervous system). */
+export interface Explainer {
+  eyebrow: string;
+  title: string;
+  lead: string;
+  /** Labels of the two states in the graphic. */
+  busy: string;
+  calm: string;
+}
+
 export interface Product {
   slug: string;
   name: string;
@@ -58,6 +76,10 @@ export interface Product {
   ingredients: Ingredient[];
   howto: string;
   moments: string;
+  flavor?: Flavor;
+  explainer?: Explainer;
+  /** Product-specific warnings, shown with the mandatory supplement notices. */
+  warnings?: string[];
   rating_PLACEHOLDER: PlaceholderRating;
 }
 
@@ -133,6 +155,27 @@ function parseProduct(value: unknown, index: number): Product {
     text(p, key, where);
   }
 
+  if (p.flavor !== undefined) {
+    const flavor = object(p.flavor, `${where}.flavor`);
+    for (const key of ['name', 'note']) text(flavor, key, `${where}.flavor`);
+    const tints = list(flavor, 'colors', `${where}.flavor`);
+    if (tints.length !== 3 || tints.some((c) => typeof c !== 'string' || !isHexColor(c))) {
+      fail(`${where}.flavor.colors`, 'expected three #rrggbb colors');
+    }
+  }
+  if (p.explainer !== undefined) {
+    const explainer = object(p.explainer, `${where}.explainer`);
+    for (const key of ['eyebrow', 'title', 'lead', 'busy', 'calm']) {
+      text(explainer, key, `${where}.explainer`);
+    }
+  }
+  if (p.warnings !== undefined) {
+    const warnings = list(p, 'warnings', where);
+    if (warnings.some((w) => typeof w !== 'string' || w.trim() === '')) {
+      fail(`${where}.warnings`, 'expected a list of texts');
+    }
+  }
+
   const rating = object(p.rating_PLACEHOLDER, `${where}.rating_PLACEHOLDER`);
   if (list(rating, 'distribution_5_to_1_percent', `${where}.rating_PLACEHOLDER`).length !== 5) {
     fail(`${where}.rating_PLACEHOLDER.distribution_5_to_1_percent`, 'expected five values');
@@ -147,13 +190,16 @@ export function gradientStops(gradient: string): string[] {
   return gradient.match(/#[0-9a-f]{6}\b/gi) ?? [];
 }
 
-export const PRODUCTS: readonly Product[] = (() => {
-  if (!Array.isArray(raw)) fail('', 'expected a list of products');
-  const products = raw.map(parseProduct);
+/** Validates the product list, throwing with the path of the first broken field. */
+export function parseProducts(value: unknown): Product[] {
+  if (!Array.isArray(value)) fail('', 'expected a list of products');
+  const products = value.map(parseProduct);
   const slugs = new Set(products.map((p) => p.slug));
   if (slugs.size !== products.length) fail('', 'duplicate slugs');
   return products;
-})();
+}
+
+export const PRODUCTS: readonly Product[] = parseProducts(raw);
 
 export const DEFAULT_PRODUCT = PRODUCTS[0]!;
 

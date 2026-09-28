@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import raw from '@/data/products.json';
 import { formatEuro, parseEuroCents } from './price';
 import {
   allIngredients,
   distinctIngredientCount,
   getProduct,
   gradientStops,
+  parseProducts,
   priceCents,
   PRODUCTS,
   productPath,
@@ -39,6 +41,52 @@ describe('product data', () => {
     for (const product of PRODUCTS) {
       expect(priceCents(product)).toBeLessThan(parseEuroCents(product.old_price_eur));
     }
+  });
+});
+
+describe('flavor, explainer and warnings', () => {
+  /** A copy of the real data with `edit` applied to Calm. */
+  function withCalm(edit: (calm: Record<string, unknown>) => void): unknown {
+    const copy = structuredClone(raw) as Record<string, unknown>[];
+    edit(copy[0]!);
+    return copy;
+  }
+
+  it('gives Calm its flavor, the explainer and product warnings', () => {
+    const calm = getProduct('calm')!;
+    expect(calm.flavor?.name).toBe('Raspberry Clouds');
+    expect(calm.explainer?.eyebrow).toBe('Anti-Überreizung');
+    expect(calm.warnings?.some((w) => w.includes('Alkohol'))).toBe(true);
+  });
+
+  it('warns about caffeine wherever it is an ingredient', () => {
+    for (const product of PRODUCTS) {
+      if (!product.ingredients.some((i) => i.name === 'Koffein')) continue;
+      expect(product.warnings?.[0]).toMatch(/^Enthält Koffein \(\d+ mg pro Tablette\)\./);
+    }
+  });
+
+  it('keeps the new fields optional', () => {
+    const products = parseProducts(
+      withCalm((calm) => {
+        delete calm.flavor;
+        delete calm.explainer;
+        delete calm.warnings;
+      }),
+    );
+    expect(products[0]?.flavor).toBeUndefined();
+  });
+
+  it('rejects broken entries', () => {
+    expect(() =>
+      parseProducts(withCalm((calm) => ((calm.flavor as { colors: string[] }).colors = ['#fff']))),
+    ).toThrow('[0].flavor.colors');
+    expect(() =>
+      parseProducts(withCalm((calm) => ((calm.explainer as { busy: string }).busy = ' '))),
+    ).toThrow('[0].explainer.busy');
+    expect(() => parseProducts(withCalm((calm) => (calm.warnings = ['ok', ''])))).toThrow(
+      '[0].warnings',
+    );
   });
 });
 

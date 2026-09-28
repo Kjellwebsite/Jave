@@ -114,5 +114,15 @@ export const FAQ = [
   },
 ] as const;
 
+/**
+ * Mandatory statements for food supplements in Germany (§ 4 Abs. 2 NemV), shown on every
+ * product page next to the recommended daily intake (the product's `howto`).
+ */
+export const SUPPLEMENT_NOTICES = [
+  'Die angegebene empfohlene tägliche Verzehrsmenge darf nicht überschritten werden.',
+  'Nahrungsergänzungsmittel sind kein Ersatz für eine ausgewogene und abwechslungsreiche Ernährung und eine gesunde Lebensweise.',
+  'Außerhalb der Reichweite von kleinen Kindern lagern.',
+] as const;
+
 export const DISCLAIMER =
   'Nahrungsergänzungsmittel. Kein Ersatz für eine ausgewogene Ernährung oder ärztliche Behandlung.';

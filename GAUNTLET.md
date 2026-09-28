@@ -90,8 +90,30 @@ both test backends before an independent review.
 
 ### Security
 
-[~] The final audit (five attack surfaces, each finding verified by a skeptic) is
-running; results and fixes follow here.
+[✓] Final audit of the merged system: five independent reviewers, one per attack
+surface, each told to report only exploitable problems with a concrete scenario
+and to reproduce them against the real code; then a skeptic per surface tried to
+refute every finding. All 16 findings survived (5 high, all in adversarial
+secrecy; 6 medium; 5 low) and were fixed, each with a test
+that fails without the fix (commit "Security gauntlet: fix all 16 confirmed
+findings").
+
+| Surface                       | Findings | Fixed                                                                                                                                               |
+| ----------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard authorization, CSRF | 4        | adversarial entries hidden in the audit log (high); staff notes self/hierarchy rule in core; self evaluator notes refused; open redirect via `/.//` |
+| Discord bot surface           | 3        | adversarial dead letters hidden in `/jave status` (high); `/profile share` posts the members' view; erased identities stay pseudonymous             |
+| Domain rules, escalation      | 2        | quarantine role screened before it is handed out; the awarder never verifies their own achievement award                                            |
+| Integrations, webhooks, AI    | 3        | AI PREVIEW shows everything CONFIRM executes; sender-wide webhook budget; redaction of all Discord token shapes and `whsec_` secrets                |
+| Adversarial secrecy, privacy  | 4        | audit-log oracle closed (high); dead letters (high); exports never include adversarial notifications (high); erasure covers remaining staff text    |
+
+What held up, per the reviewers: every Server Action and route handler checks
+origin and a live session and lets core re-authorize the target row; hidden ids
+and custom ids only route; hashed rotating sessions, signed OAuth state with
+PKCE, dev login refused in production; allowedMentions off and user text escaped
+on every Discord send; job handlers re-read state from core; webhook signatures
+over the raw body with replay windows and idempotency; SSRF guard on outbound
+webhooks; Activity tokens domain-separated, instance-scoped and re-authorized
+per request.
 
 ### Failure
 

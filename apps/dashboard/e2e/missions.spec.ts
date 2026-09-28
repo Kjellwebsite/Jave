@@ -204,7 +204,8 @@ test('visual gauntlet', async ({ page }) => {
   await capture(page, 'missions-assign', bench, async (view) => {
     await view.getByTestId('assign-members').click();
     const dialog = view.getByRole('dialog', { name: 'Assign members' });
-    await dialog.getByRole('searchbox', { name: 'Search members' }).fill('a');
+    // 'ar' matches both people used below, and stays within one page of results.
+    await dialog.getByRole('searchbox', { name: 'Search members' }).fill('ar');
     await expect(dialog.getByRole('list', { name: 'Matching members' })).toContainText('Mara Voss');
     await dialog.getByLabel(/Jun Park/).check();
   });

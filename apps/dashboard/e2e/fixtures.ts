@@ -1,9 +1,27 @@
 import { expect, type Page } from '@playwright/test';
+import postgres from 'postgres';
+import { E2E_DATABASE_URL } from './database-url';
 
 export type Persona = 'founder' | 'core' | 'operations' | 'moderator' | 'verified' | 'member';
 
+/**
+ * The suite signs in some two hundred times from one address, far beyond dev
+ * login's per-client budget (the budget itself is unit-tested). Start each
+ * sign-in with a fresh dev-login bucket so a test never fails on the order it
+ * happens to run in. Touches only the e2e database, only dev-login buckets.
+ */
+async function resetDevLoginBudget(): Promise<void> {
+  const sql = postgres(E2E_DATABASE_URL, { max: 1, onnotice: () => undefined });
+  try {
+    await sql`delete from rate_limit_buckets where key like 'auth:devLogin:%'`;
+  } finally {
+    await sql.end();
+  }
+}
+
 /** DEV LOGIN — MOCK / DEVELOPMENT ONLY: signs in through the real dev-login Server Action. */
 export async function signInAs(page: Page, persona: Persona): Promise<void> {
+  await resetDevLoginBudget();
   await page.goto('/login');
   await page.locator(`button[data-persona="${persona}"]`).click();
   await page.waitForURL('**/overview');

@@ -90,7 +90,8 @@ against production data you are not authorized to access.
   change permissions, modify ranks, delete data or expose private information.
 - AI output can only create a pending proposal. A human holding the action's
   capability must confirm it (PREVIEW → CONFIRM → EXECUTE → REPORT); execution is
-  audited with the confirming human as actor.
+  audited with the confirming human as actor. The preview shows everything the
+  execution does, untruncated; a draft too long to show in full is refused.
 - User content sent to providers is redacted and wrapped as delimited data;
   prompt-injection heuristics flag suspicious inputs. Only a hash of each prompt
   is stored.
@@ -104,6 +105,10 @@ against production data you are not authorized to access.
   rejects real-looking secrets, external targets and real personal data, a stop
   word (`RED FLAG`), and mandatory reveal/debrief. Participants cannot read any
   adversarial record.
+- Staff who compete in a trial are participants: the shared audit log and the job
+  queue leave adversarial entries out for anyone taking part in an open trial or
+  lacking `canManageAdversarial`, counts included, and data exports never include
+  adversarial notifications.
 
 ### Dashboard
 
@@ -170,5 +175,7 @@ Sensitive actions record ACTOR · ACTION · TARGET · TIMESTAMP · CONTEXT · RE
 
 ## Security gauntlet results
 
-See the final section of GAUNTLET.md for the most recent audit: what was
-tested, what was found, and what was fixed.
+The final audit (five attack surfaces, every finding verified by a skeptic)
+found 16 real problems (5 high, all in adversarial secrecy; 6 medium; 5 low); all were
+fixed with a regression test. What was tested, found and fixed:
+[GAUNTLET.md → Gauntlets → Security](GAUNTLET.md#security).

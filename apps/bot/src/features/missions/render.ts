@@ -4,7 +4,7 @@ import type { MessagePayload } from '../../discord/gateway';
 import { customId } from '../../interactions/custom-id';
 import { button, field, panel, row } from '../../ui/components';
 import { discordTime, userText } from '../../ui/format';
-import { COLORS, GLYPH } from '../../ui/theme';
+import { COLORS, GLYPH, LIMITS } from '../../ui/theme';
 
 /** Custom-id namespace of every missions control (the core ACCEPT id shares it). */
 export const MISSIONS_NS = 'missions';
@@ -199,14 +199,25 @@ export function ownAssignmentField(own: missions.OwnAssignmentView): APIEmbedFie
   return field('Your assignment', lines.join('\n'));
 }
 
-/** Link to the mission in the dashboard, when a public URL is configured. */
+/** A URL a link button can carry: Discord refuses the whole message over a longer one. */
+export function linkableUrl(url: string): string | null {
+  return url.length <= LIMITS.linkUrl ? url : null;
+}
+
+/**
+ * Link to the mission in the dashboard (its review tab with `review`), when
+ * a public URL is configured.
+ */
 export function dashboardMissionUrl(
   publicUrl: string | undefined,
   missionId: string,
+  tab?: 'review',
 ): string | null {
   if (!publicUrl) return null;
   try {
-    return new URL(`/missions/${encodeURIComponent(missionId)}`, publicUrl).toString();
+    const url = new URL(`/missions/${encodeURIComponent(missionId)}`, publicUrl);
+    if (tab) url.searchParams.set('tab', tab);
+    return linkableUrl(url.toString());
   } catch {
     return null;
   }

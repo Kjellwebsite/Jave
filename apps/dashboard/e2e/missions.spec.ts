@@ -172,6 +172,27 @@ test('staff assign members and review the queue', async ({ page }) => {
   await expect(page.locator('[data-review-unit]')).toHaveCount(1);
 });
 
+test("the deadline is edited in the viewer's time zone, and an untouched one stays", async ({
+  page,
+}) => {
+  // The core persona reads the dashboard in Asia/Kolkata (UTC+05:30).
+  await signInAs(page, 'core');
+  const bench = await seededMissionPath(page, MISSION_FIXTURES.bench);
+  const deadline = page.getByText('DEADLINE', { exact: true }).locator('..').locator('dd');
+  const shown = ((await deadline.textContent()) ?? '').trim();
+  expect(shown).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+
+  await page.goto(`${bench}/edit`);
+  const form = page.getByRole('form', { name: 'Save mission' });
+  await expect(form.getByText('In your time zone (Asia/Kolkata).', { exact: false })).toBeVisible();
+  await expect(form.getByLabel('Deadline', { exact: true })).toHaveValue(shown.replace(' ', 'T'));
+  // Every field goes back unchanged; the seeded deadline (stored to the millisecond) stays.
+  await form.getByRole('button', { name: 'Save mission' }).click();
+  await page.waitForURL(/\/missions\/[0-9a-f-]{36}\?saved=updated/);
+  await expect(page.getByText('MISSION UPDATED')).toBeVisible();
+  await expect(deadline).toHaveText(shown);
+});
+
 test('visual gauntlet', async ({ page }) => {
   test.setTimeout(300_000);
   await signInAs(page, 'operations');

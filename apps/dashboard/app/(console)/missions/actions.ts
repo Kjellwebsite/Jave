@@ -6,10 +6,16 @@ import { isUuid, missions, ValidationError } from '@jave/core';
 import type { ActionState } from '@/lib/action-state';
 import { formBoolean, formOptional, formString, formStrings } from '@/lib/form-data';
 import type { MemberSearchResult } from '@/lib/member-search';
-import { MISSION_FORM_FIELDS, missionFormInput, optionalNumber } from '@/lib/mission-form';
+import {
+  editedDeadline,
+  MISSION_FORM_FIELDS,
+  missionFormInput,
+  optionalNumber,
+} from '@/lib/mission-form';
 import { runAction } from '@/server/actions';
 import type { UserContext } from '@/server/context';
 import { runMemberSearch } from '@/server/data/member-search';
+import { loadViewer } from '@/server/data/viewer';
 
 const SKIP_LABELS: Record<missions.AssignSkipReason, string> = {
   not_found: 'no profile',
@@ -46,7 +52,8 @@ export async function createMissionAction(_: ActionState, data: FormData): Promi
   const state = await runAction(
     'missions.create',
     async (ctx) => {
-      const { type, ...input } = missionFormInput(data);
+      const { timeZone } = await loadViewer(ctx);
+      const { type, ...input } = missionFormInput(data, timeZone);
       if (!type)
         throw new ValidationError('Choose a mission type.', [
           { path: 'type', message: 'Choose a mission type.' },
@@ -68,7 +75,13 @@ export async function updateMissionAction(_: ActionState, data: FormData): Promi
     'missions.update',
     async (ctx) => {
       const missionId = missionIdFrom(data);
-      const { type, ...patch } = missionFormInput(data);
+      const [{ timeZone }, { mission }] = await Promise.all([
+        loadViewer(ctx),
+        missions.getMissionDetail(ctx, { missionId }),
+      ]);
+      const { type, ...fields } = missionFormInput(data, timeZone);
+      // The form sends every field back: a deadline left as shown stays exactly as stored.
+      const patch = { ...fields, deadlineAt: editedDeadline(data, mission.deadlineAt, timeZone) };
       const updated = await missions.updateMission(ctx, {
         missionId,
         patch: type ? { ...patch, type } : patch,

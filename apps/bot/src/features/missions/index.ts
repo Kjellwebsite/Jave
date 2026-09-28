@@ -119,7 +119,7 @@ const components: ComponentHandler = {
           components: [],
         });
       case 'review':
-        return showReviewPage(h, args[0]);
+        return showReviewPage(h, args);
       case 'verify':
       case 'reject':
         return openReviewModal(h, action, args);

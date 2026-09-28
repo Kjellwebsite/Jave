@@ -20,6 +20,7 @@ import {
   TYPE_LABEL,
   type MissionType,
 } from './render';
+import { missionReviewId } from './review';
 
 /** Open missions per page: five ACCEPT buttons fill exactly one row. */
 export const LIST_PAGE_SIZE = 5;
@@ -250,6 +251,16 @@ function memberButtons(detail: missions.MissionDetail): APIButtonComponent[] {
   return buttons;
 }
 
+/** Submissions of this mission awaiting review, as the queue counts them: a team once. */
+export function awaitingUnits(assignments: readonly missions.StaffAssignmentView[]): number {
+  const units = new Set(
+    assignments
+      .filter((assignment) => assignment.status === 'submitted')
+      .map((assignment) => (assignment.teamKey ? `team:${assignment.teamKey}` : assignment.id)),
+  );
+  return units.size;
+}
+
 function staffButtons(h: HandlerContext, detail: missions.MissionDetail): APIButtonComponent[] {
   const { mission } = detail;
   const id = mission.id;
@@ -270,9 +281,9 @@ function staffButtons(h: HandlerContext, detail: missions.MissionDetail): APIBut
     if (missions.canTransitionMission(mission.status, 'archived'))
       buttons.push(button('Archive', customId(MISSIONS_NS, 'archive', id), 'danger'));
   }
-  const awaiting = detail.assignments?.filter((a) => a.status === 'submitted').length ?? 0;
+  const awaiting = awaitingUnits(detail.assignments ?? []);
   if (awaiting > 0 && can(h.ctx, 'canVerifyMissions'))
-    buttons.push(button(`Review queue (${awaiting})`, customId(MISSIONS_NS, 'review', 0)));
+    buttons.push(button(`Review queue (${awaiting})`, missionReviewId(id)));
   const url = dashboardMissionUrl(h.ctx.config.publicUrl, mission.id);
   if (url && buttons.length > 0) buttons.push(linkButton('Dashboard', url));
   return buttons;

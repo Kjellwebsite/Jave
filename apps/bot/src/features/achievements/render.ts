@@ -56,7 +56,8 @@ export interface CatalogLine {
 
 /**
  * Share of active members holding an achievement: by key where the viewer
- * may see the definition, by catalog slot where it is masked for them.
+ * may see the definition, and by catalog slot for every entry, so a line
+ * masked here (for the viewer, or for a public post) still shows its share.
  */
 export interface HolderShares {
   byKey: ReadonlyMap<string, number>;
@@ -72,6 +73,16 @@ export interface HeldAward {
   verified: boolean;
 }
 
+export interface CatalogLineOptions {
+  /**
+   * The lines are posted publicly. The viewer's catalog reveals hidden
+   * definitions to achievement staff and to anyone who holds them; a public
+   * post must not, so every hidden definition the shown member has not
+   * unlocked is masked, whoever the viewer is.
+   */
+  publicView: boolean;
+}
+
 /**
  * Merge the viewer's catalog with the target member's awards. Hidden
  * achievements the member unlocked are revealed (as on their profile) and
@@ -82,18 +93,21 @@ export function buildCatalogLines(
   catalog: readonly achievements.CatalogEntry[],
   held: readonly HeldAward[],
   shares: HolderShares,
+  options: CatalogLineOptions,
 ): CatalogLine[] {
   const heldByKey = new Map(held.map((award) => [award.key, award]));
   const revealedKeys = new Set<string>();
   const lines: CatalogLine[] = [];
   const masked: { rarity: Rarity; slot: number }[] = [];
   catalog.forEach((entry, slot) => {
-    if (entry.masked) {
+    const award = entry.masked ? undefined : heldByKey.get(entry.key);
+    const maskedHere =
+      entry.masked || (options.publicView && entry.visibility === 'hidden' && !award);
+    if (maskedHere) {
       masked.push({ rarity: entry.rarity, slot });
       return;
     }
     revealedKeys.add(entry.key);
-    const award = heldByKey.get(entry.key);
     lines.push({
       title: entry.title,
       summary: entry.summary,

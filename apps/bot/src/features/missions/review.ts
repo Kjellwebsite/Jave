@@ -6,9 +6,15 @@ import { customId } from '../../interactions/custom-id';
 import { button, field, linkButton, panel, row, success } from '../../ui/components';
 import { discordTime, plainText, userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
-import { offsetFromArg } from './data';
+import { missionFromArg, offsetFromArg } from './data';
 import { presentInPlace } from './present';
-import { missionHeadline, MISSIONS_NS, SUBMISSION_PREVIEW_MAX } from './render';
+import {
+  dashboardMissionUrl,
+  linkableUrl,
+  missionHeadline,
+  MISSIONS_NS,
+  SUBMISSION_PREVIEW_MAX,
+} from './render';
 import { restricted } from './staff-access';
 
 /** Field id of the feedback text inside the verify and reject modals. */
@@ -37,30 +43,100 @@ function unitText(item: missions.ReviewQueueItem): string {
   return item.teamKey ? `Team \`${item.teamKey}\`\n${names.join('\n')}` : names.join('\n');
 }
 
-function evidenceText(item: missions.ReviewQueueItem): string | null {
-  const url = safeEvidenceUrl(item.evidenceUrl);
-  if (!item.evidenceTitle && !url) return null;
-  // The link itself sits on the OPEN EVIDENCE button; the host says where it goes.
-  const host = url ? `\`${plainText(url.host, HOST_MAX).replaceAll('`', '')}\`` : null;
-  return [item.evidenceTitle ? userText(item.evidenceTitle, EVIDENCE_TITLE_SHOWN) : null, host]
-    .filter(Boolean)
-    .join(` ${GLYPH.dot} `);
+/**
+ * The review queue a panel shows: every mission's, or one mission's (from its
+ * detail). Carried in every control of the panel so paging and decisions
+ * stay in the same queue.
+ */
+export interface ReviewScope {
+  missionId: string | null;
 }
 
-function reviewEmbed(item: missions.ReviewQueueItem, position: number, total: number): APIEmbed {
+const ALL_MISSIONS: ReviewScope = { missionId: null };
+
+/** Trailing custom-id argument of a scoped queue; none for the whole queue. */
+function scopeArgs(scope: ReviewScope): string[] {
+  return scope.missionId ? [scope.missionId] : [];
+}
+
+/** Scope from a custom-id argument. Untrusted: a malformed mission id reads as not found. */
+export function scopeFromArg(value: string | undefined): ReviewScope {
+  return value === undefined ? ALL_MISSIONS : { missionId: missionFromArg(value) };
+}
+
+/** The review queue control of a mission detail: that mission's submissions only. */
+export function missionReviewId(missionId: string): string {
+  return customId(MISSIONS_NS, 'review', 0, missionId);
+}
+
+/**
+ * A submission's evidence link and where a reviewer opens it: on its own
+ * button, or — too long for a Discord button — from the dashboard (the
+ * mission's review tab, when a public URL is configured).
+ */
+interface EvidenceLink {
+  host: string;
+  open: { kind: 'button'; url: string } | { kind: 'dashboard'; url: string | null };
+}
+
+function evidenceLink(
+  item: missions.ReviewQueueItem,
+  publicUrl: string | undefined,
+): EvidenceLink | null {
+  const url = safeEvidenceUrl(item.evidenceUrl);
+  if (!url) return null;
+  const direct = linkableUrl(url.toString());
+  return {
+    host: url.host,
+    open: direct
+      ? { kind: 'button', url: direct }
+      : { kind: 'dashboard', url: dashboardMissionUrl(publicUrl, item.missionId, 'review') },
+  };
+}
+
+function evidenceText(
+  item: missions.ReviewQueueItem,
+  evidence: EvidenceLink | null,
+): string | null {
+  if (!item.evidenceTitle && !evidence) return null;
+  // The link itself sits on a button; the host says where it goes.
+  const host = evidence ? `\`${plainText(evidence.host, HOST_MAX).replaceAll('`', '')}\`` : null;
+  const text = [
+    item.evidenceTitle ? userText(item.evidenceTitle, EVIDENCE_TITLE_SHOWN) : null,
+    host,
+  ]
+    .filter(Boolean)
+    .join(` ${GLYPH.dot} `);
+  if (evidence?.open.kind !== 'dashboard') return text;
+  const where = evidence.open.url
+    ? 'open it from DASHBOARD'
+    : 'open it from the mission review queue in the dashboard';
+  return `${text}\nThe link is too long for a Discord button: ${where}.`;
+}
+
+function reviewEmbed(
+  item: missions.ReviewQueueItem,
+  evidence: EvidenceLink | null,
+  position: number,
+  total: number,
+  scope: ReviewScope,
+): APIEmbed {
   const fields = [
     field(item.teamKey ? 'Team' : 'Member', unitText(item)),
     field('Submitted', item.submittedAt ? discordTime(item.submittedAt, 'R') : GLYPH.unknown, true),
     field('Attempt', `${item.attempts} of ${missions.MAX_SUBMISSION_ATTEMPTS}`, true),
   ];
-  const evidence = evidenceText(item);
-  if (evidence) fields.push(field('Evidence', evidence));
+  const evidenceField = evidenceText(item, evidence);
+  if (evidenceField) fields.push(field('Evidence', evidenceField));
   if (item.isOwn)
     fields.push(
       field('Not yours to review', 'You are part of this unit. Another reviewer decides it.'),
     );
+  const queue = scope.missionId
+    ? `REVIEW QUEUE ${GLYPH.dot} ${item.missionNumber}`
+    : 'REVIEW QUEUE';
   return panel({
-    kicker: `REVIEW QUEUE ${GLYPH.dot} ${position} OF ${total}`,
+    kicker: `${queue} ${GLYPH.dot} ${position} OF ${total}`,
     title: missionHeadline(item.missionNumber, item.missionTitle),
     description: item.submission
       ? userText(item.submission, SUBMISSION_PREVIEW_MAX)
@@ -70,51 +146,84 @@ function reviewEmbed(item: missions.ReviewQueueItem, position: number, total: nu
   });
 }
 
-/** One unit from the review queue, oldest first, with VERIFY / REJECT and paging. */
+function queuePage(h: HandlerContext, scope: ReviewScope, offset: number) {
+  return missions.listSubmissionsForReview(h.ctx, {
+    limit: 1,
+    offset,
+    missionId: scope.missionId ?? undefined,
+  });
+}
+
+/**
+ * One unit from the review queue, oldest first, with VERIFY / REJECT and
+ * paging: the whole queue, or one mission's.
+ */
 export async function reviewPayload(
   h: HandlerContext,
   requestedOffset: number,
-  notice?: APIEmbed,
+  options: { scope?: ReviewScope; notice?: APIEmbed } = {},
 ): Promise<ReplyPayload> {
-  let page = await missions.listSubmissionsForReview(h.ctx, { limit: 1, offset: requestedOffset });
+  const { scope = ALL_MISSIONS, notice } = options;
+  let page = await queuePage(h, scope, requestedOffset);
   // Past the end (the last entry was just decided): show the new last entry.
-  if (page.items.length === 0 && page.total > 0)
-    page = await missions.listSubmissionsForReview(h.ctx, { limit: 1, offset: page.total - 1 });
+  if (page.items.length === 0 && page.total > 0) page = await queuePage(h, scope, page.total - 1);
   const [item] = page.items;
+  // A mission's queue can always widen to every mission's.
+  const widen = scope.missionId
+    ? [button('Full queue', customId(MISSIONS_NS, 'review', 0), 'secondary')]
+    : [];
   if (!item) {
     const clear = panel({
       kicker: 'REVIEW QUEUE',
       title: 'Queue clear',
-      description: 'No submissions await review.',
+      description: scope.missionId
+        ? 'No submissions for this mission await review.'
+        : 'No submissions await review.',
       color: COLORS.success,
     });
-    return { embeds: notice ? [notice, clear] : [clear], components: [], ephemeral: true };
+    return {
+      embeds: notice ? [notice, clear] : [clear],
+      components: widen.length > 0 ? [row(...widen)] : [],
+      ephemeral: true,
+    };
   }
   const offset = page.offset;
+  const scoped = scopeArgs(scope);
   const actions: APIButtonComponent[] = [];
   if (!item.isOwn) {
     actions.push(
-      button('Verify', customId(MISSIONS_NS, 'verify', item.assignmentId, offset), 'success'),
-      button('Reject', customId(MISSIONS_NS, 'reject', item.assignmentId, offset), 'danger'),
+      button(
+        'Verify',
+        customId(MISSIONS_NS, 'verify', item.assignmentId, offset, ...scoped),
+        'success',
+      ),
+      button(
+        'Reject',
+        customId(MISSIONS_NS, 'reject', item.assignmentId, offset, ...scoped),
+        'danger',
+      ),
     );
   }
-  const url = safeEvidenceUrl(item.evidenceUrl);
-  if (url) actions.push(linkButton('Open evidence', url.toString()));
+  const evidence = evidenceLink(item, h.ctx.config.publicUrl);
+  if (evidence?.open.kind === 'button')
+    actions.push(linkButton('Open evidence', evidence.open.url));
+  else if (evidence?.open.url) actions.push(linkButton('Dashboard', evidence.open.url));
   const navigation = [
     button(
       'Previous',
-      customId(MISSIONS_NS, 'review', Math.max(0, offset - 1)),
+      customId(MISSIONS_NS, 'review', Math.max(0, offset - 1), ...scoped),
       'secondary',
       offset === 0,
     ),
     button(
       'Next',
-      customId(MISSIONS_NS, 'review', offset + 1),
+      customId(MISSIONS_NS, 'review', offset + 1, ...scoped),
       'secondary',
       offset + 1 >= page.total,
     ),
+    ...widen,
   ];
-  const embed = reviewEmbed(item, offset + 1, page.total);
+  const embed = reviewEmbed(item, evidence, offset + 1, page.total, scope);
   return {
     embeds: notice ? [notice, embed] : [embed],
     components: [row(...actions), row(...navigation)].filter((r) => r.components.length > 0),
@@ -122,10 +231,12 @@ export async function reviewPayload(
   };
 }
 
-/** Queue page from a button: re-rendered in place. */
-export async function showReviewPage(h: HandlerContext, rawOffset: string | undefined) {
+/** Queue page from a button (`review:<offset>[:<missionId>]`): re-rendered in place. */
+export async function showReviewPage(h: HandlerContext, args: readonly string[]) {
   if (!can(h.ctx, 'canVerifyMissions')) return h.respond(restricted(REVIEWER_ONLY));
-  await presentInPlace(h, await reviewPayload(h, offsetFromArg(rawOffset)));
+  const [rawOffset, rawMission] = args;
+  const scope = scopeFromArg(rawMission);
+  await presentInPlace(h, await reviewPayload(h, offsetFromArg(rawOffset), { scope }));
 }
 
 type Decision = 'verify' | 'reject';
@@ -134,6 +245,7 @@ export function reviewModal(
   decision: Decision,
   assignmentId: string,
   offset: number,
+  scope: ReviewScope = ALL_MISSIONS,
 ): ModalPayload {
   const feedback = new TextInputBuilder()
     .setCustomId(FIELD_FEEDBACK)
@@ -142,7 +254,7 @@ export function reviewModal(
     .setMaxLength(missions.FEEDBACK_MAX)
     .setRequired(decision === 'reject');
   return new ModalBuilder()
-    .setCustomId(customId(MISSIONS_NS, decision, assignmentId, offset))
+    .setCustomId(customId(MISSIONS_NS, decision, assignmentId, offset, ...scopeArgs(scope)))
     .setTitle(decision === 'verify' ? 'VERIFY SUBMISSION' : 'RETURN SUBMISSION')
     .addLabelComponents(
       new LabelBuilder()
@@ -169,9 +281,12 @@ export async function openReviewModal(
   args: readonly string[],
 ): Promise<void> {
   if (!can(h.ctx, 'canVerifyMissions')) return h.respond(restricted(REVIEWER_ONLY));
-  const [rawAssignment, rawOffset] = args;
+  const [rawAssignment, rawOffset, rawMission] = args;
   const assignmentId = assignmentFrom(rawAssignment);
-  await h.interaction.showModal(reviewModal(decision, assignmentId, offsetFromArg(rawOffset)));
+  const scope = scopeFromArg(rawMission);
+  await h.interaction.showModal(
+    reviewModal(decision, assignmentId, offsetFromArg(rawOffset), scope),
+  );
 }
 
 /** Decide the unit, then show the queue again at the same position. */
@@ -180,8 +295,9 @@ export async function submitReview(
   decision: Decision,
   args: readonly string[],
 ): Promise<void> {
-  const [rawAssignment, rawOffset] = args;
+  const [rawAssignment, rawOffset, rawMission] = args;
   const assignmentId = assignmentFrom(rawAssignment);
+  const scope = scopeFromArg(rawMission);
   const feedback = h.interaction.modal.text(FIELD_FEEDBACK).trim();
   const decided =
     decision === 'verify'
@@ -203,7 +319,7 @@ export async function submitReview(
           `The ${who} ${count === 1 ? 'is' : 'are'} notified with your feedback.`,
         );
   // From the queue panel the queue advances in place; the decided entry leaves it.
-  await presentInPlace(h, await reviewPayload(h, offsetFromArg(rawOffset), notice));
+  await presentInPlace(h, await reviewPayload(h, offsetFromArg(rawOffset), { scope, notice }));
 }
 
 /** `/mission review`: the queue from the start. */

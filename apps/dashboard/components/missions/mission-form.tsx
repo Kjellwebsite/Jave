@@ -3,7 +3,8 @@
 import { type ReactNode, useId, useState } from 'react';
 import { Input, Mono, NativeSelect, Switch, Textarea } from '@jave/ui';
 import { MISSION_FORM_LIMITS as MISSION_LIMITS } from '@/lib/form-limits';
-import { MISSION_TYPE_LABELS, type MissionTypeKey, toUtcInputValue } from '@/lib/mission-labels';
+import { deadlineInputValue } from '@/lib/mission-form';
+import { MISSION_TYPE_LABELS, type MissionTypeKey } from '@/lib/mission-labels';
 import { optionsFrom } from '@/lib/member-labels';
 import { ActionForm, type FormAction } from '../forms/action-form';
 import { FormField } from '../forms/form-field';
@@ -31,6 +32,8 @@ export interface MissionFormProps {
   facets: readonly { value: string; label: string }[];
   rewards: readonly { value: string; label: string }[];
   submitLabel: string;
+  /** The viewer's time zone: the deadline is entered and shown in it. */
+  timeZone: string;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -50,6 +53,7 @@ export function MissionForm({
   facets,
   rewards,
   submitLabel,
+  timeZone,
 }: MissionFormProps) {
   const id = useId();
   const [type, setType] = useState<MissionTypeKey>(values.type);
@@ -153,14 +157,14 @@ export function MissionForm({
         </div>
         <FormField
           name="deadlineAt"
-          label="Deadline (UTC)"
-          description="The mission closes then; no work is due after it. Blank for none."
+          label="Deadline"
+          description={`In your time zone (${timeZone}). The mission closes then; no work is due after it. Blank for none.`}
         >
           <Input
             name="deadlineAt"
             type="datetime-local"
             mono
-            defaultValue={toUtcInputValue(values.deadlineAt)}
+            defaultValue={deadlineInputValue(values.deadlineAt, timeZone)}
           />
         </FormField>
         <Switch

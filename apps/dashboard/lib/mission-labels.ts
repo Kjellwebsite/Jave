@@ -89,11 +89,6 @@ export function slotsLabel(holding: number, maxAssignees: number | null): string
   return `${maxAssignees - holding} of ${maxAssignees} left`;
 }
 
-/** `2026-10-04T18:00` for `<input type="datetime-local">`, in UTC. */
-export function toUtcInputValue(date: Date | null): string {
-  return date ? date.toISOString().slice(0, 16) : '';
-}
-
 /** "Builder · rare"; a reward hidden from the viewer shows only its rarity. */
 export function rewardLabel(reward: missions.MissionReward | null): string {
   if (!reward) return '—';

@@ -29,33 +29,39 @@ mission card is public.
 
 ## Buttons, selects and modals
 
-| Custom id                                                                     | Surface                      | Handler                                                                                                        |
-| ----------------------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `missions:accept:<missionId>`                                                 | ACCEPT (card, list, detail)  | `acceptMission` for a waiting staff assignment, else `selfAssignMission` — as the clicking user.               |
-| `missions:view:<missionId>`                                                   | DETAILS (card)               | Ephemeral detail for the clicking user.                                                                        |
-| `missions:filter` · `missions:list:<type>:<offset>`                           | type select, paging          | Re-renders the open list in place; unknown types mean "every type".                                            |
-| `missions:open` · `missions:mine`                                             | selects                      | Detail of the picked mission · your missions for the picked scope.                                             |
-| `missions:submit:<missionId>` (button → modal)                                | SUBMIT / RESUBMIT            | `submitMission` for **your** assignment on that mission. A team submission moves every teammate still working. |
-| `missions:submit_pick`                                                        | select                       | Opens the submission modal for the picked mission.                                                             |
-| `missions:abandon:<id>` → `missions:abandon_confirm:<id>`                     | ABANDON → confirm            | `abandonMission` for your assignment.                                                                          |
-| `missions:create` (modal)                                                     | NEW MISSION                  | `createMission`.                                                                                               |
-| `missions:publish:<id>` → `missions:publish_go:<id>:<1\|0>`                   | PUBLISH → announce / quietly | `publishMission({ announce })`.                                                                                |
-| `missions:close:<id>` · `missions:reopen:<id>`                                | CLOSE · REOPEN               | `closeMission` · `reopenMission`.                                                                              |
-| `missions:archive:<id>` → `missions:archive_go:<id>`                          | ARCHIVE → confirm            | `archiveMission` (refused while submissions await review).                                                     |
-| `missions:edit:<id>` (button → modal)                                         | EDIT                         | Title, brief, time limit, deadline, slots → `updateMission`.                                                   |
-| `missions:settings:<id>`                                                      | SETTINGS                     | Panel: capability select, reward select, type select (drafts), EVIDENCE and SELF-ASSIGN toggles, BACK.         |
-| `missions:set_facet\|set_reward\|set_type\|toggle_evidence\|toggle_self:<id>` | settings controls            | `updateMission` with the one field.                                                                            |
-| `missions:assign:<id>` · `missions:assign_opts:<id>` (modal)                  | ASSIGN · TEAM & TIME LIMIT   | Assign panel · team key and hours travel in the picker's custom id.                                            |
-| `missions:assign_pick:<id>:<team\|->:<hours\|->` (user select)                | member picker                | `assignMission`; skipped members are listed with the reason (no slot, already on it, other team, standing).    |
-| `missions:review:<offset>`                                                    | queue paging, REVIEW QUEUE   | Re-renders the queue at that position.                                                                         |
-| `missions:verify\|reject:<assignmentId>:<offset>` (button → modal)            | VERIFY · REJECT              | Feedback modal (optional for VERIFY, required for REJECT) → `verifySubmission` / `rejectSubmission`.           |
-| `missions:dismiss`                                                            | KEEP IT                      | Closes a confirmation without changes.                                                                         |
+| Custom id                                                                        | Surface                      | Handler                                                                                                        |
+| -------------------------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `missions:accept:<missionId>`                                                    | ACCEPT (card, list, detail)  | `acceptMission` for a waiting staff assignment, else `selfAssignMission` — as the clicking user.               |
+| `missions:view:<missionId>`                                                      | DETAILS (card)               | Ephemeral detail for the clicking user.                                                                        |
+| `missions:filter` · `missions:list:<type>:<offset>`                              | type select, paging          | Re-renders the open list in place; unknown types mean "every type".                                            |
+| `missions:open` · `missions:mine`                                                | selects                      | Detail of the picked mission · your missions for the picked scope.                                             |
+| `missions:submit:<missionId>` (button → modal)                                   | SUBMIT / RESUBMIT            | `submitMission` for **your** assignment on that mission. A team submission moves every teammate still working. |
+| `missions:submit_pick`                                                           | select                       | Opens the submission modal for the picked mission.                                                             |
+| `missions:abandon:<id>` → `missions:abandon_confirm:<id>`                        | ABANDON → confirm            | `abandonMission` for your assignment.                                                                          |
+| `missions:create` (modal)                                                        | NEW MISSION                  | `createMission`.                                                                                               |
+| `missions:publish:<id>` → `missions:publish_go:<id>:<1\|0>`                      | PUBLISH → announce / quietly | `publishMission({ announce })`.                                                                                |
+| `missions:close:<id>` · `missions:reopen:<id>`                                   | CLOSE · REOPEN               | `closeMission` · `reopenMission`.                                                                              |
+| `missions:archive:<id>` → `missions:archive_go:<id>`                             | ARCHIVE → confirm            | `archiveMission` (refused while submissions await review).                                                     |
+| `missions:edit:<id>` (button → modal)                                            | EDIT                         | Title, brief, time limit, deadline, slots → `updateMission`. A deadline left as shown stays exactly as stored. |
+| `missions:settings:<id>`                                                         | SETTINGS                     | Panel: capability select, reward select, type select (drafts), EVIDENCE and SELF-ASSIGN toggles, BACK.         |
+| `missions:set_facet\|set_reward\|set_type\|toggle_evidence\|toggle_self:<id>`    | settings controls            | `updateMission` with the one field.                                                                            |
+| `missions:assign:<id>` · `missions:assign_opts:<id>` (modal)                     | ASSIGN · TEAM & TIME LIMIT   | Assign panel · team key and hours travel in the picker's custom id.                                            |
+| `missions:assign_pick:<id>:<team\|->:<hours\|->` (user select)                   | member picker                | `assignMission`; skipped members are listed with the reason (no slot, already on it, other team, standing).    |
+| `missions:review:<offset>[:<missionId>]`                                         | queue paging, REVIEW QUEUE   | Re-renders the queue at that position: every mission's, or (from a detail) that mission's, with FULL QUEUE.    |
+| `missions:verify\|reject:<assignmentId>:<offset>[:<missionId>]` (button → modal) | VERIFY · REJECT              | Feedback modal (optional for VERIFY, required for REJECT) → `verifySubmission` / `rejectSubmission`.           |
+| `missions:dismiss`                                                               | KEEP IT                      | Closes a confirmation without changes.                                                                         |
 
 Custom ids route; they never authorize. Staff controls are shown only to staff, forms
 refuse non-staff **before** opening (ACCESS RESTRICTED), and every action re-checks the
 clicking user in core: a forged VERIFY on your own unit is refused and audited
 (`mission.self_review_blocked`); assigning yourself is refused and audited
 (`mission.self_assign_blocked`); someone else's assignment is NOT FOUND.
+
+The mission detail's REVIEW QUEUE (n) counts that mission's units (a team once) and opens
+its queue; the queue stays on that mission through paging and decisions. OPEN EVIDENCE is a
+link button only while the link fits Discord (512 characters); a longer one (a pre-signed
+storage link, say) shows its host with a DASHBOARD button to the mission's review tab, so
+one long link never blocks the queue.
 
 Lists, panels and the review queue re-render in place only when the press — or the modal
 it opened (SUBMIT, EDIT, TEAM & TIME LIMIT, VERIFY / REJECT) — came from a private (ephemeral)
@@ -96,9 +102,9 @@ Nav: OPERATIONS → Missions, visible to every signed-in user.
 | --------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/missions`           | mission staff         | Tabs OPEN · DRAFT · CLOSED · ARCHIVED with counts, type filter, table (holding / cap, awaiting review, deadline), "N awaiting review". NEW MISSION for `canManageMissions`.                                                                                                                                             |
 | `/missions`           | members               | Your active missions, then open missions as cards (type filter, slots left, closing date, your status).                                                                                                                                                                                                                 |
-| `/missions/new`       | `canManageMissions`   | Mission form: brief (title, type, brief, capability), participation (slots, time limit, UTC deadline, evidence, self-assign), reward (achievement, note), with the lifecycle beside it. Creates a draft.                                                                                                                |
+| `/missions/new`       | `canManageMissions`   | Mission form: brief (title, type, brief, capability), participation (slots, time limit, deadline in your time zone, evidence, self-assign), reward (achievement, note), with the lifecycle beside it. Creates a draft.                                                                                                  |
 | `/missions/[id]`      | anyone who may see it | Facts, brief, **Your assignment** (ACCEPT, SUBMIT with evidence, ABANDON; your submission, evidence and feedback). Staff: EDIT, PUBLISH (announce checkbox), CLOSE, REOPEN, ARCHIVE; **Assignments** tab with the ASSIGN dialog; **Review queue** tab (this mission's units, 20 per page) with VERIFY / REJECT dialogs. |
-| `/missions/[id]/edit` | `canManageMissions`   | The same form, prefilled; the type is fixed after publishing. A reward achievement deactivated since stays selectable, so saving never drops it.                                                                                                                                                                        |
+| `/missions/[id]/edit` | `canManageMissions`   | The same form, prefilled; the type is fixed after publishing. A reward achievement deactivated since stays selectable, so saving never drops it. A deadline left as shown stays as stored, so a closed mission whose deadline passed can still be corrected.                                                            |
 
 - **Assign dialog.** A searchable member picker (members present in the guild, searched on
   the server through the directory, so profile privacy applies; up to 50 per call). Members

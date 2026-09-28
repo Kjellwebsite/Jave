@@ -42,7 +42,9 @@ draft ──publish──► open ──close──► closed ──archive─�
   and then sees the mission archived.
 - The expiry sweep closes open missions whose `deadlineAt` passed
   (`mission.auto_closed` audit, `mission.closed` event).
-- `updateMission` works in every state but archived; the type only changes in draft.
+- `updateMission` works in every state but archived; the type only changes in draft. Only
+  values that change are re-validated: an unchanged (passed) deadline, capability or retired
+  reward achievement sent back by an edit form is accepted as it is.
 
 ### Assignment
 

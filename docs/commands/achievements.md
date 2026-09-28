@@ -19,7 +19,9 @@ There is no score anywhere: no totals, no points, no ranking of people.
 - Replies are ephemeral. `share: true` posts the panel in the channel **without controls**
   and never for a staff-only profile (it stays ephemeral).
 - A hidden achievement the member unlocked is shown on their panel, as on their profile;
-  everything else hidden stays masked for non-staff.
+  everything else hidden stays masked for non-staff. A shared panel masks every hidden
+  achievement the shown member has not unlocked, whoever shares it: staff, or a member
+  who holds it, see those only in their own ephemeral view.
 - Nobody awards, revokes or verifies their own achievements; the service refuses and audits it.
 
 ## Buttons, selects and modals

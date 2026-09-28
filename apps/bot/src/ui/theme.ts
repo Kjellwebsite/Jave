@@ -43,4 +43,6 @@ export const LIMITS = {
   selectOptions: 25,
   autocompleteChoices: 25,
   modalTitle: 45,
+  /** Link-button URLs; one longer link fails the whole message. */
+  linkUrl: 512,
 } as const;

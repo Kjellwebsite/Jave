@@ -37,13 +37,9 @@ interface AssignOptions {
 }
 
 /** The assign panel: who (user select, up to 25) plus team and time limit (modal). */
-export async function assignPanel(
-  h: HandlerContext,
-  missionId: string,
-  options: AssignOptions,
-): Promise<ReplyPayload> {
-  const detail = await missions.getMissionDetail(h.ctx, { missionId });
+export function assignPanel(detail: missions.MissionDetail, options: AssignOptions): ReplyPayload {
   const { mission } = detail;
+  const missionId = mission.id;
   const team = mission.type === 'team';
   const needsTeam = team && options.teamKey === null;
   const facts = [
@@ -104,7 +100,8 @@ export async function assignPanel(
 /** ASSIGN button or `/mission assign`: staff only. */
 export async function openAssign(h: HandlerContext, missionId: string): Promise<void> {
   if (!(await ensureManager(h))) return;
-  await h.respond(await assignPanel(h, missionId, { teamKey: null, durationHours: null }));
+  const detail = await missions.getMissionDetail(h.ctx, { missionId });
+  await h.respond(assignPanel(detail, { teamKey: null, durationHours: null }));
 }
 
 export function assignOptionsModal(missionId: string, team: boolean): ModalPayload {
@@ -146,15 +143,19 @@ export async function openAssignOptions(h: HandlerContext, missionId: string): P
   await h.interaction.showModal(assignOptionsModal(missionId, mission.type === 'team'));
 }
 
-/** Team key and time limit set: show the panel again, now carrying them. */
+/**
+ * Team key and time limit set: show the panel again, now carrying them. Only
+ * the team variant of the modal holds a team key.
+ */
 export async function assignOptionsFromModal(h: HandlerContext, missionId: string): Promise<void> {
   if (!(await ensureManager(h))) return;
   const { modal } = h.interaction;
+  const detail = await missions.getMissionDetail(h.ctx, { missionId });
   const options = {
-    teamKey: parseTeamKey(modal.text(FIELD_TEAM)),
+    teamKey: detail.mission.type === 'team' ? parseTeamKey(modal.text(FIELD_TEAM)) : null,
     durationHours: parseHours(modal.text(FIELD_ASSIGN_HOURS), 'durationHours'),
   };
-  await presentInPlace(h, await assignPanel(h, missionId, options));
+  await presentInPlace(h, assignPanel(detail, options));
 }
 
 async function nameOf(h: HandlerContext, memberId: string): Promise<string> {

@@ -24,6 +24,8 @@ import {
 
 vi.setConfig(SUITE_TIMEOUTS);
 
+const HOUR_MS = 3_600_000;
+
 type Member = Awaited<ReturnType<BotHarness['member']>>;
 
 describe('missions — staff flows', () => {
@@ -154,6 +156,41 @@ describe('missions — staff flows', () => {
     });
   });
 
+  it('edits a closed mission whose deadline passed, leaving an untouched deadline as stored', async () => {
+    // Stored to the second (core accepts it); the modal shows it to the minute.
+    const deadline = new Date(bot.kit.clock.now().getTime() + 2 * HOUR_MS + 30_000);
+    const mission = await openMission(bot, ops.actor, { deadlineAt: deadline });
+    bot.kit.clock.advance(3 * HOUR_MS);
+    await missions.closeMission(bot.kit.as(ops.actor), { missionId: mission.id });
+    const prefilled = deadline.toISOString().slice(0, 16).replace('T', ' ');
+    const opened = await bot.run({
+      kind: 'button',
+      name: customId('missions', 'edit', mission.id),
+      user: ops.user,
+    });
+    expect(JSON.stringify(modalOf(opened.interaction))).toContain(prefilled);
+    const submit = (title: string, typedDeadline: string) =>
+      bot.run({
+        kind: 'modal',
+        name: customId('missions', 'edit', mission.id),
+        user: ops.user,
+        modalText: { title, brief: BRIEF, hours: '', deadline: typedDeadline, slots: '' },
+      });
+    const fixed = await submit('Prototype sprint (fixed)', prefilled);
+    expect(fixed.interaction.lastText()).toContain('MISSION UPDATED');
+    expect(await missionRow(mission.id)).toMatchObject({
+      title: 'Prototype sprint (fixed)',
+      status: 'closed',
+      deadlineAt: deadline,
+    });
+    // A deadline that is actually changed must still lie ahead.
+    const past = await submit('Prototype sprint (fixed)', '2020-01-01 00:00');
+    expect(past.interaction.lastText()).toContain('must be in the future');
+    const cleared = await submit('Prototype sprint (fixed)', '');
+    expect(cleared.interaction.lastText()).toContain('MISSION UPDATED');
+    expect((await missionRow(mission.id)).deadlineAt).toBeNull();
+  });
+
   it('publishes a draft quietly or with the announcement, then closes and reopens it', async () => {
     const draft = await missions.createMission(bot.kit.as(ops.actor), {
       title: 'Prototype sprint',
@@ -238,6 +275,25 @@ describe('missions — staff flows', () => {
       .from(auditLogs)
       .where(eq(auditLogs.action, 'mission.self_assign_blocked'));
     expect(blocked).toBeDefined();
+
+    // Individual missions: the modal holds only the time limit, and a team key never applies.
+    const timeLimit = await bot.run({
+      kind: 'button',
+      name: customId('missions', 'assign_opts', mission.id),
+      user: ops.user,
+    });
+    expect(JSON.stringify(modalOf(timeLimit.interaction))).not.toContain('"custom_id":"team"');
+    const withHours = await bot.run({
+      kind: 'modal',
+      name: customId('missions', 'assign_opts', mission.id),
+      user: ops.user,
+      modalText: { hours: '24', team: 'forged' },
+    });
+    expect(withHours.interaction.lastText()).toContain('24h (override)');
+    expect(withHours.interaction.lastText()).not.toContain('forged');
+    expect(customIds(withHours.interaction)[0]).toBe(
+      customId('missions', 'assign_pick', mission.id, '-', 24),
+    );
 
     const team = await openMission(bot, ops.actor, { title: 'Relay build', type: 'team' });
     const teamPanel = await bot.run({
@@ -400,6 +456,110 @@ describe('missions — staff flows', () => {
         ),
       );
     expect(rowB).toMatchObject({ status: 'rejected' });
+  });
+
+  it("reviews one mission's queue from its detail and keeps over-long evidence links off buttons", async () => {
+    const first = await openMission(bot, ops.actor, { title: 'Prototype sprint' });
+    const second = await openMission(bot, ops.actor, { title: 'Field report' });
+    const a = await bot.member({ roles: ['verified'], username: 'mara' });
+    const b = await bot.member({ roles: ['verified'], username: 'jun' });
+    // A pre-signed storage link: valid for core (≤ 2048), too long for a Discord button (512).
+    const signedUrl = `https://storage.example.com/reports/field.pdf?X-Amz-Signature=${'a1'.repeat(320)}`;
+    expect(signedUrl.length).toBeGreaterThan(600);
+    const submissions = [
+      { who: a, mission: first, url: EVIDENCE_URL },
+      { who: b, mission: second, url: signedUrl },
+    ];
+    for (const { who, mission, url } of submissions) {
+      const assignment = await missions.selfAssignMission(bot.kit.as(who.actor), {
+        missionId: mission.id,
+      });
+      await missions.submitMission(bot.kit.as(who.actor), {
+        assignmentId: assignment.id,
+        submission: `Work by ${who.user.username}.`,
+        evidence: { title: 'Report', url },
+      });
+      bot.kit.clock.advance(1000);
+    }
+    const [assignmentB] = await assignmentsOf(second.id);
+    const secondNumber = missions.formatMissionNumber(second.number);
+
+    const detail = await run(ops.user, 'view', { mission: second.id });
+    expect(labels(detail.interaction)).toContain('REVIEW QUEUE (1)');
+    expect(customIds(detail.interaction)).toContain(customId('missions', 'review', 0, second.id));
+
+    // The detail's queue opens on this mission's submission, not the older one elsewhere.
+    const scoped = await bot.run({
+      kind: 'button',
+      name: customId('missions', 'review', 0, second.id),
+      user: ops.user,
+    });
+    const text = scoped.interaction.lastText();
+    expect(text).toContain(`REVIEW QUEUE · ${secondNumber} · 1 OF 1`);
+    expect(text).toContain('jun');
+    expect(text).not.toContain('mara');
+    expect(text).toContain('Report · `storage.example.com`');
+    expect(text).toContain('too long for a Discord button');
+    const buttons = (scoped.interaction.lastPayload()?.components ?? []).flatMap(
+      (row) => row.components,
+    );
+    const urls = buttons.flatMap((component) =>
+      'url' in component && typeof component.url === 'string' ? [component.url] : [],
+    );
+    expect(urls).toEqual([`https://jave.test/missions/${second.id}?tab=review`]);
+    expect(labels(scoped.interaction)).not.toContain('OPEN EVIDENCE');
+    expect(labels(scoped.interaction)).toContain('FULL QUEUE');
+    expect(customIds(scoped.interaction)).toContain(
+      customId('missions', 'verify', assignmentB!.id, 0, second.id),
+    );
+
+    // Deciding keeps the panel in this mission's queue; the rest of the queue is one press away.
+    const modal = await bot.run({
+      kind: 'button',
+      name: customId('missions', 'verify', assignmentB!.id, 0, second.id),
+      user: ops.user,
+    });
+    expect(modalOf(modal.interaction)?.custom_id).toBe(
+      customId('missions', 'verify', assignmentB!.id, 0, second.id),
+    );
+    const verified = await bot.run({
+      kind: 'modal',
+      name: customId('missions', 'verify', assignmentB!.id, 0, second.id),
+      user: ops.user,
+      modalText: { feedback: '' },
+      sourceMessage: { ephemeral: true },
+    });
+    expect(verified.interaction.lastText()).toContain('SUBMISSION VERIFIED');
+    expect(verified.interaction.lastText()).toContain(
+      'No submissions for this mission await review',
+    );
+    expect(customIds(verified.interaction)).toEqual([customId('missions', 'review', 0)]);
+    const rest = await bot.run({
+      kind: 'button',
+      name: customId('missions', 'review', 0),
+      user: ops.user,
+    });
+    expect(rest.interaction.lastText()).toContain('REVIEW QUEUE · 1 OF 1');
+    expect(rest.interaction.lastText()).toContain('mara');
+    expect(labels(rest.interaction)).toContain('OPEN EVIDENCE');
+  });
+
+  it('BREAK: forged queue scopes are not found, and members cannot open a mission queue', async () => {
+    const mission = await openMission(bot, ops.actor);
+    const member = await bot.member({ roles: ['verified'] });
+    for (const forged of [
+      'missions:review:0:not-a-uuid',
+      `missions:verify:${crypto.randomUUID()}:0:not-a-uuid`,
+    ]) {
+      const refused = await bot.run({ kind: 'button', name: forged, user: ops.user });
+      expect(refused.interaction.lastText()).toContain('NOT FOUND');
+    }
+    const denied = await bot.run({
+      kind: 'button',
+      name: customId('missions', 'review', 0, mission.id),
+      user: member.user,
+    });
+    expect(denied.interaction.lastText()).toContain('ACCESS RESTRICTED');
   });
 
   it('BREAK: a reviewer never sees VERIFY on their own unit and cannot force it', async () => {

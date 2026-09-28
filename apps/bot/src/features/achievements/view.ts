@@ -10,10 +10,11 @@ async function holderShares(h: HandlerContext): Promise<HolderShares> {
   // Rarity stats need canViewMembers; checking first keeps refusals out of the audit log.
   if (can(h.ctx, 'canViewMembers')) {
     const stats = await achievements.getAchievementRarityStats(h.ctx);
-    for (const stat of stats.achievements) {
-      if (stat.masked) bySlot.set(stat.slot, stat.percent);
-      else byKey.set(stat.key, stat.percent);
-    }
+    stats.achievements.forEach((stat, slot) => {
+      // Slots cover every entry: a public post masks definitions the viewer may see.
+      bySlot.set(slot, stat.percent);
+      if (!stat.masked) byKey.set(stat.key, stat.percent);
+    });
   }
   return { byKey, bySlot };
 }
@@ -21,7 +22,9 @@ async function holderShares(h: HandlerContext): Promise<HolderShares> {
 /**
  * The catalog seen through one member: their unlocked achievements marked,
  * the rest locked, hidden ones masked unless the member (or a staff viewer)
- * may see them. Visibility of the member is checked before anything renders.
+ * may see them. A shared (public) view masks every hidden achievement the
+ * member has not unlocked, whatever the viewer may see. Visibility of the
+ * member is checked before anything renders.
  */
 export async function memberCatalogPayload(
   h: HandlerContext,
@@ -43,7 +46,7 @@ export async function memberCatalogPayload(
   return renderCatalogPanel({
     memberId,
     memberName: member.displayName,
-    lines: buildCatalogLines(catalog, held, shares),
+    lines: buildCatalogLines(catalog, held, shares, { publicView: shared }),
     page: options.page,
     staff,
     shared,

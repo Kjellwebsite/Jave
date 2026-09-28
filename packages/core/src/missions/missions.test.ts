@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import {
+  achievementDefinitions,
   auditLogs,
   evidence,
   memberAchievements,
@@ -574,6 +575,53 @@ describe('missions', () => {
       const detail = await getMissionDetail(kit.as(ops), { missionId: mission.id });
       expect(detail.mission.status).toBe('closed');
       expect(await eventsOfType(kit, 'mission.closed')).toHaveLength(1);
+    });
+
+    it('edits a mission whose deadline passed, re-validating only a deadline that changes', async () => {
+      await seedStarterAchievements(kit.as(await kit.member({ roles: ['core'] })));
+      const deadline = new Date(kit.clock.now().getTime() + 2 * HOUR);
+      const mission = await openMission(kit, ops, {
+        deadlineAt: deadline,
+        facetKey: 'create.technical',
+        rewardAchievementKey: 'first_mission',
+      });
+      kit.clock.advance(3 * HOUR);
+      await runJob(kit, MISSION_EXPIRE_JOB);
+      // The reward was retired after the mission was set up.
+      await kit.db
+        .update(achievementDefinitions)
+        .set({ active: false })
+        .where(eq(achievementDefinitions.key, 'first_mission'));
+      // An edit form sends every field back, the passed deadline and retired reward included.
+      const fixed = await updateMission(kit.as(ops), {
+        missionId: mission.id,
+        patch: {
+          title: 'Prototype sprint (fixed)',
+          deadlineAt: new Date(deadline.getTime()),
+          facetKey: 'create.technical',
+          rewardAchievementKey: 'first_mission',
+        },
+      });
+      expect(fixed).toMatchObject({ status: 'closed', title: 'Prototype sprint (fixed)' });
+      expect(fixed.deadlineAt?.getTime()).toBe(deadline.getTime());
+      // A deadline that does change must still lie ahead; a reward that changes must be active.
+      await expect(
+        updateMission(kit.as(ops), {
+          missionId: mission.id,
+          patch: { deadlineAt: new Date(deadline.getTime() + HOUR) },
+        }),
+      ).rejects.toThrow('deadlineAt: must be in the future');
+      await expect(
+        updateMission(kit.as(ops), {
+          missionId: mission.id,
+          patch: { rewardAchievementKey: 'team_leader', facetKey: 'charisma' },
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+      const moved = await updateMission(kit.as(ops), {
+        missionId: mission.id,
+        patch: { deadlineAt: new Date(kit.clock.now().getTime() + HOUR) },
+      });
+      expect(moved.deadlineAt?.getTime()).toBe(kit.clock.now().getTime() + HOUR);
     });
 
     it('sends one reminder 24 hours before the due date, and none for short assignments', async () => {

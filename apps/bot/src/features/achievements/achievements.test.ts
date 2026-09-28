@@ -6,6 +6,7 @@ import { createBotHarness, type BotHarness } from '../../testing/harness';
 import type { InteractionUser, ModalPayload } from '../../interactions/types';
 import { customId } from '../../interactions/custom-id';
 import type { FakeInteraction } from '../../testing/fake-interaction';
+import { buildCatalogLines } from './render';
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 240_000 });
 
@@ -170,6 +171,75 @@ describe('achievements feature', () => {
         options: { share: true },
       });
       expect(hidden.interaction.lastPayload()!.ephemeral).toBe(true);
+    });
+
+    it('BREAK: a public share never reveals hidden achievements the shown member has not unlocked', async () => {
+      // Ordinal 0: first in the catalog, so a revealed line would land on the shared page.
+      await achievements.createAchievementDefinition(bot.kit.as(core.actor), {
+        key: 'blackout',
+        title: 'Blackout',
+        summary: 'Found the planted flaw in trial six.',
+        description: 'Found the flaw staff planted in trial six.',
+        category: 'trials',
+        rarity: 'rare',
+        visibility: 'hidden',
+        criteria: { type: 'manual' },
+      });
+      const mara = await bot.member({ roles: ['verified'], username: 'mara' });
+      const jun = await bot.member({ roles: ['verified'], username: 'jun' });
+      const holder = await bot.member({ roles: ['verified'], username: 'sana' });
+      await achievements.awardAchievement(bot.kit.as(ops.actor), {
+        memberId: holder.actor.memberId!,
+        key: 'blackout',
+        reason: 'Found the planted flaw.',
+      });
+      const view = (user: InteractionUser, member: InteractionUser, share: boolean) =>
+        bot.run({
+          kind: 'slash',
+          name: 'achievements',
+          subcommand: 'view',
+          user,
+          options: { member, share },
+        });
+
+      // Staff see every definition in their own (ephemeral) view…
+      const staffPrivate = await view(ops.user, mara.user, false);
+      expect(staffPrivate.interaction.lastPayload()!.ephemeral).toBe(true);
+      expect(staffPrivate.interaction.lastText()).toContain('BLACKOUT');
+      // …but a public post shows only what Mara unlocked.
+      const staffShare = await view(ops.user, mara.user, true);
+      expect(staffShare.interaction.lastPayload()!.ephemeral).toBe(false);
+      expect(staffShare.interaction.lastText()).not.toContain('BLACKOUT');
+      expect(staffShare.interaction.lastText()).not.toContain('planted flaw');
+
+      // A holder sees their own unlock in someone else's view, never in a public post of it.
+      const holderShare = await view(holder.user, jun.user, true);
+      expect(holderShare.interaction.lastPayload()!.ephemeral).toBe(false);
+      expect(holderShare.interaction.lastText()).not.toContain('BLACKOUT');
+      expect(holderShare.interaction.lastText()).not.toContain('planted flaw');
+      const holderPrivate = (await allPages(holder.user, jun.actor.memberId!)).join('\n');
+      expect(holderPrivate).toContain('BLACKOUT');
+
+      // The shown member's own hidden unlock is revealed, as on their profile.
+      const ownShare = await view(holder.user, holder.user, true);
+      expect(ownShare.interaction.lastText()).toContain('✓ **BLACKOUT** · RARE');
+
+      // Every hidden definition stays a counted, masked slot with its share of members.
+      const staffCatalog = await achievements.getAchievementCatalog(bot.kit.as(ops.actor));
+      const blackoutSlot = staffCatalog.findIndex(
+        (entry) => !entry.masked && entry.key === 'blackout',
+      );
+      const shares = { byKey: new Map<string, number>(), bySlot: new Map([[blackoutSlot, 25]]) };
+      const lines = buildCatalogLines(staffCatalog, [], shares, { publicView: true });
+      const hidden = achievements.STARTER_ACHIEVEMENTS.filter(
+        (starter) => starter.visibility === 'hidden',
+      );
+      expect(lines.filter((line) => line.state === 'masked')).toHaveLength(hidden.length + 1);
+      expect(lines.map((line) => line.title)).not.toContain('Blackout');
+      expect(lines.find((line) => line.state === 'masked' && line.percent === 25)).toBeDefined();
+      expect(buildCatalogLines(staffCatalog, [], shares, { publicView: false })).toContainEqual(
+        expect.objectContaining({ title: 'Blackout', state: 'locked' }),
+      );
     });
 
     it('BREAK: a staff-only profile is NOT FOUND for other members, visible to staff', async () => {

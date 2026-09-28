@@ -5,14 +5,14 @@ import { criteriaFrom, definitionFields } from './achievement-form';
 import { ACHIEVEMENT_FORM_LIMITS, MISSION_FORM_LIMITS } from './form-limits';
 import { RULE_EVENT_LABELS, ruleEventLabel, ruleText } from './achievement-labels';
 import { type MemberOption, toggleSelection } from './member-search';
-import { INVALID_DATE, missionFormInput, parseUtcInput } from './mission-form';
 import {
-  holdingLabel,
-  rewardLabel,
-  showsDueDate,
-  slotsLabel,
-  toUtcInputValue,
-} from './mission-labels';
+  deadlineInputValue,
+  editedDeadline,
+  INVALID_DATE,
+  missionFormInput,
+  parseDeadlineInput,
+} from './mission-form';
+import { holdingLabel, rewardLabel, showsDueDate, slotsLabel } from './mission-labels';
 import { NAV_GROUPS, visibleNav } from './nav';
 
 function form(entries: Record<string, string | string[]>): FormData {
@@ -24,19 +24,18 @@ function form(entries: Record<string, string | string[]>): FormData {
 }
 
 describe('mission form', () => {
-  it('reads blanks as none and datetime-local values as UTC', () => {
-    const input = missionFormInput(
-      form({
-        title: 'Prototype sprint',
-        brief: 'Ship it.',
-        type: 'build',
-        facetKey: '',
-        maxAssignees: '',
-        durationHours: '72',
-        deadlineAt: '2026-12-01T18:30',
-        evidenceRequired: 'on',
-      }),
-    );
+  it("reads blanks as none and the deadline in the viewer's time zone", () => {
+    const entries = {
+      title: 'Prototype sprint',
+      brief: 'Ship it.',
+      type: 'build',
+      facetKey: '',
+      maxAssignees: '',
+      durationHours: '72',
+      deadlineAt: '2026-10-10T18:00',
+      evidenceRequired: 'on',
+    };
+    const input = missionFormInput(form(entries), 'Europe/Berlin');
     expect(input).toMatchObject({
       type: 'build',
       facetKey: null,
@@ -46,16 +45,46 @@ describe('mission form', () => {
       selfAssignable: false,
       rewardAchievementKey: null,
     });
-    expect(input.deadlineAt?.toISOString()).toBe('2026-12-01T18:30:00.000Z');
-    expect(toUtcInputValue(input.deadlineAt)).toBe('2026-12-01T18:30');
+    // 18:00 in Berlin (CEST, UTC+2) is 16:00 UTC; the form shows it back as typed.
+    expect(input.deadlineAt?.toISOString()).toBe('2026-10-10T16:00:00.000Z');
+    expect(deadlineInputValue(input.deadlineAt, 'Europe/Berlin')).toBe('2026-10-10T18:00');
+    expect(missionFormInput(form(entries), 'UTC').deadlineAt?.toISOString()).toBe(
+      '2026-10-10T18:00:00.000Z',
+    );
+    expect(deadlineInputValue(null, 'Europe/Berlin')).toBe('');
+  });
+
+  it('leaves an untouched deadline exactly as stored on edit, even a passed one', () => {
+    // Stored to the second; the form shows it to the minute.
+    const stored = new Date('2026-09-20T16:00:30.000Z');
+    const shown = deadlineInputValue(stored, 'Europe/Berlin');
+    expect(shown).toBe('2026-09-20T18:00');
+    expect(editedDeadline(form({ deadlineAt: shown }), stored, 'Europe/Berlin')).toBeUndefined();
+    expect(editedDeadline(form({ deadlineAt: '' }), null, 'Europe/Berlin')).toBeUndefined();
+    expect(editedDeadline(form({ deadlineAt: '' }), stored, 'Europe/Berlin')).toBeNull();
+    expect(
+      editedDeadline(
+        form({ deadlineAt: '2026-09-21T09:30' }),
+        stored,
+        'Europe/Berlin',
+      )?.toISOString(),
+    ).toBe('2026-09-21T07:30:00.000Z');
+    expect(editedDeadline(form({ deadlineAt: 'soon' }), stored, 'Europe/Berlin')).toBe(
+      INVALID_DATE,
+    );
   });
 
   it('BREAK: impossible dates, forged types and junk numbers never pass as valid', () => {
-    expect(parseUtcInput('2026-02-30T10:00')).toBe(INVALID_DATE);
-    expect(parseUtcInput('tomorrow')).toBe(INVALID_DATE);
-    expect(parseUtcInput('2026-12-01T18:30Z; drop')).toBe(INVALID_DATE);
-    expect(parseUtcInput(undefined)).toBeNull();
-    const input = missionFormInput(form({ type: 'constructor', maxAssignees: '1e9x' }));
+    expect(parseDeadlineInput('2026-02-30T10:00', 'UTC')).toBe(INVALID_DATE);
+    expect(parseDeadlineInput('tomorrow', 'UTC')).toBe(INVALID_DATE);
+    expect(parseDeadlineInput('2026-12-01T18:30Z; drop', 'UTC')).toBe(INVALID_DATE);
+    expect(parseDeadlineInput('2026-12-01T25:00', 'Europe/Berlin')).toBe(INVALID_DATE);
+    expect(parseDeadlineInput(undefined, 'UTC')).toBeNull();
+    // An unknown stored zone reads as UTC, as every timestamp on the page does.
+    expect(parseDeadlineInput('2026-12-01T18:30', 'Mars/Olympus')?.toISOString()).toBe(
+      '2026-12-01T18:30:00.000Z',
+    );
+    const input = missionFormInput(form({ type: 'constructor', maxAssignees: '1e9x' }), 'UTC');
     expect(input.type).toBeUndefined();
     expect(Number.isNaN(input.maxAssignees)).toBe(true);
   });

@@ -225,15 +225,27 @@ export function parseSlots(value: string): number | null {
   return slots;
 }
 
+/**
+ * The deadline typed into the edit modal. The modal shows the stored deadline
+ * to the minute; left as shown, it stays exactly as stored (undefined), so
+ * the edit neither shifts it nor re-validates a deadline that has passed.
+ */
+export function editedDeadline(typed: string, stored: Date | null): Date | null | undefined {
+  const value = typed.trim();
+  return value === formatDeadline(stored) ? undefined : parseDeadline(value);
+}
+
 export async function editFromModal(h: HandlerContext, missionId: string): Promise<void> {
+  if (!(await ensureManager(h))) return;
   const { modal } = h.interaction;
+  const { mission } = await missions.getMissionDetail(h.ctx, { missionId });
   const updated = await missions.updateMission(h.ctx, {
     missionId,
     patch: {
       title: modal.text(FIELD_TITLE),
       brief: modal.text(FIELD_BRIEF),
       durationHours: parseHours(modal.text(FIELD_HOURS), 'durationHours'),
-      deadlineAt: parseDeadline(modal.text(FIELD_DEADLINE)),
+      deadlineAt: editedDeadline(modal.text(FIELD_DEADLINE), mission.deadlineAt),
       maxAssignees: parseSlots(modal.text(FIELD_SLOTS)),
     },
   });

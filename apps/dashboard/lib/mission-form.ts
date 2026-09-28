@@ -1,3 +1,4 @@
+import { fromDatetimeLocal, toDatetimeLocal } from './datetime-local';
 import { formBoolean, formOptional, formString } from './form-data';
 import { MISSION_TYPE_LABELS, type MissionTypeKey } from './mission-labels';
 
@@ -5,27 +6,37 @@ import { MISSION_TYPE_LABELS, type MissionTypeKey } from './mission-labels';
  * Form → service input for the mission create/edit form. Pure: blank means
  * "none", numbers are passed through for the service schema to validate
  * (so its messages reach the inline field errors), nothing is authorized here.
+ * The deadline is entered in the viewer's time zone, the zone every
+ * timestamp on the page is shown in.
  */
 
-/** `<input type="datetime-local">` value, read as UTC. */
-const UTC_INPUT_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 /** Marks a deadline the browser sent but the calendar cannot hold (e.g. 2026-02-30). */
 export const INVALID_DATE = new Date(Number.NaN);
 
-/** A UTC `YYYY-MM-DDTHH:MM` value, null when blank, INVALID_DATE when malformed. */
-export function parseUtcInput(value: string | undefined): Date | null {
+/** A `datetime-local` deadline in `timeZone`: null when blank, INVALID_DATE when malformed. */
+export function parseDeadlineInput(value: string | undefined, timeZone: string): Date | null {
   if (!value) return null;
-  const match = UTC_INPUT_PATTERN.exec(value);
-  if (!match) return INVALID_DATE;
-  const [year, month, day, hour, minute] = match.slice(1).map(Number) as [
-    number,
-    number,
-    number,
-    number,
-    number,
-  ];
-  const date = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  return date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : INVALID_DATE;
+  return fromDatetimeLocal(value, timeZone) ?? INVALID_DATE;
+}
+
+/** The value the deadline input shows for a stored deadline. */
+export function deadlineInputValue(deadline: Date | null, timeZone: string): string {
+  return deadline ? toDatetimeLocal(deadline, timeZone) : '';
+}
+
+/**
+ * The deadline of an edit. The form shows the stored deadline to the minute;
+ * left as shown, it stays exactly as stored (undefined), so the edit neither
+ * shifts it nor re-validates a deadline that has already passed.
+ */
+export function editedDeadline(
+  data: FormData,
+  stored: Date | null,
+  timeZone: string,
+): Date | null | undefined {
+  const value = formOptional(data, 'deadlineAt');
+  if ((value ?? '') === deadlineInputValue(stored, timeZone)) return undefined;
+  return parseDeadlineInput(value, timeZone);
 }
 
 /** Blank → null; anything else is handed to the schema as a number (NaN fails it). */
@@ -53,7 +64,7 @@ export interface MissionFormInput {
   durationHours: number | null;
 }
 
-export function missionFormInput(data: FormData): MissionFormInput {
+export function missionFormInput(data: FormData, timeZone: string): MissionFormInput {
   return {
     title: formString(data, 'title'),
     brief: formString(data, 'brief'),
@@ -64,7 +75,7 @@ export function missionFormInput(data: FormData): MissionFormInput {
     rewardNote: formOptional(data, 'rewardNote') ?? null,
     maxAssignees: optionalNumber(data, 'maxAssignees'),
     selfAssignable: formBoolean(data, 'selfAssignable'),
-    deadlineAt: parseUtcInput(formOptional(data, 'deadlineAt')),
+    deadlineAt: parseDeadlineInput(formOptional(data, 'deadlineAt'), timeZone),
     durationHours: optionalNumber(data, 'durationHours'),
   };
 }

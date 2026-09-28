@@ -8,6 +8,7 @@ import { MissionLifecycle } from '@/components/missions/mission-lifecycle';
 import { RestrictedPage } from '@/components/restricted-page';
 import { requireConsoleContext } from '@/server/context';
 import { facetOptions, rewardOptions } from '@/server/data/missions';
+import { loadViewer } from '@/server/data/viewer';
 import { createMissionAction } from '../actions';
 
 export const metadata: Metadata = { title: 'New mission' };
@@ -18,7 +19,11 @@ export default async function NewMissionPage() {
     return (
       <RestrictedPage eyebrow="OPERATIONS" title="New mission" capability="canManageMissions" />
     );
-  const [facets, rewards] = await Promise.all([facetOptions(ctx), rewardOptions(ctx)]);
+  const [facets, rewards, viewer] = await Promise.all([
+    facetOptions(ctx),
+    rewardOptions(ctx),
+    loadViewer(ctx),
+  ]);
   return (
     <div className="space-y-8">
       <PageHeader
@@ -40,6 +45,7 @@ export default async function NewMissionPage() {
             typeLocked={false}
             facets={facets}
             rewards={rewards}
+            timeZone={viewer.timeZone}
             values={{
               title: '',
               brief: '',

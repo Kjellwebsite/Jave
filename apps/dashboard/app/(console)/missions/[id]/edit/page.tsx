@@ -9,6 +9,7 @@ import { MissionLifecycle } from '@/components/missions/mission-lifecycle';
 import { RestrictedPage } from '@/components/restricted-page';
 import { requireConsoleContext } from '@/server/context';
 import { facetOptions, rewardOptions } from '@/server/data/missions';
+import { loadViewer } from '@/server/data/viewer';
 import { guarded } from '@/server/guard';
 import { updateMissionAction } from '../../actions';
 
@@ -25,9 +26,10 @@ export default async function EditMissionPage({ params }: { params: Promise<{ id
   const loaded = await guarded(() => missions.getMissionDetail(ctx, { missionId: id }));
   if (!loaded.ok) notFound();
   const { mission } = loaded.value;
-  const [facets, rewards] = await Promise.all([
+  const [facets, rewards, viewer] = await Promise.all([
     facetOptions(ctx),
     rewardOptions(ctx, mission.reward),
+    loadViewer(ctx),
   ]);
   const back = (
     <Link href={`/missions/${mission.id}`} className={buttonStyles({ variant: 'ghost' })}>
@@ -56,6 +58,7 @@ export default async function EditMissionPage({ params }: { params: Promise<{ id
               typeLocked={mission.status !== 'draft'}
               facets={facets}
               rewards={rewards}
+              timeZone={viewer.timeZone}
               values={{
                 missionId: mission.id,
                 title: mission.title,

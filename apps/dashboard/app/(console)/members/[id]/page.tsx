@@ -8,6 +8,7 @@ import {
   getProfile,
   getRankHistory,
   getRole,
+  isStaffRole,
   isUuid,
   listEvidence,
   listMemberCapabilitiesForEvaluator,
@@ -28,6 +29,7 @@ import {
 import { AchievementGrid } from '@/components/members/achievement-grid';
 import { CapabilityMatrix, type EvaluatorContext } from '@/components/members/capability-matrix';
 import { EvidenceList } from '@/components/members/evidence-list';
+import { MemberPrivacy } from '@/components/privacy/member-privacy';
 import { RankHistory } from '@/components/members/rank-history';
 import { RoleManager, type RoleRow } from '@/components/members/role-manager';
 import { StaffNotes } from '@/components/members/staff-notes';
@@ -49,6 +51,8 @@ import { loadViewer } from '@/server/data/viewer';
 import { guarded } from '@/server/guard';
 import {
   addNoteAction,
+  endMemberSessionsAction,
+  eraseMemberAction,
   grantRoleAction,
   revokeRoleAction,
   setEvaluatorNotesAction,
@@ -57,7 +61,15 @@ import {
 
 export const metadata: Metadata = { title: 'Member' };
 
-const TABS = ['capability', 'roles', 'history', 'evidence', 'notes', 'achievements'] as const;
+const TABS = [
+  'capability',
+  'roles',
+  'history',
+  'evidence',
+  'notes',
+  'achievements',
+  'account',
+] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -67,6 +79,7 @@ const TAB_LABELS: Record<Tab, string> = {
   evidence: 'Evidence',
   notes: 'Staff notes',
   achievements: 'Achievements',
+  account: 'Account',
 };
 
 interface Permissions {
@@ -75,6 +88,8 @@ interface Permissions {
   viewEvidence: boolean;
   viewNotes: boolean;
   addNotes: boolean;
+  endSessions: boolean;
+  managePrivacy: boolean;
 }
 
 function permissionsFor(ctx: UserContext, profile: ProfileView): Permissions {
@@ -85,6 +100,8 @@ function permissionsFor(ctx: UserContext, profile: ProfileView): Permissions {
     viewEvidence: self || can(ctx, 'canVerifyMembers') || can(ctx, 'canModifyRanks'),
     viewNotes: can(ctx, 'canViewPrivateProfiles'),
     addNotes: can(ctx, 'canManageMembers') && !self,
+    endSessions: can(ctx, 'canQuarantine') && !self,
+    managePrivacy: can(ctx, 'canManagePrivacy') && !self,
   };
 }
 
@@ -93,6 +110,7 @@ function availableTabs(permissions: Permissions): Tab[] {
     if (tab === 'history') return permissions.viewHistory;
     if (tab === 'evidence') return permissions.viewEvidence;
     if (tab === 'notes') return permissions.viewNotes;
+    if (tab === 'account') return permissions.endSessions || permissions.managePrivacy;
     return true;
   });
 }
@@ -327,5 +345,19 @@ async function TabPanel({
     }
     case 'achievements':
       return <AchievementGrid achievements={profile.achievements} timeZone={timeZone} />;
+    case 'account':
+      return (
+        <MemberPrivacy
+          memberId={memberId}
+          memberName={profile.displayName}
+          handle={profile.handle}
+          departed={profile.guildStatus !== 'present'}
+          holdsStaffRole={profile.roles.some(isStaffRole)}
+          canEndSessions={permissions.endSessions}
+          canManagePrivacy={permissions.managePrivacy}
+          endSessionsAction={endMemberSessionsAction}
+          eraseAction={eraseMemberAction}
+        />
+      );
   }
 }

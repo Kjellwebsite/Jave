@@ -3,6 +3,7 @@
 import { type FormEvent, useId, useState } from 'react';
 import { Download } from 'lucide-react';
 import { Button, Callout, Checkbox, Mono, NativeSelect } from '@jave/ui';
+import { type DownloadError, postForDownload } from '@/lib/download';
 import { useToast } from '../toast';
 
 const FORMAT_OPTIONS = [
@@ -10,40 +11,10 @@ const FORMAT_OPTIONS = [
   { value: 'markdown', label: 'Markdown' },
 ];
 
-/** `ticket-0042.html` from Content-Disposition; server-built, but still checked. */
-const FILENAME = /filename="([\w.-]+)"/;
-const FALLBACK_FILENAME = 'ticket-transcript';
-/** Revoking the object URL in the same tick can cancel the download in some browsers. */
-const REVOKE_DELAY_MS = 10_000;
-
-interface ExportError {
-  message: string;
-  reference?: string;
-}
-
-async function errorOf(response: Response): Promise<ExportError> {
-  if (response.headers.get('content-type')?.includes('application/json')) {
-    const body: unknown = await response.json().catch(() => null);
-    if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
-      const reference =
-        'reference' in body && typeof body.reference === 'string' ? body.reference : undefined;
-      return { message: body.message, reference };
-    }
-  }
-  return { message: 'The transcript could not be exported. Reload and try again.' };
-}
-
-function saveBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.rel = 'noopener';
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
-}
+const FALLBACK = {
+  filename: 'ticket-transcript',
+  message: 'The transcript could not be exported. Reload and try again.',
+};
 
 /**
  * Download the transcript. Every export is audited by core and shows on the
@@ -62,35 +33,20 @@ export function TranscriptExport({
   const id = useId();
   const toast = useToast();
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<ExportError | null>(null);
+  const [error, setError] = useState<DownloadError | null>(null);
 
   async function exportTranscript(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const body = new URLSearchParams();
-    for (const [key, value] of new FormData(event.currentTarget)) {
-      if (typeof value === 'string') body.set(key, value);
-    }
     setPending(true);
     setError(null);
-    try {
-      const response = await fetch(`/tickets/${ticketId}/transcript`, {
-        method: 'POST',
-        body,
-        credentials: 'same-origin',
-      });
-      const disposition = response.headers.get('content-disposition') ?? '';
-      if (!response.ok || !disposition.startsWith('attachment')) {
-        setError(await errorOf(response));
-        return;
-      }
-      const filename = FILENAME.exec(disposition)?.[1] ?? FALLBACK_FILENAME;
-      saveBlob(await response.blob(), filename);
-      toast({ text: `TRANSCRIPT EXPORTED — ${reference}.`, tone: 'success' });
-    } catch {
-      setError({ message: 'The network request failed. Check your connection and try again.' });
-    } finally {
-      setPending(false);
-    }
+    const failure = await postForDownload(
+      `/tickets/${ticketId}/transcript`,
+      event.currentTarget,
+      FALLBACK,
+    );
+    setPending(false);
+    if (failure) setError(failure);
+    else toast({ text: `TRANSCRIPT EXPORTED — ${reference}.`, tone: 'success' });
   }
 
   return (

@@ -1,9 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import {
   claimRank,
+  isUuid,
   NOTIFICATION_TYPE_KEYS,
+  privacy,
   requireMember,
   updateMyPreferences,
   updateProfile,
@@ -14,7 +17,9 @@ import type { ActionState } from '@/lib/action-state';
 import { formBoolean, formEnum, formOptional, formString } from '@/lib/form-data';
 import { VISIBILITY_LABELS } from '@/lib/member-labels';
 import { timeToMinutes } from '@/lib/time';
+import { LOGIN_PATH } from '@/lib/routes';
 import { runAction } from '@/server/actions';
+import { clearSessionCookie } from '@/server/session-cookie';
 
 const DOMAIN_KEYS = CAPABILITY_DOMAINS.map((domain) => domain.key);
 const VISIBILITIES = Object.keys(VISIBILITY_LABELS) as (keyof typeof VISIBILITY_LABELS)[];
@@ -116,4 +121,28 @@ export async function updatePreferencesAction(
     },
     { fieldNames: ['timezone', 'quietHours'] },
   );
+}
+
+/** End one of your own dashboard sessions (another browser or device). */
+export async function endMySessionAction(_: ActionState, data: FormData): Promise<ActionState> {
+  return runAction('me.end_session', async (ctx) => {
+    const sessionId = formString(data, 'sessionId');
+    if (!isUuid(sessionId)) throw new ValidationError('Unknown session.');
+    await privacy.revokeMySession(ctx, { sessionId });
+    revalidatePath('/me');
+    return 'Session ended.';
+  });
+}
+
+/** Sign out everywhere, this browser included. */
+export async function signOutEverywhereAction(
+  _: ActionState,
+  data: FormData,
+): Promise<ActionState> {
+  void data;
+  return runAction('me.sign_out_everywhere', async (ctx) => {
+    await privacy.revokeUserSessions(ctx, { userId: ctx.actor.userId });
+    await clearSessionCookie();
+    redirect(LOGIN_PATH);
+  });
 }

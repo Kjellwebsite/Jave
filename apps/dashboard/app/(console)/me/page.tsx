@@ -9,6 +9,7 @@ import {
   loadCatalog,
   NOTIFICATION_TYPE_KEYS,
   NOTIFICATION_TYPES,
+  privacy,
 } from '@jave/core';
 import {
   buttonStyles,
@@ -23,21 +24,31 @@ import {
 import { ClaimDialog } from '@/components/me/claim-dialog';
 import { PreferencesForm } from '@/components/me/preferences-form';
 import { ProfileForm } from '@/components/me/profile-form';
+import { DataExport } from '@/components/privacy/data-export';
+import { SessionList } from '@/components/privacy/session-list';
 import { NextLink } from '@/components/next-link';
 import { firstParam, type SearchParams } from '@/lib/search-params';
 import { MY_VERIFICATIONS_HREF } from '@/lib/verification';
 import { timeZoneOptions } from '@/lib/time';
 import { requireConsoleContext, type UserContext } from '@/server/context';
-import { claimRankAction, updatePreferencesAction, updateProfileAction } from './actions';
+import { loadViewer } from '@/server/data/viewer';
+import {
+  claimRankAction,
+  endMySessionAction,
+  signOutEverywhereAction,
+  updatePreferencesAction,
+  updateProfileAction,
+} from './actions';
 
 export const metadata: Metadata = { title: 'My profile' };
 
-const TABS = ['profile', 'claims', 'preferences'] as const;
+const TABS = ['profile', 'claims', 'preferences', 'privacy'] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABELS: Record<Tab, string> = {
   profile: 'Profile',
   claims: 'Claims',
   preferences: 'Preferences',
+  privacy: 'Privacy',
 };
 
 function NoProfile() {
@@ -168,8 +179,37 @@ async function PreferencesTab({ ctx }: { ctx: UserContext }) {
   );
 }
 
+async function PrivacyTab({ ctx, sessionId }: { ctx: UserContext; sessionId: string }) {
+  const [sessions, viewer] = await Promise.all([privacy.listMySessions(ctx), loadViewer(ctx)]);
+  return (
+    <div className="max-w-3xl space-y-6">
+      <Card className="space-y-4">
+        <h2 className="type-eyebrow text-fg">YOUR DATA</h2>
+        <p className="text-small text-fg-muted">
+          A copy of what JAVE holds about you, as a JSON file: your profile, applications, claims
+          and evidence, trials, missions, projects, tickets, moderation record, notifications and AI
+          usage. Staff assessments of you are listed by count. Three exports a day.
+        </p>
+        <DataExport url="/me/export" />
+      </Card>
+      <Card className="space-y-4">
+        <h2 className="type-eyebrow text-fg">SESSIONS</h2>
+        <p className="text-small text-fg-muted">
+          Where you are signed in to the dashboard. End any session you do not recognise.
+        </p>
+        <SessionList
+          sessions={sessions.map((session) => ({ ...session, current: session.id === sessionId }))}
+          timeZone={viewer.timeZone}
+          endAction={endMySessionAction}
+          endAllAction={signOutEverywhereAction}
+        />
+      </Card>
+    </div>
+  );
+}
+
 export default async function MePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const { ctx, actor } = await requireConsoleContext();
+  const { ctx, actor, session } = await requireConsoleContext();
   const requested = firstParam((await searchParams).tab) as Tab | undefined;
   const tab: Tab = requested && TABS.includes(requested) ? requested : 'profile';
   const handle = actor.memberId ? (await getMemberById(ctx, actor.memberId)).handle : null;
@@ -209,6 +249,8 @@ export default async function MePage({ searchParams }: { searchParams: Promise<S
       <div className="max-w-6xl">
         {tab === 'preferences' ? (
           <PreferencesTab ctx={ctx} />
+        ) : tab === 'privacy' ? (
+          <PrivacyTab ctx={ctx} sessionId={session.sessionId} />
         ) : !actor.memberId ? (
           <NoProfile />
         ) : tab === 'claims' ? (

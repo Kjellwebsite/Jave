@@ -54,5 +54,6 @@ export * as games from './games';
 export * as ai from './ai';
 export * as research from './research';
 export * as housekeeping from './housekeeping';
+export * as privacy from './privacy';
 
 export { coreJobHandlers, coreRecurringJobs, coreSubscribers } from './registry';

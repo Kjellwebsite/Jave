@@ -7,6 +7,7 @@ import {
   Avatar,
   Badge,
   Button,
+  Callout,
   Card,
   EmptyState,
   Icon,
@@ -116,6 +117,13 @@ export default async function MembersPage({
           </Mono>
         }
       />
+
+      {firstParam(params.erased) === '1' ? (
+        <Callout tone="success" role="status">
+          Personal data erased. The member no longer appears here; the organization’s record of
+          their cases, ranks and results is kept without their name.
+        </Callout>
+      ) : null}
 
       <Card padding="none">
         <form

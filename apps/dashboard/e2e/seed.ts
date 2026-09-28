@@ -195,7 +195,22 @@ const MEMBERS: readonly MemberFixture[] = [
     joinedDaysAgo: 90,
     verified: { 'create.creative': 'A', 'create.projects': 'C' },
   },
+  {
+    // Left the server and asked to be erased: e2e/privacy.spec.ts erases her.
+    discordId: '110000000000000023',
+    username: 'vera',
+    displayName: 'Vera Lind',
+    headline: 'Former member. Requested erasure.',
+    bio: 'Built a seed library app for community gardens.',
+    visibility: 'members',
+    roles: [],
+    joinedDaysAgo: 120,
+    guildStatus: 'departed',
+  },
 ];
+
+/** The departed member e2e/privacy.spec.ts erases. */
+export const ERASURE_TARGET = { name: 'Vera Lind', handle: 'vera' } as const;
 
 const ACHIEVEMENTS = [
   {

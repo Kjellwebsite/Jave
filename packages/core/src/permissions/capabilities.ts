@@ -55,6 +55,7 @@ export const CAPABILITIES = {
   canManageSettings: 'Change server settings.',
   canViewAuditLogs: 'Read the audit log.',
   canViewSystemStatus: 'View detailed system diagnostics.',
+  canManagePrivacy: 'Export any member’s data and erase a departed member’s personal data.',
   canHostGames: 'Host games and game sessions.',
 } as const;
 

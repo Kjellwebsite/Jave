@@ -5,6 +5,7 @@
 import { spawnSync } from 'node:child_process';
 import postgres from 'postgres';
 import { databaseEnvSchema, parseEnv } from '@jave/config';
+import { seedMissionFixtures } from './missions-seed';
 import { seedReferralFixtures } from './seed-referrals';
 import { seedDashboardFixtures } from './seed';
 import { seedAiResearchFixtures } from './seed-ai-research';
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
   await seedEventsAndGames(DATABASE_URL);
   await seedTicketFixtures(DATABASE_URL);
   await seedTrialFixtures(DATABASE_URL);
+  await seedMissionFixtures(DATABASE_URL);
   // Last: it records the analytics snapshots, which must see every fixture.
   await seedReferralFixtures(DATABASE_URL);
   console.log(`e2e database "${name}" ready`);

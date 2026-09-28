@@ -88,10 +88,16 @@ export async function createMission(
   });
 }
 
+function sameInstant(a: Date | null, b: Date | null): boolean {
+  return a === null || b === null ? a === b : a.getTime() === b.getTime();
+}
+
 /**
  * Edit a mission that is not archived. The type can only change while it is
  * a draft (assignments depend on it). Existing assignments keep their due
- * dates. An announced card is refreshed.
+ * dates. An announced card is refreshed. Only values that change are
+ * re-validated: a closed mission's deadline has passed and a reward may have
+ * been retired since, and edit forms send every field back.
  */
 export async function updateMission(
   ctx: ServiceContext,
@@ -104,8 +110,15 @@ export async function updateMission(
   if (patch.type !== undefined && patch.type !== mission.type && mission.status !== 'draft')
     throw new InvalidStateError('The mission type can only change while it is a draft.');
   const now = ctx.clock.now();
-  if (patch.deadlineAt !== undefined) assertValidDeadline(patch.deadlineAt, now);
-  await assertMissionReferences(ctx, patch);
+  if (patch.deadlineAt !== undefined && !sameInstant(patch.deadlineAt, mission.deadlineAt))
+    assertValidDeadline(patch.deadlineAt, now);
+  await assertMissionReferences(ctx, {
+    facetKey: patch.facetKey === mission.facetKey ? undefined : patch.facetKey,
+    rewardAchievementKey:
+      patch.rewardAchievementKey === mission.rewardAchievementKey
+        ? undefined
+        : patch.rewardAchievementKey,
+  });
   const type = patch.type ?? mission.type;
   const selfAssignable = resolveSelfAssignable(
     type,

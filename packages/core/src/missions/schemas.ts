@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { pageSchema } from '../kernel/pagination';
 import { httpUrl, multiLineText, singleLineText } from '../achievements/guards';
 import { achievementKeySchema } from '../achievements/schemas';
-import { MAX_DURATION_HOURS, MISSION_TYPES } from './rules';
+import { MAX_DURATION_HOURS, MISSION_STATUSES, MISSION_TYPES } from './rules';
 
 export const TITLE_MIN = 3;
 export const TITLE_MAX = 120;
@@ -149,4 +149,12 @@ export const memberHistorySchema = z
   })
   .strict();
 
-export const reviewQueueSchema = pageSchema.strict();
+/** The whole queue, or one mission's part of it (`missionId`). */
+export const reviewQueueSchema = pageSchema.extend({ missionId: z.uuid().optional() }).strict();
+
+export const listMissionsSchema = pageSchema
+  .extend({
+    status: z.enum(MISSION_STATUSES).optional(),
+    type: z.enum(MISSION_TYPES).optional(),
+  })
+  .strict();

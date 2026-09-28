@@ -10,12 +10,14 @@ import { getProfile } from '../identity/profile.service';
 import {
   type AssignmentStatus,
   formatMissionNumber,
+  MISSION_STATUSES,
   type MissionStatus,
   type MissionType,
   remainingSlots,
   SLOT_STATUSES,
 } from './rules';
 import {
+  listMissionsSchema,
   listOpenMissionsSchema,
   memberHistorySchema,
   missionIdSchema,
@@ -383,7 +385,10 @@ export interface ReviewQueueItem {
   isOwn: boolean;
 }
 
-/** Submissions awaiting review, oldest first, one entry per unit (team or individual). */
+/**
+ * Submissions awaiting review, oldest first, one entry per unit (team or
+ * individual): the whole queue, or one mission's (`missionId`).
+ */
 export async function listSubmissionsForReview(
   ctx: ServiceContext,
   input: z.input<typeof reviewQueueSchema> = {},
@@ -401,7 +406,12 @@ export async function listSubmissionsForReview(
     .from(missionAssignments)
     .innerJoin(missions, eq(missions.id, missionAssignments.missionId))
     .innerJoin(members, eq(members.id, missionAssignments.memberId))
-    .where(eq(missionAssignments.status, 'submitted'))
+    .where(
+      and(
+        eq(missionAssignments.status, 'submitted'),
+        query.missionId ? eq(missionAssignments.missionId, query.missionId) : undefined,
+      ),
+    )
     .orderBy(asc(missionAssignments.submittedAt), asc(missionAssignments.id))
     .limit(REVIEW_QUEUE_SCAN_LIMIT);
   // The reviewer's own units, whatever their own assignment's state (an abandoned teammate
@@ -440,5 +450,98 @@ export async function listSubmissionsForReview(
     total: all.length,
     limit: query.limit,
     offset: query.offset,
+  };
+}
+
+export interface MissionListItem extends MissionSummary {
+  /** Assignments holding a slot (in progress, submitted or verified). */
+  assigneeCount: number;
+  slotsLeft: number | null;
+  /** Assignments whose submission waits for review. */
+  awaitingReview: number;
+  createdAt: Date;
+  closedAt: Date | null;
+  archivedAt: Date | null;
+  /** A Discord card was posted for it. */
+  announced: boolean;
+}
+
+export interface MissionListPage extends Page<MissionListItem> {
+  /** Missions per status for the type filter (ignoring the status filter), for tab counts. */
+  statusCounts: Record<MissionStatus, number>;
+}
+
+/**
+ * Every mission in any state, newest first, for mission staff
+ * (canManageMissions or canVerifyMissions). Drafts and archived missions
+ * exist only for staff, so everyone else is refused.
+ */
+export async function listMissions(
+  ctx: ServiceContext,
+  input: z.input<typeof listMissionsSchema> = {},
+): Promise<MissionListPage> {
+  const query = parseInput(listMissionsSchema, input);
+  if (!isMissionStaff(ctx)) await authorize(ctx, 'canManageMissions', { type: 'mission' });
+  const typeFilter = query.type ? eq(missions.type, query.type) : undefined;
+  const where = and(query.status ? eq(missions.status, query.status) : undefined, typeFilter);
+  const [rows, [total], statusRows] = await Promise.all([
+    ctx.db
+      .select({ mission: missions, reward: rewardColumns })
+      .from(missions)
+      .leftJoin(
+        achievementDefinitions,
+        eq(achievementDefinitions.key, missions.rewardAchievementKey),
+      )
+      .where(where)
+      .orderBy(desc(missions.number))
+      .limit(query.limit)
+      .offset(query.offset),
+    ctx.db.select({ value: count() }).from(missions).where(where),
+    ctx.db
+      .select({ status: missions.status, value: count() })
+      .from(missions)
+      .where(typeFilter)
+      .groupBy(missions.status),
+  ]);
+  const ids = rows.map((row) => row.mission.id);
+  const [taken, pending] = await Promise.all([
+    slotsTakenFor(ctx, ids),
+    ids.length === 0
+      ? Promise.resolve([])
+      : ctx.db
+          .select({ missionId: missionAssignments.missionId, value: count() })
+          .from(missionAssignments)
+          .where(
+            and(
+              inArray(missionAssignments.missionId, ids),
+              eq(missionAssignments.status, 'submitted'),
+            ),
+          )
+          .groupBy(missionAssignments.missionId),
+  ]);
+  const pendingByMission = new Map(pending.map((row) => [row.missionId, row.value]));
+  const statusCounts = Object.fromEntries(MISSION_STATUSES.map((status) => [status, 0])) as Record<
+    MissionStatus,
+    number
+  >;
+  for (const row of statusRows) statusCounts[row.status] = row.value;
+  return {
+    items: rows.map(({ mission, reward }) => {
+      const holding = taken.get(mission.id) ?? 0;
+      return {
+        ...toSummary(mission, reward, true),
+        assigneeCount: holding,
+        slotsLeft: remainingSlots(mission.maxAssignees, holding),
+        awaitingReview: pendingByMission.get(mission.id) ?? 0,
+        createdAt: mission.createdAt,
+        closedAt: mission.closedAt,
+        archivedAt: mission.archivedAt,
+        announced: mission.announcementMessageId !== null,
+      };
+    }),
+    total: total?.value ?? 0,
+    limit: query.limit,
+    offset: query.offset,
+    statusCounts,
   };
 }

@@ -1,4 +1,5 @@
 import {
+  Award,
   Bell,
   CalendarDays,
   ChartLine,
@@ -18,6 +19,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Swords,
+  Target,
   UserPlus,
   UserRound,
   Users,
@@ -68,6 +70,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         capability: 'canVerifyMembers',
       },
       { href: '/referrals', label: 'Referrals', icon: UserPlus, capability: 'canViewAnalytics' },
+      { href: '/achievements', label: 'Achievements', icon: Award, capability: null },
     ],
   },
   {
@@ -83,6 +86,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       },
       { href: '/events', label: 'Events', icon: CalendarDays, capability: null },
       { href: '/games', label: 'Games', icon: Gamepad2, capability: null },
+      { href: '/missions', label: 'Missions', icon: Target, capability: null },
     ],
   },
   {

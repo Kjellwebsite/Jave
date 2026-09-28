@@ -32,6 +32,37 @@ function toUser(user: User): InteractionUser {
   };
 }
 
+/** The parts of discord.js ModalSubmitFields the modal reader uses. */
+export type ModalFieldSource = Pick<
+  ModalSubmitInteraction['fields'],
+  'getTextInputValue' | 'getStringSelectValues'
+>;
+
+/**
+ * Modal fields by custom id. discord.js throws for a field the submitted
+ * modal does not hold (one handler often serves several variants of a
+ * modal); an absent field reads as blank text or nothing selected, exactly
+ * as FakeInteraction reads it in tests.
+ */
+export function modalFieldReader(fields: ModalFieldSource | null): InteractionContext['modal'] {
+  return {
+    text: (id) => {
+      try {
+        return fields?.getTextInputValue(id) ?? '';
+      } catch {
+        return '';
+      }
+    },
+    select: (id) => {
+      try {
+        return fields?.getStringSelectValues(id) ?? [];
+      } catch {
+        return [];
+      }
+    },
+  };
+}
+
 function toReplyOptions(payload: ReplyPayload): InteractionReplyOptions {
   return {
     content: payload.content,
@@ -162,16 +193,7 @@ export function adaptInteraction(interaction: Interaction): InteractionContext |
         : EMPTY_OPTIONS,
     // String selects carry option values; user/role/channel selects carry Discord ids.
     values: interaction.isAnySelectMenu() ? interaction.values : [],
-    modal: {
-      text: (id) => modal?.fields.getTextInputValue(id) ?? '',
-      select: (id) => {
-        try {
-          return modal?.fields.getStringSelectValues(id) ?? [];
-        } catch {
-          return [];
-        }
-      },
-    },
+    modal: modalFieldReader(modal?.fields ?? null),
     targetUser: interaction.isUserContextMenuCommand()
       ? toUser((interaction as UserContextMenuCommandInteraction).targetUser)
       : null,

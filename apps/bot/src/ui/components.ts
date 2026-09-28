@@ -6,6 +6,7 @@ import {
   type APIEmbedField,
   type APISelectMenuOption,
   type APIStringSelectComponent,
+  type APIUserSelectComponent,
   ButtonStyle,
   ComponentType,
 } from 'discord.js';
@@ -125,4 +126,22 @@ export function stringSelect(
 
 export function ephemeral(embed: APIEmbed, components?: ReplyPayload['components']): ReplyPayload {
   return { embeds: [embed], components, ephemeral: true };
+}
+
+/** Discord caps every select menu at 25 selected values. */
+export const SELECT_MAX_VALUES = 25;
+
+/** Member picker. The handler receives Discord user ids as `values`; resolve and re-authorize them. */
+export function userSelect(
+  customId: string,
+  placeholder: string,
+  config: { min?: number; max?: number } = {},
+): APIUserSelectComponent {
+  return {
+    type: ComponentType.UserSelect,
+    custom_id: customId,
+    placeholder: clip(placeholder, 150),
+    min_values: config.min ?? 1,
+    max_values: Math.min(config.max ?? 1, SELECT_MAX_VALUES),
+  };
 }

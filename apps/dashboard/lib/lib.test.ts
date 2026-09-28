@@ -168,18 +168,23 @@ describe('navigation', () => {
     expect(hrefs([])).toEqual(everyone);
     expect(everyone).toEqual([
       '/overview',
+      '/achievements',
       '/projects',
       '/contributions',
       '/events',
       '/games',
+      '/missions',
       '/tickets',
     ]);
+    for (const group of visibleNav(NAV_GROUPS, [])) expect(group.items.length).toBeGreaterThan(0);
+    expect(visibleNav(NAV_GROUPS, []).map((group) => group.label)).not.toContain('SYSTEM');
 
     const member = hrefs(['canViewMembers']);
     expect(member).toEqual(expect.arrayContaining(['/members', '/ranking', '/research']));
     expect(member).not.toContain('/audit');
     expect(member).not.toContain('/integrations');
     expect(member).not.toContain('/trials');
+    expect(member).not.toContain('/referrals');
     expect(visibleNav(NAV_GROUPS, ['canViewMembers']).map((group) => group.label)).toEqual([
       'OVERVIEW',
       'PEOPLE',
@@ -196,17 +201,20 @@ describe('navigation', () => {
       '/overview',
       '/members',
       '/ranking',
+      '/achievements',
       '/projects',
       '/contributions',
       '/events',
       '/games',
+      '/missions',
       '/tickets',
       '/research',
       '/audit',
       '/settings',
     ]);
-    for (const group of visibleNav(NAV_GROUPS, [])) expect(group.items.length).toBeGreaterThan(0);
-    expect(visibleNav(NAV_GROUPS, []).map((group) => group.label)).not.toContain('SYSTEM');
+    expect(hrefs(['canViewAnalytics'])).toEqual(
+      expect.arrayContaining(['/analytics', '/referrals']),
+    );
   });
 
   it('resolves page context from nested paths', () => {

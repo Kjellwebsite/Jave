@@ -1,4 +1,17 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, type SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { z } from 'zod';
 import { members, projectMembers, projects } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
@@ -6,6 +19,7 @@ import { NotFoundError } from '../kernel/errors';
 import { type Page, pageSchema } from '../kernel/pagination';
 import { parseInput } from '../kernel/validation';
 import {
+  managedProjectsFilter,
   type ProjectAccess,
   type ProjectRecord,
   type ProjectRole,
@@ -220,6 +234,58 @@ async function memberFilterAllowed(ctx: ServiceContext, memberId: string): Promi
   return row !== undefined && profileVisibleTo(ctx, { memberId, ...row });
 }
 
+/** Newest activity first, id as the tiebreaker (stable pages). */
+const UPDATED_DESC = [desc(projects.updatedAt), desc(projects.id)];
+
+/** One page of project summaries; the owner is named only when their profile is visible. */
+async function selectSummaries(
+  ctx: ServiceContext,
+  where: SQL | undefined,
+  order: SQL[],
+  limit: number,
+  offset: number,
+): Promise<ProjectSummary[]> {
+  const rows = await ctx.db
+    .select({
+      project: projects,
+      ownerHandle: members.handle,
+      ownerDisplayName: members.displayName,
+      ownerVisibility: members.profileVisibility,
+      ownerStanding: members.standing,
+      memberCount: sql<number>`(select count(*)::int from project_members pm where pm.project_id = ${projects.id} and pm.left_at is null)`,
+    })
+    .from(projects)
+    .innerJoin(members, eq(members.id, projects.ownerMemberId))
+    .where(where)
+    .orderBy(...order)
+    .limit(limit)
+    .offset(offset);
+  return rows.map(
+    ({ project, ownerHandle, ownerDisplayName, ownerVisibility, ownerStanding, memberCount }) => ({
+      id: project.id,
+      slug: project.slug,
+      title: project.title,
+      summary: project.summary,
+      status: project.status,
+      visibility: project.visibility,
+      domainKey: project.domainKey,
+      githubRepo: project.githubRepo,
+      owner: profileVisibleTo(ctx, {
+        memberId: project.ownerMemberId,
+        visibility: ownerVisibility,
+        standing: ownerStanding,
+      })
+        ? { memberId: project.ownerMemberId, handle: ownerHandle, displayName: ownerDisplayName }
+        : null,
+      memberCount,
+      shippedAt: project.shippedAt,
+      archivedAt: project.archivedAt,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    }),
+  );
+}
+
 /** Paginated project directory, filtered to what the viewer may see. */
 export async function listProjects(
   ctx: ServiceContext,
@@ -267,53 +333,50 @@ export async function listProjects(
       ? [asc(projects.title), asc(projects.id)]
       : q.sort === 'created_desc'
         ? [desc(projects.createdAt), desc(projects.id)]
-        : [desc(projects.updatedAt), desc(projects.id)];
+        : UPDATED_DESC;
 
-  const [rows, [total]] = await Promise.all([
-    ctx.db
-      .select({
-        project: projects,
-        ownerHandle: members.handle,
-        ownerDisplayName: members.displayName,
-        ownerVisibility: members.profileVisibility,
-        ownerStanding: members.standing,
-        memberCount: sql<number>`(select count(*)::int from project_members pm where pm.project_id = ${projects.id} and pm.left_at is null)`,
-      })
-      .from(projects)
-      .innerJoin(members, eq(members.id, projects.ownerMemberId))
-      .where(where)
-      .orderBy(...order)
-      .limit(q.limit)
-      .offset(q.offset),
+  const [items, [total]] = await Promise.all([
+    selectSummaries(ctx, where, order, q.limit, q.offset),
     ctx.db
       .select({ value: sql<number>`count(*)::int` })
       .from(projects)
       .where(where),
   ]);
-
-  const items = rows.map(
-    ({ project, ownerHandle, ownerDisplayName, ownerVisibility, ownerStanding, memberCount }) => ({
-      id: project.id,
-      slug: project.slug,
-      title: project.title,
-      summary: project.summary,
-      status: project.status,
-      visibility: project.visibility,
-      domainKey: project.domainKey,
-      githubRepo: project.githubRepo,
-      owner: profileVisibleTo(ctx, {
-        memberId: project.ownerMemberId,
-        visibility: ownerVisibility,
-        standing: ownerStanding,
-      })
-        ? { memberId: project.ownerMemberId, handle: ownerHandle, displayName: ownerDisplayName }
-        : null,
-      memberCount,
-      shippedAt: project.shippedAt,
-      archivedAt: project.archivedAt,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
-    }),
-  );
   return { items, total: total?.value ?? 0, limit: q.limit, offset: q.offset };
+}
+
+export const listAddableProjectsSchema = pageSchema.pick({ limit: true }).extend({
+  /** The member who would join. */
+  memberId: z.uuid(),
+});
+
+/**
+ * Projects the viewer could add this member to: active (not archived) ones
+ * the viewer manages — owner/maintainer in good standing, or every project
+ * with canManageProjects — that the member is not actively on, newest
+ * activity first. The limit applies after every filter, so eligible projects
+ * are never hidden behind ones the member already joined. Managers see every
+ * teammate of the projects they manage, so this reveals no membership they
+ * could not already read. addProjectMember re-checks everything.
+ */
+export async function listAddableProjects(
+  ctx: ServiceContext,
+  input: z.input<typeof listAddableProjectsSchema>,
+): Promise<ProjectSummary[]> {
+  const q = parseInput(listAddableProjectsSchema, input);
+  const filters: SQL[] = [
+    isNull(projects.deletedAt),
+    ne(projects.status, 'archived'),
+    notInArray(
+      projects.id,
+      ctx.db
+        .select({ id: projectMembers.projectId })
+        .from(projectMembers)
+        .where(and(eq(projectMembers.memberId, q.memberId), isNull(projectMembers.leftAt))),
+    ),
+  ];
+  for (const filter of [visibleProjectsFilter(ctx), managedProjectsFilter(ctx)]) {
+    if (filter) filters.push(filter);
+  }
+  return selectSummaries(ctx, and(...filters), UPDATED_DESC, q.limit, 0);
 }

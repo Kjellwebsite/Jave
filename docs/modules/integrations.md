@@ -69,6 +69,17 @@ Order of checks:
 4. **Identifiers** — missing/invalid delivery id or event → `400 missing_delivery_headers`.
 5. **JSON** — malformed, non-object or nested deeper than 64 → `400`.
    NUL characters (unstorable in Postgres) are stripped; `__proto__` keys stay data.
+   GitHub deliveries sent with GitHub's form content type
+   (`application/x-www-form-urlencoded`, body `payload=<url-encoded JSON>`)
+   have their `payload` field decoded only after the signature over the raw
+   form body verified; a form body without it → `400 missing_form_payload`.
+   `application/json` is the recommended GitHub setting. JAVE-signed bodies
+   are always JSON.
+
+   Steps 4–5 run only for verified senders; each refusal there is recorded as
+   the integration's `lastError` (`delivery rejected: <reason>`), which the
+   dashboard shows, since nothing else is stored for it.
+
 6. **Persist** — `webhook_deliveries` row + `integrations.process_delivery`
    job in one transaction → `202 { ok, deliveryId }`.
    Idempotency: `(integration, delivery id)` **and** `(integration, signature digest)`
@@ -178,15 +189,15 @@ Subscriber: `integrations.outbound_webhooks` (all external events → outbound d
 
 ## Jobs
 
-| Job                             | Kind | Dedupe                          |
-| ------------------------------- | ---- | ------------------------------- |
-| `integrations.process_delivery` | core | `webhook:<deliveryId>`          |
-| `integrations.deliver_outbound` | core | `outbound:<outboundDeliveryId>` |
+| Job                             | Kind             | Dedupe                          |
+| ------------------------------- | ---------------- | ------------------------------- |
+| `integrations.process_delivery` | core             | `webhook:<deliveryId>`          |
+| `integrations.deliver_outbound` | core             | `outbound:<outboundDeliveryId>` |
+| `discord.integrations.relay`    | Discord contract | `relay:<deliveryId>`            |
 
 Deleting an outbound subscription cascades to its deliveries; delivery jobs
 still queued for it complete as `{ skipped: 'subscription deleted' }` rather
 than dead-lettering.
-| `discord.integrations.relay` | Discord contract | `relay:<deliveryId>` |
 
 ## Discord job contract: `discord.integrations.relay`
 
@@ -217,6 +228,20 @@ Required Discord permissions in the channel: **View Channel, Send Messages, Embe
 `external_account.linked|unlinked|verified|unverified`,
 `external_account.self_verification_blocked` (durable, denied). Secrets and
 full outbound URLs never appear in audit context.
+
+## Surfaces
+
+Full reference: [docs/commands/integrations.md](../commands/integrations.md).
+
+- **Discord** (`apps/bot/src/features/integrations`): `/github link | status | verify`
+  and the `discord.integrations.relay` job handler.
+- **Dashboard** `/integrations` (`canManageIntegrations`): registry (create with the
+  signing secret shown once, rotate, enable/disable, relay channel), inbound delivery
+  log with collapsed, escaped payloads and retry, outbound webhooks CRUD with an
+  external-event picker, outbound delivery log.
+- **HTTP**: `POST /api/webhooks/github` and `POST /api/webhooks/{slug}`
+  (`apps/dashboard/server/webhooks/inbound.ts`): per slug+address rate limit,
+  1 MiB streaming cap, raw body to `receiveWebhook`, no cookies, no CSRF origin check.
 
 ## Extension points
 

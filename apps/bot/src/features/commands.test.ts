@@ -3,6 +3,8 @@ import { ApplicationCommandType } from 'discord.js';
 import { allFeatures } from '.';
 
 const SLASH_NAME = /^[-_\p{L}\p{N}]{1,32}$/u;
+/** Discord accepts at most 15 user and 15 message context menus per application (and per guild). */
+const MAX_CONTEXT_MENUS_PER_TYPE = 15;
 
 describe('command catalog', () => {
   const commands = allFeatures().flatMap((f) => f.commands ?? []);
@@ -14,6 +16,12 @@ describe('command catalog', () => {
 
   it('satisfies Discord limits', () => {
     expect(commands.filter((c) => c.kind === 'slash').length).toBeLessThanOrEqual(100);
+    for (const kind of ['user_context', 'message_context'] as const) {
+      const menus = commands.filter((c) => c.kind === kind).map((c) => c.data.name);
+      expect(menus.length, `${kind}: ${menus.join(', ')}`).toBeLessThanOrEqual(
+        MAX_CONTEXT_MENUS_PER_TYPE,
+      );
+    }
     for (const command of commands) {
       const data = command.data as {
         name: string;

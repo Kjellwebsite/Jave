@@ -7,7 +7,7 @@ export const HOME_PATH = '/overview';
  * in `proxy.ts` (cookie present) and authoritatively in the console layout.
  */
 const PUBLIC_EXACT = new Set(['/', LOGIN_PATH, '/api/health', '/icon', '/robots.txt']);
-const PUBLIC_PREFIXES = ['/p/', '/api/auth/'];
+const PUBLIC_PREFIXES = ['/p/', '/api/auth/', '/api/webhooks/'];
 
 export function isPublicPath(pathname: string): boolean {
   if (PUBLIC_EXACT.has(pathname)) return true;

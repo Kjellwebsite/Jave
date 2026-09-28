@@ -99,19 +99,21 @@ are shown only to the author and reviewers.
 
 ## Services
 
-| Function                                                                                                         | Notes                                                                                                      |
-| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `createProject`, `updateProject`                                                                                 | unique slug from the title (`rocket-engine`, `rocket-engine-2`; route names reserved)                      |
-| `changeProjectStatus`, `unarchiveProject`                                                                        | see state machine                                                                                          |
-| `linkGithubRepo`                                                                                                 | `owner/name` or a github.com URL, stored lowercase, unique, audited; `null` unlinks                        |
-| `addProjectMember`, `removeProjectMember`, `leaveProject`, `changeProjectMemberRole`, `transferProjectOwnership` | ≤ 50 active members                                                                                        |
-| `addProjectLink`, `updateProjectLink`, `removeProjectLink`, `reorderProjectLinks`                                | http(s) only, no credentials, ≤ 12                                                                         |
-| `addMilestone`, `updateMilestone`, `completeMilestone`, `removeMilestone`, `reorderMilestones`                   | ≤ 50; reorder requires an exact permutation                                                                |
-| `getProject` (`{ projectId }` or `{ slug }`), `listProjects`                                                     | filters: status, visibility, memberId, ownerMemberId, domainKey, search, includeArchived; sort; pagination |
-| `getProjectActivity`                                                                                             | project-aggregate domain events, newest first, paginated                                                   |
-| `recordContribution`, `verifyContribution`, `rejectContribution`, `listContributions`                            | ≤ 25 pending per member; future dates refused                                                              |
-| `recordExternalContribution`                                                                                     | system actor only; idempotent per `externalRef` (used by integrations)                                     |
-| `findProjectByGithubRepo`                                                                                        | system actor only (bypasses visibility)                                                                    |
+| Function                                                                                                         | Notes                                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createProject`, `updateProject`                                                                                 | unique slug from the title (`rocket-engine`, `rocket-engine-2`; route names reserved)                                                                                                                                                                         |
+| `changeProjectStatus`, `unarchiveProject`                                                                        | see state machine                                                                                                                                                                                                                                             |
+| `linkGithubRepo`                                                                                                 | `owner/name` or a github.com URL, stored lowercase, unique, audited; `null` unlinks                                                                                                                                                                           |
+| `addProjectMember`, `removeProjectMember`, `leaveProject`, `changeProjectMemberRole`, `transferProjectOwnership` | ≤ 50 active members                                                                                                                                                                                                                                           |
+| `addProjectMemberByHandle`                                                                                       | typed-handle variant (`@mara`, any case) for forms; resolved after the manage check, whatever the target's profile visibility; unknown handles and banned/quarantined members both answer `Member not found` unless the viewer holds `canViewPrivateProfiles` |
+| `listAddableProjects({ memberId, limit })`                                                                       | active projects the viewer manages (staff: all) that the member is not on, newest activity first; filtered before the limit (no eligible project hidden behind busier ones)                                                                                   |
+| `addProjectLink`, `updateProjectLink`, `removeProjectLink`, `reorderProjectLinks`                                | http(s) only, no credentials, ≤ 12                                                                                                                                                                                                                            |
+| `addMilestone`, `updateMilestone`, `completeMilestone`, `removeMilestone`, `reorderMilestones`                   | ≤ 50; reorder requires an exact permutation                                                                                                                                                                                                                   |
+| `getProject` (`{ projectId }` or `{ slug }`), `listProjects`                                                     | filters: status, visibility, memberId, ownerMemberId, domainKey, search, includeArchived; sort; pagination                                                                                                                                                    |
+| `getProjectActivity`                                                                                             | project-aggregate domain events, newest first, paginated                                                                                                                                                                                                      |
+| `recordContribution`, `verifyContribution`, `rejectContribution`, `listContributions`                            | ≤ 25 pending per member; future dates refused                                                                                                                                                                                                                 |
+| `recordExternalContribution`                                                                                     | system actor only; idempotent per `externalRef` (used by integrations)                                                                                                                                                                                        |
+| `findProjectByGithubRepo`                                                                                        | system actor only (bypasses visibility)                                                                                                                                                                                                                       |
 
 All free text is trimmed, length-capped and rejects control characters;
 titles and labels are single-line. URLs must be absolute http(s) without
@@ -178,6 +180,20 @@ Copy examples: `PROJECT SHIPPED — Rocket Engine — now SHIPPED.`,
 
 None. The projects module has no background work and no Discord side effects
 of its own (GitHub processing lives in the integrations module).
+
+## Surfaces
+
+Full reference: [docs/commands/projects.md](../commands/projects.md).
+
+- **Discord** (`apps/bot/src/features/projects`): `/project create | view | list | status | milestone add | milestone done | member add | member remove`,
+  `/contribute add | list | review` (review queue with VERIFY / REJECT / SKIP), the card's
+  ADD MEMBER flow (Discord member picker → role), the **Add to Project** user context menu
+  and the **Record Contribution** message context menu. No `discord.*` jobs (the module has no Discord side effects).
+- **Dashboard**: `/projects` (status tabs, search, grid/list), `/projects/new`,
+  `/projects/[slug]` (overview, team management, milestones, links, contributions,
+  activity feed from domain events, settings with GitHub repository link, archive/restore),
+  `/contributions` (review queue, mine, verified; record dialog).
+- Both surfaces call these services as the signed-in user; neither re-implements a rule.
 
 ## Extension points
 

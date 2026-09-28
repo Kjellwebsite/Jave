@@ -273,6 +273,21 @@ describe('contributions', { timeout: DB_TEST_TIMEOUT_MS }, () => {
 
     const queue = await listContributions(kit.as(reviewer), { status: 'submitted' });
     expect(queue.items.map((c) => c.id)).toEqual([pending.id]);
+    const ownDraft = await recordContribution(kit.as(reviewer), { kind: 'review', title: 'Mine' });
+    const reviewable = await listContributions(kit.as(reviewer), {
+      status: 'submitted',
+      excludeOwn: true,
+    });
+    expect(reviewable.items.map((c) => c.id)).toEqual([pending.id]);
+    expect(reviewable.total).toBe(1);
+    const authorQueue = await listContributions(kit.as(author), {
+      status: 'submitted',
+      excludeOwn: true,
+    });
+    expect(authorQueue.total).toBe(0);
+    expect(
+      (await listContributions(kit.as(reviewer), { status: 'submitted' })).items.map((c) => c.id),
+    ).toContain(ownDraft.id);
 
     expect((await listContributions(kit.as(anonymousActor), {})).total).toBe(0);
     await kit.db

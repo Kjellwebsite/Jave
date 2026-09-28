@@ -33,8 +33,10 @@ import { javeSigningPayload, verifyGithubSignature, verifyJaveSignature } from '
  *   });
  *   return Response.json(body, { status });
  *
- * Order: size → integration → signature (+ replay window) → JSON → persist
- * (idempotent) → enqueue processing. Nothing is processed inline.
+ * Order: size → integration → signature (+ replay window) → identifiers →
+ * JSON → persist (idempotent) → enqueue processing. Nothing is processed
+ * inline. A verified sender whose delivery is still refused (identifiers,
+ * JSON) is recorded as the integration's last error, so operators see why.
  */
 export interface InboundWebhookRequest {
   slug: string;
@@ -75,14 +77,25 @@ const JAVE_HEADERS = {
   event: 'x-jave-event',
 } as const;
 
+const CONTENT_TYPE_HEADER = 'content-type';
+/** GitHub's default webhook content type: the body is `payload=<url-encoded JSON>`. */
+const FORM_CONTENT_TYPE = 'application/x-www-form-urlencoded';
+const GITHUB_FORM_FIELD = 'payload';
+
 function respond(status: number, body: Record<string, unknown>): InboundWebhookResponse {
   return { status, body };
 }
 
 const NOT_FOUND = respond(WEBHOOK_HTTP_STATUS.notFound, { error: 'not_found' });
 
+/** A verified signature, with the sender's (still unchecked) delivery identifiers. */
 type Verification =
-  | { ok: true; deliveryId: string; eventType: string; signatureDigest: string }
+  | {
+      ok: true;
+      deliveryHeader: string | undefined;
+      eventHeader: string | undefined;
+      signatureDigest: string;
+    }
   | { ok: false; response: InboundWebhookResponse };
 
 function lowercaseHeaders(
@@ -163,10 +176,44 @@ function identifiers(
   return { deliveryId, eventType: eventType.toLowerCase() };
 }
 
-const MISSING_IDENTIFIERS: Verification = {
-  ok: false,
-  response: respond(WEBHOOK_HTTP_STATUS.badRequest, { error: 'missing_delivery_headers' }),
-};
+/**
+ * A validly signed delivery that still cannot be accepted: `400 <reason>`,
+ * recorded as the integration's last error so the dashboard shows why. Only
+ * reached after the signature verified, so only a holder of the secret can
+ * write it.
+ */
+async function rejectPayload(
+  ctx: ServiceContext,
+  integration: IntegrationRecord,
+  reason: string,
+): Promise<InboundWebhookResponse> {
+  await ctx.rootDb
+    .update(integrations)
+    .set({
+      lastErrorAt: ctx.clock.now(),
+      lastError: `delivery rejected: ${reason}`.slice(0, MAX_ERROR_LENGTH),
+    })
+    .where(eq(integrations.id, integration.id));
+  return respond(WEBHOOK_HTTP_STATUS.badRequest, { error: reason });
+}
+
+/**
+ * The JSON document of a verified delivery, or null when a form-encoded
+ * GitHub body lacks its `payload` field. GitHub signs the body exactly as
+ * sent; with its default form content type that body is
+ * `payload=<url-encoded JSON>`, so the field is decoded here — after the
+ * signature over the raw form body verified. JAVE-signed senders post JSON.
+ */
+function jsonDocument(
+  integration: IntegrationRecord,
+  headers: Record<string, string>,
+  rawBody: string,
+): string | null {
+  if (usesJaveSignature(integration.provider)) return rawBody;
+  const mediaType = (headers[CONTENT_TYPE_HEADER] ?? '').split(';', 1)[0] ?? '';
+  if (mediaType.trim().toLowerCase() !== FORM_CONTENT_TYPE) return rawBody;
+  return new URLSearchParams(rawBody).get(GITHUB_FORM_FIELD);
+}
 
 async function verifyGithub(
   ctx: ServiceContext,
@@ -186,10 +233,13 @@ async function verifyGithub(
   if (!verifyGithubSignature(secret, request.rawBody, headers[GITHUB_HEADERS.signature])) {
     return rejectSignature(ctx, integration, 'signature_mismatch', deliveryHeader);
   }
-  const ids = identifiers(deliveryHeader, headers[GITHUB_HEADERS.event]);
-  if (!ids) return MISSING_IDENTIFIERS;
   const signatureDigest = sha256Hex(`github:${hmacSha256Hex(secret, request.rawBody)}`);
-  return { ok: true, ...ids, signatureDigest };
+  return {
+    ok: true,
+    deliveryHeader,
+    eventHeader: headers[GITHUB_HEADERS.event],
+    signatureDigest,
+  };
 }
 
 async function verifyJave(
@@ -223,11 +273,14 @@ async function verifyJave(
     windowMs: REPLAY_WINDOW_MS,
   });
   if (!result.ok) return rejectSignature(ctx, integration, result.reason, deliveryHeader);
-  const ids = identifiers(deliveryHeader, headers[JAVE_HEADERS.event] ?? DEFAULT_JAVE_EVENT);
-  if (!ids) return MISSING_IDENTIFIERS;
   const expected = hmacSha256Hex(secret, javeSigningPayload(timestamp!, request.rawBody));
   const signatureDigest = sha256Hex(`jave:v1:${timestamp}:${expected}`);
-  return { ok: true, ...ids, signatureDigest };
+  return {
+    ok: true,
+    deliveryHeader,
+    eventHeader: headers[JAVE_HEADERS.event] ?? DEFAULT_JAVE_EVENT,
+    signatureDigest,
+  };
 }
 
 export function integrationActor(integration: IntegrationRecord): IntegrationActor {
@@ -261,8 +314,12 @@ export async function receiveWebhook(
     : await verifyGithub(ctx, integration, headers, request);
   if (!verified.ok) return verified.response;
 
-  const parsed = parseJsonObject(request.rawBody);
-  if (!parsed.ok) return respond(WEBHOOK_HTTP_STATUS.badRequest, { error: parsed.reason });
+  const ids = identifiers(verified.deliveryHeader, verified.eventHeader);
+  if (!ids) return rejectPayload(ctx, integration, 'missing_delivery_headers');
+  const document = jsonDocument(integration, headers, request.rawBody);
+  if (document === null) return rejectPayload(ctx, integration, 'missing_form_payload');
+  const parsed = parseJsonObject(document);
+  if (!parsed.ok) return rejectPayload(ctx, integration, parsed.reason);
 
   return withTransaction(withActor(ctx, integrationActor(integration)), async (t) => {
     const now = t.clock.now();
@@ -271,8 +328,8 @@ export async function receiveWebhook(
       .values({
         integrationId: integration.id,
         provider: integration.provider,
-        deliveryId: verified.deliveryId,
-        eventType: verified.eventType,
+        deliveryId: ids.deliveryId,
+        eventType: ids.eventType,
         signatureDigest: verified.signatureDigest,
         payload: parsed.value,
         receivedAt: now,

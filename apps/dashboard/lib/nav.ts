@@ -5,7 +5,9 @@ import {
   Cpu,
   FileText,
   FlaskConical,
+  FolderKanban,
   Gamepad2,
+  GitPullRequestArrow,
   Inbox,
   LayoutGrid,
   LifeBuoy,
@@ -17,6 +19,7 @@ import {
   Swords,
   UserRound,
   Users,
+  Webhook,
 } from 'lucide-react';
 import type { Capability } from '@jave/core';
 
@@ -65,6 +68,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: 'OPERATIONS',
     items: [
       { href: '/trials', label: 'Trials', icon: Swords, capability: 'canManageTrials' },
+      { href: '/projects', label: 'Projects', icon: FolderKanban, capability: null },
+      {
+        href: '/contributions',
+        label: 'Contributions',
+        icon: GitPullRequestArrow,
+        capability: null,
+      },
       { href: '/events', label: 'Events', icon: CalendarDays, capability: null },
       { href: '/games', label: 'Games', icon: Gamepad2, capability: null },
     ],
@@ -87,6 +97,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: 'SYSTEM',
     items: [
       { href: '/audit', label: 'Audit Log', icon: ScrollText, capability: 'canViewAuditLogs' },
+      {
+        href: '/integrations',
+        label: 'Integrations',
+        icon: Webhook,
+        capability: 'canManageIntegrations',
+      },
       { href: '/settings', label: 'Settings', icon: Settings2, capability: 'canViewSettings' },
     ],
   },

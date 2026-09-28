@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, type SQL, sql } from 'drizzle-orm';
 import { type members, type projectMemberRole, projectMembers, projects } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
 import { ForbiddenError, InvalidStateError, NotFoundError } from '../kernel/errors';
@@ -195,6 +195,30 @@ export function visibleProjectsFilter(ctx: ServiceContext): SQL | undefined {
     );
   }
   return or(...conditions);
+}
+
+/**
+ * SQL filter for projects the actor may manage (undefined = every project).
+ * Mirrors resolveAccess().canManage: canManageProjects, or owner/maintainer
+ * in good standing.
+ */
+export function managedProjectsFilter(ctx: ServiceContext): SQL | undefined {
+  if (can(ctx, 'canManageProjects')) return undefined;
+  const memberId = ctx.actor.kind === 'user' ? ctx.actor.memberId : null;
+  if (!memberId || !membershipCanAct(ctx)) return sql`false`;
+  return inArray(
+    projects.id,
+    ctx.db
+      .select({ id: projectMembers.projectId })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.memberId, memberId),
+          isNull(projectMembers.leftAt),
+          inArray(projectMembers.role, [...MANAGER_ROLES]),
+        ),
+      ),
+  );
 }
 
 /** Project IDs the actor manages through membership (owner/maintainer, good standing). */

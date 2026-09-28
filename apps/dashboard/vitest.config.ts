@@ -12,7 +12,7 @@ export default defineConfig({
   test: {
     name: 'dashboard',
     environment: 'node',
-    include: ['{lib,server,components}/**/*.test.{ts,tsx}'],
+    include: ['{lib,server,components}/**/*.test.{ts,tsx}', 'app/api/activity/**/*.test.ts'],
     // Database tests run on PGlite (Postgres in WASM); generous limits for shared machines.
     testTimeout: 20_000,
     hookTimeout: 60_000,

@@ -160,6 +160,10 @@ Full reference: [docs/commands/games.md](../commands/games.md).
   hand or in a purge is re-posted by the gateway listeners.
 - **Dashboard** (`apps/dashboard/app/(console)/games`): `/games` leaderboards per game and
   metric, with the `/challenge` commands and the win rule.
+- **Discord Activity** (`apps/activity` + `apps/dashboard/app/api/activity`): JVLN ARENA ·
+  TRIVIA, one session per Activity instance (surface `activity`), polled at 1 Hz with player
+  timer nudges (`tickSession`), and the all-time board through `getLeaderboard` (audience
+  `viewer`). Reference: [docs/ACTIVITY.md](../ACTIVITY.md).
 
 ## Extension points
 

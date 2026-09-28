@@ -2,11 +2,11 @@
 
 JAVE runs as three processes on one PostgreSQL database:
 
-| Process   | What it is                                          | Scales                          | Image / artifact                    |
-| --------- | --------------------------------------------------- | ------------------------------- | ----------------------------------- |
-| Bot       | Discord gateway, interactions, **job worker**       | exactly one per guild (gateway) | `apps/bot/Dockerfile`               |
-| Dashboard | Next.js operations console, OAuth, webhooks, API    | horizontally (stateless)        | `apps/dashboard/Dockerfile`         |
-| Activity  | Static Discord Activity (Vite build) behind Discord | static hosting / CDN            | `apps/activity` build (ACTIVITY.md) |
+| Process   | What it is                                          | Scales                          | Image / artifact                                             |
+| --------- | --------------------------------------------------- | ------------------------------- | ------------------------------------------------------------ |
+| Bot       | Discord gateway, interactions, **job worker**       | exactly one per guild (gateway) | `apps/bot/Dockerfile`                                        |
+| Dashboard | Next.js operations console, OAuth, webhooks, API    | horizontally (stateless)        | `apps/dashboard/Dockerfile`                                  |
+| Activity  | Static Discord Activity (Vite build) behind Discord | static hosting / CDN            | `apps/activity` build ([docs/ACTIVITY.md](docs/ACTIVITY.md)) |
 
 All business rules live in `@jave/core`; the processes are thin surfaces. Side
 effects in Discord are queued as `discord.*` jobs and executed by the bot's
@@ -44,7 +44,7 @@ In the [Discord Developer Portal](https://discord.com/developers/applications):
    intents **Server Members** and **Message Content** (automod, ticket
    transcripts, join screening). Disable "Public Bot".
 3. **OAuth2** → Client Secret → `DISCORD_CLIENT_SECRET` (secret). Add the
-   redirect `${JAVE_PUBLIC_URL}/api/auth/callback`.
+   redirect `${JAVE_PUBLIC_URL}/api/auth/discord/callback`.
 4. Invite the bot with the URL printed by
    `DISCORD_CLIENT_ID=… pnpm --filter @jave/bot exec tsx src/scripts/print-commands.ts`
    (no network needed). It requests exactly the permissions below — **never
@@ -53,6 +53,10 @@ In the [Discord Developer Portal](https://discord.com/developers/applications):
    the quarantine role). Discord only lets a bot manage roles below its own.
 6. Register slash commands: `DISCORD_TOKEN=… DISCORD_CLIENT_ID=… DISCORD_GUILD_ID=… pnpm commands:deploy`.
    Re-run after every release that changes commands (guild-scoped, instant).
+7. **Activities** → Settings → Enable Activities, then **URL Mappings** `/api` →
+   `<dashboard host>/api` and `/` → `<activity host>`. Keep the default entry point
+   command. Exact values:
+   [docs/ACTIVITY.md](docs/ACTIVITY.md#discord-developer-portal-configuration).
 
 ### Least-privilege permissions
 
@@ -89,7 +93,9 @@ minimum:
   `DISCORD_GUILD_ID`, `JAVE_PUBLIC_URL`, `JAVE_ENCRYPTION_KEY` (if integrations
   or webhooks are used), `JAVE_FOUNDER_DISCORD_IDS` for the first founder;
 - bot: `DISCORD_TOKEN`;
-- dashboard: `DISCORD_CLIENT_SECRET`, `JAVE_SESSION_SECRET`.
+- dashboard: `DISCORD_CLIENT_SECRET` (also exchanges the Activity's sign-in codes),
+  `JAVE_SESSION_SECRET` (also signs the Activity's short-lived tokens);
+- Activity build: `VITE_DISCORD_CLIENT_ID` (public; compiled into the bundle).
 
 Never set `JAVE_DEV_AUTH` in production; configuration validation refuses it.
 AI is off unless `AI_PROVIDER` and `AI_API_KEY` are set.
@@ -109,16 +115,19 @@ docker build -f apps/dashboard/Dockerfile -t jave-dashboard .
 - **Dashboard**: any number of replicas behind HTTPS on port 3000. Health at
   `/api/health`. Terminate TLS in front of it; `NODE_ENV=production` enables
   secure cookies and HSTS.
-- **Activity**: see [docs/ACTIVITY.md](docs/ACTIVITY.md) for the build and the
-  URL mappings Discord needs.
+- **Activity**: `VITE_DISCORD_CLIENT_ID=… pnpm --filter @jave/activity build`, then serve
+  `apps/activity/dist/` over HTTPS from any static host. Headers, URL mappings and the
+  sign-in flow: [docs/ACTIVITY.md](docs/ACTIVITY.md).
 
 ## 5. Release order
 
 1. `migrate` (release step, one-off container).
 2. Roll the dashboard.
-3. Restart the bot (single replica: stop, then start; jobs left mid-run are
+3. Publish the Activity build (after the dashboard: it calls the dashboard's
+   `/api/activity/*` routes).
+4. Restart the bot (single replica: stop, then start; jobs left mid-run are
    recovered after their lease expires).
-4. `commands:deploy` when commands changed.
+5. `commands:deploy` when commands changed.
 
 Migrations are additive within a release, so the previous dashboard version
 keeps working against the new schema during a rolling update.
@@ -131,6 +140,9 @@ keeps working against the new schema during a rolling update.
   dead letters.
 - Sign in to the dashboard with Discord; the founder listed in
   `JAVE_FOUNDER_DISCORD_IDS` is bootstrapped on first contact (audited).
+- Launch JVLN from a voice channel: Mission Control shows your profile, and the
+  audit log records `auth.login` with `method: discord_activity`
+  ([docs/ACTIVITY.md](docs/ACTIVITY.md#verify-after-deployment)).
 
 ## 7. Rollback
 

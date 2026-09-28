@@ -224,10 +224,7 @@ export default async function ResearchPage({
                 page.items.map((item) => (
                   <TableRow key={item.id} className="relative" data-research-item={item.id}>
                     <TableCell>
-                      <Link
-                        href={`/research/${item.id}`}
-                        className="row-link block min-w-0"
-                      >
+                      <Link href={`/research/${item.id}`} className="row-link block min-w-0">
                         <span className="line-clamp-2 text-body font-medium text-fg">
                           {item.title}
                         </span>

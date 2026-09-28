@@ -109,6 +109,24 @@ against production data you are not authorized to access.
 - Security headers: CSP, frame-ancestors none, HSTS (production), strict referrer policy.
 - Dev login (`JAVE_DEV_AUTH`) is refused by env validation and at runtime in production.
 
+### Privacy
+
+- **Export.** Every member can download their own data (dashboard → My profile → Privacy): a JSON
+  file of what JAVE shows them about themselves, with staff-only records listed by count.
+  Founders (`canManagePrivacy`) can export a member's data for a data-subject request, with a
+  reason. Rate-limited and audited (`privacy.exported`). Adversarial records are never included,
+  listed or counted.
+- **Erasure.** Founders can erase a departed, non-staff member's personal data (reason plus the
+  handle typed as confirmation, audited `privacy.erased`): what they wrote is replaced, personal
+  rows are deleted, the identity is pseudonymized, and their names are scrubbed from records other
+  people received. The Discord ID is kept so a ban stays enforceable; moderation cases, ranks,
+  results and the audit log are kept without the name. A test scans every text column of every
+  table after erasure. Details: [docs/modules/privacy.md](docs/modules/privacy.md).
+- **Sessions.** Members can see and end their dashboard sessions, or sign out everywhere.
+  Moderators can end the sessions of accounts ranked below them (reason required, audited); a ban
+  ends them automatically. Authority is re-resolved on every request, so a quarantined or banned
+  account holds no capability even before its sessions end.
+
 ### Availability
 
 - Per-user interaction rate limits in the bot; DB-backed limits shared across

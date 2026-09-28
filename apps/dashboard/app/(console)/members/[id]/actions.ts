@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import {
   addMemberNote,
   getMemberById,
@@ -8,6 +9,7 @@ import {
   isUuid,
   loadCatalog,
   type OrgRole,
+  privacy,
   revokeRole,
   ROLE_KEYS,
   setEvaluatorNotes,
@@ -123,5 +125,43 @@ export async function addNoteAction(_: ActionState, data: FormData): Promise<Act
       return 'Note added.';
     },
     { fieldNames: ['body'] },
+  );
+}
+
+/** End every dashboard session of this member's account (compromised account). */
+export async function endMemberSessionsAction(
+  _: ActionState,
+  data: FormData,
+): Promise<ActionState> {
+  return runAction(
+    'member.end_sessions',
+    async (ctx) => {
+      const member = await targetMember(ctx, data);
+      const { revoked } = await privacy.revokeUserSessions(ctx, {
+        userId: member.userId,
+        reason: formString(data, 'reason'),
+      });
+      return revoked === 1 ? '1 session ended.' : `${revoked} sessions ended.`;
+    },
+    { fieldNames: ['reason'] },
+  );
+}
+
+/** Erase a departed member's personal data. Founders only; irreversible. */
+export async function eraseMemberAction(_: ActionState, data: FormData): Promise<ActionState> {
+  return runAction(
+    'member.erase',
+    async (ctx) => {
+      const member = await targetMember(ctx, data);
+      await privacy.eraseMember(ctx, {
+        memberId: member.id,
+        reason: formString(data, 'reason'),
+        confirmHandle: formString(data, 'confirmHandle'),
+      });
+      revalidatePath('/members');
+      // The profile no longer exists.
+      redirect('/members?erased=1');
+    },
+    { fieldNames: ['reason', 'confirmHandle'] },
   );
 }

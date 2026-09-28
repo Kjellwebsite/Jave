@@ -1,14 +1,6 @@
 import 'server-only';
-import {
-  ForbiddenError,
-  isJaveError,
-  isUuid,
-  newErrorId,
-  NotFoundError,
-  type ServiceContext,
-  tickets,
-  UnauthenticatedError,
-} from '@jave/core';
+import { isJaveError, isUuid, newErrorId, type ServiceContext, tickets } from '@jave/core';
+import { DOWNLOAD_STATUS, downloadHeaders, jsonError, statusForError } from '../download';
 
 export const TRANSCRIPT_FORMATS = ['html', 'markdown'] as const;
 export type TranscriptFormat = (typeof TRANSCRIPT_FORMATS)[number];
@@ -16,49 +8,14 @@ export type TranscriptFormat = (typeof TRANSCRIPT_FORMATS)[number];
 /** The export form carries two short fields; anything larger is not ours. */
 export const MAX_EXPORT_BODY_BYTES = 2048;
 
-const HTTP = {
-  badRequest: 400,
-  unauthorized: 401,
-  forbidden: 403,
-  notFound: 404,
-  tooLarge: 413,
-  serverError: 500,
-} as const;
+const HTTP = DOWNLOAD_STATUS;
 
-/**
- * Headers for a downloaded transcript: always an attachment, never cached,
- * never sniffed, and inert if a browser renders it anyway (the HTML carries
- * its own CSP too).
- */
-function downloadHeaders(contentType: string, filename: string): Headers {
-  return new Headers({
-    'Content-Type': contentType,
-    'Content-Disposition': `attachment; filename="${filename}"`,
-    'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': "default-src 'none'; sandbox",
-    'Referrer-Policy': 'no-referrer',
-  });
-}
-
-export function jsonError(status: number, message: string, reference?: string): Response {
-  return Response.json(
-    { message, ...(reference ? { reference } : {}) },
-    { status, headers: { 'Cache-Control': 'no-store' } },
-  );
-}
+export { jsonError };
 
 export interface TranscriptRequest {
   ticketId: string;
   format: string;
   includeInternal: boolean;
-}
-
-function statusFor(error: unknown): number {
-  if (error instanceof NotFoundError) return HTTP.notFound;
-  if (error instanceof ForbiddenError) return HTTP.forbidden;
-  if (error instanceof UnauthenticatedError) return HTTP.unauthorized;
-  return HTTP.badRequest;
 }
 
 /**
@@ -85,7 +42,7 @@ export async function transcriptResponse(
       headers: downloadHeaders(transcript.contentType, transcript.filename),
     });
   } catch (error) {
-    if (isJaveError(error)) return jsonError(statusFor(error), error.userMessage);
+    if (isJaveError(error)) return jsonError(statusForError(error), error.userMessage);
     const reference = newErrorId();
     ctx.logger.error({ err: error, reference }, 'transcript export failed');
     return jsonError(

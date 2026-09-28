@@ -7,6 +7,7 @@ import {
   gt,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   or,
   type SQL,
@@ -127,6 +128,7 @@ export async function ensureMember(
 ): Promise<MemberRecord> {
   const [existing] = await ctx.db.select().from(members).where(eq(members.userId, user.id));
   let member = existing;
+  if (member?.deletedAt && options.inGuild) member = await reviveErasedMember(ctx, user, member);
   if (!member) {
     const handle = await availableHandle(ctx.db, handleFromUsername(user.username));
     try {
@@ -180,6 +182,50 @@ export async function ensureMember(
     }
   }
   return member;
+}
+
+/**
+ * An erased member (privacy.eraseMember) who joins the server again starts
+ * over: a fresh handle and name from their current Discord profile,
+ * onboarding from the start, the MEMBER role. Their standing is kept, so a
+ * ban or quarantine still applies, and the organization's records that
+ * erasure kept (rank history, trial results, cases) are theirs again.
+ */
+async function reviveErasedMember(
+  ctx: ServiceContext,
+  user: UserRecord,
+  erased: MemberRecord,
+): Promise<MemberRecord> {
+  const handle = await availableHandle(ctx.db, handleFromUsername(user.username));
+  const [revived] = await ctx.db
+    .update(members)
+    .set({
+      handle,
+      displayName: (user.displayName ?? user.username).slice(0, 64),
+      onboardingState: 'not_started',
+      onboardedAt: null,
+      profileVisibility: 'members',
+      showClaimsPublicly: true,
+      showOnLeaderboards: true,
+      deletedAt: null,
+    })
+    .where(and(eq(members.id, erased.id), isNotNull(members.deletedAt)))
+    .returning();
+  // A concurrent join revived it first.
+  if (!revived) {
+    const [current] = await ctx.db.select().from(members).where(eq(members.id, erased.id));
+    return current!;
+  }
+  await ctx.db
+    .insert(memberRoles)
+    .values({ memberId: revived.id, role: 'member', reason: 'rejoined after erasure' })
+    .onConflictDoNothing();
+  await recordAudit(ctx, {
+    action: 'member.revived',
+    targetType: 'member',
+    targetId: revived.id,
+  });
+  return revived;
 }
 
 /** First-contact helper for the bot: user row + member row, idempotent. */

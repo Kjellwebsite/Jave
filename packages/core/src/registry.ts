@@ -12,6 +12,7 @@ import * as integrations from './integrations';
 import * as invites from './invites';
 import * as missions from './missions';
 import * as moderation from './moderation';
+import * as privacy from './privacy';
 import * as projects from './projects';
 import * as research from './research';
 import * as tickets from './tickets';
@@ -35,6 +36,7 @@ const MODULES = [
   invites,
   missions,
   moderation,
+  privacy,
   projects,
   research,
   tickets,

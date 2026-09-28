@@ -137,16 +137,31 @@ interaction**, never cached in a session. So:
    **REVOKE**), a verified rank can be set again (the member's rank history keeps
    every previous value), and roles granted by the attacker can be revoked.
 
-Their dashboard session cookie stays valid until it expires (30 days), but it
-authorizes nothing while they are quarantined. To end every open session
-immediately (for example after a leaked session secret), run against the
-database:
+Their dashboard sessions authorize nothing while they are quarantined. To end them at once,
+open **Members → the member → Account → End all sessions** (moderators and up, for accounts
+ranked below them; audited). A ban ends them automatically.
+
+To sign **everyone** out (for example after a leaked session secret), run against the database:
 
 ```sql
 update sessions set revoked_at = now() where revoked_at is null;
 ```
 
-This signs everyone out; they sign in again with Discord.
+This bypasses the audit log; note it in your incident record. Everyone signs in again with
+Discord.
+
+### A member asks for their data, or to be erased
+
+- **Their data:** they download it themselves from **My profile → Privacy** (three a day). If
+  they cannot sign in, a founder exports it from **Members → the member → Account → Export member
+  data**, with the request as the reason, and sends the file through a channel the member
+  controls.
+- **Erasure:** verify the request comes from the account holder. The member must have left the
+  server and hold no staff role. A founder opens **Members → the member → Account → Erase
+  personal data**, gives the request as the reason and types the handle. It cannot be undone.
+  Then delete what JAVE cannot reach: their ticket threads and transcript files in Discord, and
+  any posts the request covers. What is erased and what is kept is listed in
+  [docs/modules/privacy.md](docs/modules/privacy.md).
 
 ### A secret leaked
 

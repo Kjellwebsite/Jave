@@ -106,6 +106,11 @@ export class FakeDiscordGateway implements DiscordGateway {
   readonly closedDms = new Set<string>();
   /** method name → error to throw once. */
   readonly failures = new Map<string, DiscordActionError>();
+  /**
+   * While set, every call throws this error (a Discord outage), and the
+   * gateway reports not ready. Clear it to recover.
+   */
+  outage: DiscordActionError | null = null;
   /** Guild messages readable through fetchMessageAs, by message id. */
   readonly readableMessages = new Map<string, ReadableMessage>();
   /** channel id → the only user ids allowed to read it (absent: everyone in the guild). */
@@ -138,6 +143,7 @@ export class FakeDiscordGateway implements DiscordGateway {
 
   private record(method: string, ...args: unknown[]) {
     this.calls.push({ method, args });
+    if (this.outage) throw this.outage;
     const failure = this.failures.get(method);
     if (failure) {
       this.failures.delete(method);
@@ -181,7 +187,8 @@ export class FakeDiscordGateway implements DiscordGateway {
   }
 
   status() {
-    return { ready: this.ready, pingMs: this.ready ? 42 : null };
+    const ready = this.ready && !this.outage;
+    return { ready, pingMs: ready ? 42 : null };
   }
 
   async fetchMember(userId: string) {

@@ -86,6 +86,21 @@ export function assertAssignee(ctx: ServiceContext, verification: LoadedVerifica
     );
 }
 
+/** The strategy's own two-person rule (e.g. the awarder of an achievement). Audited durably. */
+export async function assertNoStrategyConflict(
+  ctx: ServiceContext,
+  verification: LoadedVerification,
+  strategy: VerificationStrategy,
+  attempted: string,
+): Promise<void> {
+  const userId = actorUserId(ctx.actor);
+  if (!userId || !strategy.deciderConflict) return;
+  const conflict = await strategy.deciderConflict(ctx, verification, userId);
+  if (!conflict) return;
+  await auditBlocked(ctx, verification, 'verification.two_person_blocked', attempted);
+  throw new ForbiddenError(conflict);
+}
+
 /** All reviewer checks, run before any transaction opens (durable audits need rootDb). */
 export async function assertReviewer(
   ctx: ServiceContext,
@@ -95,6 +110,7 @@ export async function assertReviewer(
 ): Promise<void> {
   await assertNotSubject(ctx, verification, attempted);
   await assertNotStaffRequester(ctx, verification, attempted);
+  await assertNoStrategyConflict(ctx, verification, strategy, attempted);
   await authorizeStrategy(ctx, verification, strategy);
   assertAssignee(ctx, verification);
 }

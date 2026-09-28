@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { anonymousActor, integrations, type ServiceContext, type UserActor } from '@jave/core';
 import { createTestKit, type TestKit } from '@jave/core/testing';
-import { type Database, webhookDeliveries } from '@jave/database';
+import { type Database, rateLimitBuckets, webhookDeliveries } from '@jave/database';
 import { isPublicPath } from '@/lib/routes';
 import { handleInboundWebhook, readBodyCapped, WEBHOOK_RATE_LIMIT } from './inbound';
 
@@ -316,6 +316,25 @@ describe('rate limit', () => {
     expect(otherSender.status).toBe(202);
     const otherSlug = await handleInboundWebhook(javeRequest('{}'), 'ci-hooks', deps());
     expect(otherSlug.status).toBe(202);
+  });
+});
+
+describe('rate limit: invented slugs', () => {
+  it('BREAK: rotating unknown slugs neither escapes the flood limit nor adds a row per slug', async () => {
+    const bucketCount = async () => (await kit.db.select().from(rateLimitBuckets)).length;
+    const before = await bucketCount();
+    for (let i = 0; i < WEBHOOK_RATE_LIMIT.limit; i++) {
+      const response = await handleInboundWebhook(javeRequest('{}'), `probe-${i}-x`, deps());
+      expect(response.status).toBe(404);
+    }
+    // All unknown slugs share one bucket per sender: the next one is throttled.
+    const limited = await handleInboundWebhook(javeRequest('{}'), 'probe-final-x', deps());
+    expect(limited.status).toBe(429);
+    // One sender-wide bucket and one unknown-slug bucket, not one per invented slug.
+    expect((await bucketCount()) - before).toBe(2);
+    // A real integration still has its own budget for the same sender.
+    const real = await handleInboundWebhook(javeRequest('{}'), 'ci-hooks', deps());
+    expect(real.status).toBe(202);
   });
 });
 

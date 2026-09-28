@@ -69,6 +69,16 @@ export interface VerificationStrategy {
   deciderCapabilities: readonly Capability[];
   /** When true, an approved verification of the same target blocks new requests. */
   singleApproval: boolean;
+  /**
+   * A type-specific reason this user may not verify the target (for example
+   * whoever awarded an achievement), or null. Checked before review, decision
+   * and assignment, on top of the subject and requester rules.
+   */
+  deciderConflict?: (
+    ctx: ServiceContext,
+    verification: LoadedVerification,
+    userId: string,
+  ) => Promise<string | null>;
   resolveTarget: (
     ctx: ServiceContext,
     subject: MemberRecord,

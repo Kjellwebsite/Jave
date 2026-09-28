@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { auditLogs } from '@jave/database';
+import { auditLogs, notifications } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import { EXPORT_FORMAT, EXPORT_RATE_LIMIT } from './constants';
 import { exportFileName, exportMemberData } from './export.service';
@@ -77,6 +77,32 @@ describe('privacy: export', () => {
       evaluatorNotes: 1,
     });
     expect(Object.keys(withheld)).not.toContain('adversarial');
+  });
+
+  it('BREAK: never exports adversarial notifications, which would name a hidden operative', async () => {
+    await kit.db.insert(notifications).values([
+      {
+        recipientUserId: f.nova.userId,
+        type: 'adversarial.briefing',
+        title: 'CONFIDENTIAL BRIEFING',
+        body: 'You were selected for an authorized exercise in Trial #1. OPERATIVE-MARKER',
+      },
+      {
+        recipientUserId: f.nova.userId,
+        type: 'mission.assigned',
+        title: 'MISSION ASSIGNED',
+        body: 'A plain notification. PLAIN-MARKER',
+      },
+    ]);
+    for (const [actor, input] of [
+      [f.nova, {}],
+      [f.founder, { memberId: f.nova.memberId!, reason: 'DSR-9, verified by email.' }],
+    ] as const) {
+      const text = JSON.stringify(await exportMemberData(kit.as(actor), input));
+      expect(text).toContain('PLAIN-MARKER');
+      expect(text).not.toContain('OPERATIVE-MARKER');
+      expect(text).not.toContain('adversarial.');
+    }
   });
 
   it('is audited and rate-limited per requester', async () => {

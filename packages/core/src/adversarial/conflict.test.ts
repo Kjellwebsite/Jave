@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { adversarialRoles, members, notifications, trialParticipants } from '@jave/database';
-import { listAuditLogs } from '../audit/audit.service';
+import {
+  adversarialRoles,
+  members,
+  notifications,
+  trialParticipants,
+  trials,
+} from '@jave/database';
+import { listAuditLogs, recordAudit } from '../audit/audit.service';
 import { ForbiddenError, NotFoundError } from '../kernel/errors';
 import { resolveUserActor } from '../identity/users.service';
 import type { UserActor } from '../permissions/actor';
@@ -98,11 +104,16 @@ describe('adversarial conflict of interest and standing', () => {
     await listRoles(kit.as(fx.authorizer), { trialId: fx.trialId });
     await raiseRedFlag(operative, { roleId: role.id, note: 'Stopping here.' });
 
-    const ctx = kit.as(insider);
-    const entries = [
-      ...(await listAuditLogs(ctx, { action: 'adversarial.*', limit: 100 })).items,
-      ...(await listAuditLogs(ctx, { targetType: 'adversarial_role', limit: 100 })).items,
+    const adversarialEntries = async (reader: UserActor) => [
+      ...(await listAuditLogs(kit.as(reader), { action: 'adversarial.*', limit: 100 })).items,
+      ...(await listAuditLogs(kit.as(reader), { targetType: 'adversarial_role', limit: 100 }))
+        .items,
     ];
+    // A competing staff member sees no adversarial entry at all.
+    expect(await adversarialEntries(insider)).toHaveLength(0);
+    // Staff entitled to adversarial records see them, and even they are not told
+    // in the shared log who operates where before the reveal.
+    const entries = await adversarialEntries(fx.authorizer);
     expect(entries.length).toBeGreaterThan(10);
     const identifying = [
       fx.trialId,
@@ -130,6 +141,56 @@ describe('adversarial conflict of interest and standing', () => {
         'adversarial.role_aborted',
       ]),
     );
+  });
+
+  it('BREAK: the shared audit log never tells a competing staff member that their trial has a role', async () => {
+    const insider = await coreParticipant();
+    const founderCtx = kit.as(fx.founder);
+    await recordAudit(founderCtx, {
+      action: 'trial.created',
+      targetType: 'trial',
+      targetId: fx.trialId,
+      context: { title: 'Security sprint', adversarialEnabled: true },
+    });
+    await recordAudit(founderCtx, {
+      action: 'trial.adversarial_toggled',
+      targetType: 'trial',
+      targetId: fx.trialId,
+      context: { enabled: true },
+    });
+    await planDefault(fx);
+
+    // The whole log (the /audit page and the overview panel), and the trial's own entries.
+    for (const query of [{}, { targetType: 'trial', targetId: fx.trialId }]) {
+      const page = await listAuditLogs(kit.as(insider), { ...query, limit: 100 });
+      const actions = page.items.map((entry) => entry.action);
+      expect(actions).not.toContain('trial.adversarial_toggled');
+      expect(actions.some((action) => action.startsWith('adversarial.'))).toBe(false);
+      const created = page.items.find((entry) => entry.action === 'trial.created');
+      expect(created?.context).toEqual({ title: 'Security sprint' });
+      expect(page.total).toBe(page.items.length);
+    }
+
+    // Staff entitled to adversarial records still see all of it.
+    const entitled = await listAuditLogs(kit.as(fx.authorizer), {
+      targetType: 'trial',
+      targetId: fx.trialId,
+      limit: 100,
+    });
+    expect(entitled.items.map((entry) => entry.action)).toContain('trial.adversarial_toggled');
+    expect(entitled.items.find((entry) => entry.action === 'trial.created')?.context).toEqual({
+      title: 'Security sprint',
+      adversarialEnabled: true,
+    });
+    const planned = await listAuditLogs(kit.as(fx.authorizer), {
+      action: 'adversarial.role_planned',
+      limit: 10,
+    });
+    expect(planned.items).toHaveLength(1);
+    // Once the trial is over, its participants are no longer kept out.
+    await kit.db.update(trials).set({ status: 'completed' }).where(eq(trials.id, fx.trialId));
+    const after = await listAuditLogs(kit.as(insider), { action: 'adversarial.*', limit: 100 });
+    expect(after.items.length).toBeGreaterThan(0);
   });
 
   it('BREAK: RED FLAG alerts skip staff who compete in the trial', async () => {

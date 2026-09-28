@@ -16,6 +16,24 @@ describe('kernel', () => {
     expect(() => decryptSecret(parts.join(':'), key)).toThrow();
   });
 
+  it('BREAK: redacts Discord bot tokens for every id shape and JAVE signing secrets', () => {
+    const tokenFor = (id: string) =>
+      `${Buffer.from(id).toString('base64').replace(/=+$/, '')}.GhIjKl.${'a1B2c3D4e5'.repeat(4)}`;
+    for (const id of [
+      '123456789012345678',
+      '456789012345678901',
+      '812345678901234567',
+      '9876543210987654321',
+    ]) {
+      const token = tokenFor(id);
+      expect(redact({ note: `my bot token is ${token} thanks` }).note).toBe(
+        `my bot token is ${REDACTED} thanks`,
+      );
+    }
+    const secret = `whsec_${'Zx9_-'.repeat(9)}`;
+    expect(redact(`signing with ${secret}`)).toBe(`signing with ${REDACTED}`);
+  });
+
   it('redacts secrets by key and by value shape', () => {
     const out = redact({
       token: 'abc',

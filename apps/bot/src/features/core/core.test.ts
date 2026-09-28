@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { members, notificationDeliveries } from '@jave/database';
-import { grantRoleUnchecked, notify, updateProfile, updateSettings } from '@jave/core';
+import { claimRank, grantRoleUnchecked, notify, updateProfile, updateSettings } from '@jave/core';
 import { createBotHarness, discordUser, type BotHarness } from '../../testing/harness';
 import { DiscordActionError } from '../../discord/gateway';
 import { customId } from '../../interactions/custom-id';
@@ -93,6 +93,39 @@ describe('core feature', () => {
         options: { share: true },
       });
       expect(hidden.interaction.lastPayload()!.ephemeral).toBe(true);
+    });
+
+    it("BREAK: a staff member sharing a profile posts the members' view, not theirs", async () => {
+      const owner = await bot.member({ roles: ['verified'] });
+      await claimRank(bot.kit.as(owner.actor), { facetKey: 'mind.reasoning', rank: 'S' });
+      await updateProfile(bot.kit.as(owner.actor), owner.actor.memberId!, {
+        showClaimsPublicly: false,
+      });
+      const moderator = await bot.member({ roles: ['moderator'] });
+      const view = (share: boolean) =>
+        bot.run({
+          kind: 'slash',
+          name: 'profile',
+          user: moderator.user,
+          options: { member: owner.user, share },
+        });
+
+      // Staff see the private claim for themselves...
+      const insider = await view(false);
+      expect(insider.interaction.lastPayload()!.ephemeral).toBe(true);
+      expect(insider.interaction.lastText()).toMatch(/\bS\b/);
+      // ...but the card everyone in the channel reads keeps it private.
+      const shared = await view(true);
+      expect(shared.interaction.lastPayload()!.ephemeral).toBe(false);
+      expect(shared.interaction.lastText()).not.toMatch(/\bS\b/);
+
+      // A banned member's card is never posted publicly.
+      await bot.kit.db
+        .update(members)
+        .set({ standing: 'banned' })
+        .where(eq(members.id, owner.actor.memberId!));
+      const banned = await view(true);
+      expect(banned.interaction.lastPayload()!.ephemeral).toBe(true);
     });
 
     it('BREAK: staff-only profiles are not visible to other members', async () => {

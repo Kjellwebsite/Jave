@@ -45,6 +45,9 @@ export function safeNextPath(input: string | null | undefined, fallback = HOME_P
     return fallback;
   }
   if (parsed.origin !== base) return fallback;
+  // Dot segments normalise into a new first segment: '/.//evil.example' parses to
+  // the path '//evil.example', which a browser reads as another host.
+  if (parsed.pathname.startsWith('//')) return fallback;
   if (parsed.pathname.startsWith('/api/') || parsed.pathname === LOGIN_PATH) return fallback;
   return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }

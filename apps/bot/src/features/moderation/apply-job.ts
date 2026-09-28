@@ -3,6 +3,7 @@ import { type JobHandler, moderation, PermanentJobError, type ServiceContext } f
 import { DiscordActionError, type MessagePayload } from '../../discord/gateway';
 import type { BotServices } from '../../runtime';
 import { panel } from '../../ui/components';
+import { screenRoleAdds } from '../core/role-screen';
 import { userText } from '../../ui/format';
 import { BRAND, COLORS, GLYPH } from '../../ui/theme';
 
@@ -68,19 +69,42 @@ async function applyQuarantine(services: BotServices, payload: ApplyPayload): Pr
   if (!payload.quarantineRoleId) throw new PermanentJobError('quarantine without a role');
   const member = await gateway.fetchMember(payload.targetDiscordId);
   if (!member) return { status: 'failed', error: 'Member is not in the server.', routine: true };
-  if (!member.roleIds.includes(payload.quarantineRoleId)) {
-    await gateway.addRoles(
-      payload.targetDiscordId,
-      [payload.quarantineRoleId],
-      payload.auditReason,
-    );
-  }
   const strip = (payload.managedRoleIds ?? []).filter(
     (id) => id !== payload.quarantineRoleId && member.roleIds.includes(id),
   );
   if (strip.length > 0)
     await gateway.removeRoles(payload.targetDiscordId, strip, payload.auditReason);
+  if (member.roleIds.includes(payload.quarantineRoleId)) return { status: 'applied' };
+  const withheld = await quarantineRoleWithheld(services, payload.quarantineRoleId);
+  if (withheld) return { status: 'failed', error: withheld, routine: false };
+  await gateway.addRoles(payload.targetDiscordId, [payload.quarantineRoleId], payload.auditReason);
   return { status: 'applied' };
+}
+
+/**
+ * The quarantine role goes to people JAVE restricts, so it must be a plain
+ * role: the same last check as role sync, with no staff entitlement (the
+ * setting can come from the dashboard, which cannot inspect Discord roles).
+ */
+async function quarantineRoleWithheld(
+  services: BotServices,
+  roleId: string,
+): Promise<string | null> {
+  const [roles, bot] = await Promise.all([
+    services.gateway.listRoles(),
+    services.gateway.botMember(),
+  ]);
+  const screen = screenRoleAdds([roleId], {
+    desired: [],
+    mapping: {},
+    roles,
+    botHighestRolePosition: bot.highestRolePosition,
+  });
+  const [withheld] = screen.withheld;
+  if (!withheld) return null;
+  return withheld.reason === 'hierarchy'
+    ? 'The quarantine role is at or above JAVE’s highest role; Discord refuses it.'
+    : `The quarantine role is not a plain role (${withheld.reason}); JAVE never hands it out. Choose a role without elevated permissions.`;
 }
 
 async function applyRelease(services: BotServices, payload: ApplyPayload): Promise<Outcome> {

@@ -1,20 +1,24 @@
 import { ApplicationCommandType, ContextMenuCommandBuilder, SlashCommandBuilder } from 'discord.js';
-import { getProfile, NotFoundError, requireUser } from '@jave/core';
+import { getProfile, getSharedProfile, NotFoundError, requireUser } from '@jave/core';
 import type { CommandDefinition, ComponentHandler, HandlerContext } from '../../interactions/types';
 import { renderCapabilities, renderProfileCard } from '../../ui/profile';
 import { failure } from '../../ui/components';
 
+const notFound = (error: unknown): never => {
+  if (error instanceof NotFoundError) {
+    throw new NotFoundError('JVLN profile', { hint: 'private or not initialized' });
+  }
+  throw error;
+};
+
 async function showProfile(h: HandlerContext, discordId: string, share: boolean) {
-  const view = await getProfile(h.ctx, { discordId }).catch((error: unknown) => {
-    if (error instanceof NotFoundError) {
-      throw new NotFoundError('JVLN profile', { hint: 'private or not initialized' });
-    }
-    throw error;
-  });
-  // Staff-only profiles are never posted publicly, even when the viewer may see them.
-  const canShare = share && view.profileVisibility !== 'staff';
+  // Everyone in the channel reads a shared card: post what members may see
+  // (core applies the member's privacy), never the sharer's staff view. Profiles
+  // members may not see (staff-only, banned) stay private to the viewer.
+  const shared = share ? await getSharedProfile(h.ctx, { discordId }).catch(notFound) : null;
+  const view = shared ?? (await getProfile(h.ctx, { discordId }).catch(notFound));
   await h.respond(
-    renderProfileCard(view, { publicUrl: h.ctx.config.publicUrl, ephemeral: !canShare }),
+    renderProfileCard(view, { publicUrl: h.ctx.config.publicUrl, ephemeral: shared === null }),
   );
 }
 

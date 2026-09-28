@@ -40,6 +40,7 @@ export const DISCORD_ROLE_SYNC_JOB = 'discord.roles.sync';
 export async function upsertDiscordUser(
   ctx: ServiceContext,
   profile: DiscordProfile,
+  options: { restoreErased?: boolean } = {},
 ): Promise<UserRecord> {
   const [existing] = await ctx.db
     .select()
@@ -50,6 +51,10 @@ export async function upsertDiscordUser(
     displayName: profile.displayName?.slice(0, 64) ?? null,
     avatarHash: profile.avatarHash ?? null,
   };
+  // An erased identity (privacy.eraseMember) stays pseudonymous: meeting the
+  // person on Discord again (a report of an old message, an invite, a sign-in)
+  // never restores their name. Only their own return to the server does.
+  if (existing?.deletedAt && !options.restoreErased) return existing;
   if (existing) {
     const changed =
       existing.username !== values.username ||
@@ -234,7 +239,8 @@ export async function syncDiscordUser(
   profile: DiscordProfile,
   options: { inGuild: boolean },
 ): Promise<{ user: UserRecord; member: MemberRecord }> {
-  const user = await upsertDiscordUser(ctx, profile);
+  // In the server now: an erased member who is back starts over (ensureMember).
+  const user = await upsertDiscordUser(ctx, profile, { restoreErased: options.inGuild });
   const member = await ensureMember(ctx, user, { inGuild: options.inGuild });
   return { user, member };
 }
@@ -305,7 +311,7 @@ export async function recordGuildJoin(
   profile: DiscordProfile,
 ): Promise<{ user: UserRecord; member: MemberRecord; accountAgeDays: number; rejoin: boolean }> {
   const now = ctx.clock.now();
-  const user = await upsertDiscordUser(ctx, profile);
+  const user = await upsertDiscordUser(ctx, profile, { restoreErased: true });
   const [previous] = await ctx.db.select().from(members).where(eq(members.userId, user.id));
   const member = await ensureMember(ctx, user, { inGuild: true, joinedAt: now });
   const rejoin = Boolean(previous && previous.guildStatus !== 'present');

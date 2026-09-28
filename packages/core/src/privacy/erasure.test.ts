@@ -1,7 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { auditLogs, jobs, members, modCases, sessions, users } from '@jave/database';
-import { recordGuildJoin, resolveUserActor } from '../identity/users.service';
+import {
+  achievementDefinitions,
+  adversarialEvaluations,
+  adversarialObservations,
+  adversarialRoles,
+  adversarialScenarios,
+  auditLogs,
+  jobs,
+  memberAchievements,
+  members,
+  missionAssignments,
+  modCases,
+  referrals,
+  sessions,
+  trialEvaluations,
+  trialParticipants,
+  trials,
+  trialTeams,
+  users,
+} from '@jave/database';
+import { seedStarterScenarios } from '../adversarial/scenarios.service';
+import { recordAudit } from '../audit/audit.service';
+import { recordGuildJoin, resolveUserActor, upsertDiscordUser } from '../identity/users.service';
 import { banMember } from '../moderation/cases.service';
 import { screenJoin } from '../moderation/raid.service';
 import { systemActor } from '../permissions/actor';
@@ -79,6 +100,115 @@ describe('privacy: erasure', () => {
       const text = JSON.stringify(job.payload);
       for (const needle of needles) expect(text.toLowerCase()).not.toContain(needle.toLowerCase());
     }
+  });
+
+  it('BREAK: staff-written text about her in missions, trials, referrals and exercises loses her name', async () => {
+    const name = NOVA.displayName;
+    const [assignment] = await kit.db
+      .select()
+      .from(missionAssignments)
+      .where(eq(missionAssignments.memberId, f.nova.memberId!));
+    const feedback = `${name}, the retry path has no tests yet.`;
+    await kit.db
+      .update(missionAssignments)
+      .set({ feedback })
+      .where(eq(missionAssignments.id, assignment!.id));
+    // mission.rejected targets the mission, not her assignment.
+    await recordAudit(kit.as(f.ops), {
+      action: 'mission.rejected',
+      targetType: 'mission',
+      targetId: assignment!.missionId,
+      context: { assignmentId: assignment!.id, feedback },
+    });
+
+    // A trial she competed in: a team evaluation and an exercise on her team.
+    const [trial] = await kit.db
+      .insert(trials)
+      .values({
+        title: 'Security sprint',
+        category: 'security',
+        brief: 'Ship it.',
+        rubric: [],
+        status: 'completed',
+        durationMinutes: 60,
+      })
+      .returning({ id: trials.id });
+    const [team] = await kit.db
+      .insert(trialTeams)
+      .values({ trialId: trial!.id, name: 'Team A', ordinal: 1 })
+      .returning({ id: trialTeams.id });
+    await kit.db.insert(trialParticipants).values([
+      { trialId: trial!.id, memberId: f.nova.memberId!, status: 'selected', teamId: team!.id },
+      { trialId: trial!.id, memberId: f.teammate.memberId!, status: 'selected', teamId: team!.id },
+    ]);
+    await kit.db.insert(trialEvaluations).values({
+      trialId: trial!.id,
+      teamId: team!.id,
+      evaluatorUserId: f.core.userId,
+      overallScore: 7,
+      notes: `${name} carried the demo.`,
+    });
+    await seedStarterScenarios(kit.as(f.founder));
+    const [scenario] = await kit.db.select().from(adversarialScenarios).limit(1);
+    const [role] = await kit.db
+      .insert(adversarialRoles)
+      .values({
+        trialId: trial!.id,
+        teamId: team!.id,
+        operativeMemberId: f.teammate.memberId!,
+        scenarioId: scenario!.id,
+        objective: 'Ask for the sandbox deploy key.',
+        scenarioTitle: scenario!.title,
+        technique: scenario!.technique,
+        guardrails: scenario!.guardrails,
+        sandboxAssets: scenario!.sandboxAssets,
+        authorizationNote: `Keep ${name} out of the DMs.`,
+        abortReason: `${name} spotted it early.`,
+      })
+      .returning({ id: adversarialRoles.id });
+    await kit.db.insert(adversarialObservations).values({
+      roleId: role!.id,
+      observerUserId: f.core.userId,
+      subjectMemberId: f.nova.memberId!,
+      outcome: 'reported',
+      description: `${name} reported the request in the team channel.`,
+    });
+    await kit.db.insert(adversarialEvaluations).values({
+      roleId: role!.id,
+      evaluatorUserId: f.core.userId,
+      securityCultureScore: 8,
+      summary: `${name} reported it within minutes.`,
+      debrief: `Thank ${name} in the debrief.`,
+      overrideJustification: `${name} was fast.`,
+    });
+
+    // A referral decision and a revoked achievement.
+    await kit.db.insert(referrals).values({
+      inviteeUserId: f.nova.userId,
+      inviterUserId: f.teammate.userId,
+      method: 'invite',
+      reviewNote: `${name} was invited by a classmate.`,
+    });
+    await kit.db.insert(achievementDefinitions).values({
+      key: 'erasure_probe',
+      title: 'PROBE',
+      description: 'A test achievement.',
+      category: 'projects',
+      criteria: { type: 'manual' },
+    });
+    await kit.db.insert(memberAchievements).values({
+      memberId: f.nova.memberId!,
+      achievementKey: 'erasure_probe',
+      revokedAt: kit.clock.now(),
+      revokeReason: `Awarded to ${name} by mistake.`,
+    });
+
+    expect(Object.keys(await scanForText(kit, [name])).length).toBeGreaterThan(8);
+    await departed(kit, f.nova);
+    await erase();
+    const left = await scanForText(kit, [name]);
+    const leaks = Object.keys(left).filter((column) => !(column in ALLOWED_AFTER_ERASURE));
+    expect(leaks, JSON.stringify(left)).toEqual([]);
   });
 
   it('keeps the organization’s record, pseudonymous', async () => {
@@ -192,6 +322,32 @@ describe('privacy: erasure', () => {
     const actor = await resolveUserActor(kit.system, f.nova.userId);
     expect(actor.memberId).toBe(member.id);
     expect(actor.roles).toEqual(['member']);
+  });
+
+  it('BREAK: meeting an erased member on Discord again does not restore their name', async () => {
+    await departed(kit, f.nova);
+    await erase();
+    // What the bot does when anyone reports one of her old messages, when an
+    // invite she made is re-synced, or when she signs in to the dashboard.
+    const seen = await upsertDiscordUser(kit.system, {
+      discordId: f.nova.discordId,
+      username: 'nova.quill',
+      displayName: 'Nova Quill',
+      avatarHash: 'a1b2c3',
+    });
+    const [row] = await kit.db.select().from(users).where(eq(users.id, f.nova.userId));
+    expect(seen.id).toBe(f.nova.userId);
+    expect(row).toMatchObject({ username: ERASED_USERNAME, displayName: null, avatarHash: null });
+    expect(row!.deletedAt).not.toBeNull();
+
+    // Her own return to the server is what starts her over.
+    await recordGuildJoin(kit.system, {
+      discordId: f.nova.discordId,
+      username: 'nova.quill',
+      displayName: 'Nova Quill',
+    });
+    const [back] = await kit.db.select().from(users).where(eq(users.id, f.nova.userId));
+    expect(back).toMatchObject({ username: 'nova.quill', deletedAt: null });
   });
 
   it('a ban survives erasure and is re-applied on rejoin', async () => {

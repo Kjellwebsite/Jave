@@ -96,7 +96,7 @@ export async function createContribution(
 export async function createMemberAchievement(
   kit: TestKit,
   memberId: string,
-  options: { revoked?: boolean } = {},
+  options: { revoked?: boolean; awardedByUserId?: string } = {},
 ): Promise<{ memberAchievementId: string }> {
   const key = `builder_${next()}`;
   await kit.db.insert(achievementDefinitions).values({
@@ -112,6 +112,7 @@ export async function createMemberAchievement(
       memberId,
       achievementKey: key,
       revokedAt: options.revoked ? kit.clock.now() : null,
+      awardedByUserId: options.awardedByUserId ?? null,
     })
     .returning({ id: memberAchievements.id });
   return { memberAchievementId: row!.id };

@@ -122,7 +122,9 @@ in `mine`), so its total is the queue's exact size.
 `proposeAction` validates the payload with the kind's schema, caps it (16 KB canonical JSON),
 checks that a referenced `aiRequestId` belongs to the caller, limits a user to 10 live pending
 proposals, stores a sanitized preview, `payloadHash = sha256(canonical JSON)`, and audits
-`ai.action_proposed`.
+`ai.action_proposed`. The preview shows every field execution uses, untruncated (announcement
+body, mission brief, research summary and source): a draft whose full preview would exceed 4000
+characters is refused, never shortened, so confirming never runs text nobody saw.
 
 `confirmProposal` requires a **human user**; checks requester-only / `canConfirmAIActions` /
 the kind's capability (denials audited); AI enabled; status `pending`; not expired (marks it

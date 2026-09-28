@@ -299,6 +299,13 @@ review channel. Because allow overwrites from other roles win in Discord, the
 apply job strips JAVE-managed roles during quarantine and a
 `discord.roles.sync` restores them on release.
 
+The quarantine role must be a plain role. Before adding it, the apply job runs
+the same last check as role sync, with no staff entitlement: a role carrying
+Administrator or any elevated permission, a managed role, or one at or above
+JAVE's highest role is never handed out. The case is marked failed, staff are
+notified, and the job dead-letters (the setting can come from the dashboard,
+which cannot inspect Discord roles).
+
 ## Bot integration (extension points)
 
 - Message handler: keep a short per-author buffer (content + time, ≤ 200,

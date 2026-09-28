@@ -15,7 +15,9 @@ export function safeInternalPath(value: string | null | undefined): string | nul
     return null;
   try {
     const url = new URL(value, 'http://jave.invalid');
-    return url.origin === 'http://jave.invalid' ? `${url.pathname}${url.search}${url.hash}` : null;
+    // '/.//host' normalises to the path '//host', which a browser reads as another host.
+    if (url.origin !== 'http://jave.invalid' || url.pathname.startsWith('//')) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return null;
   }

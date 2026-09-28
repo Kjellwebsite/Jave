@@ -244,6 +244,21 @@ export async function setEvaluatorNotes(
 ) {
   const data = parseInput(evaluatorNotesSchema, input);
   await authorize(ctx, 'canModifyRanks', { type: 'member', id: data.memberId });
+  // The notes feed the next evaluator's decision, so they follow the same rule.
+  if (isSelf(ctx.actor, data.memberId)) {
+    await recordAudit(
+      ctx,
+      {
+        action: 'rank.self_notes_blocked',
+        targetType: 'member',
+        targetId: data.memberId,
+        result: 'denied',
+        context: { facetKey: data.facetKey },
+      },
+      { durable: true },
+    );
+    throw new ForbiddenError('You cannot write evaluator notes about yourself.');
+  }
   const catalog = await loadCatalog(ctx);
   if (!isValidFacet(catalog, data.facetKey)) throw new ValidationError('Unknown capability.');
   await getMemberById(ctx, data.memberId);

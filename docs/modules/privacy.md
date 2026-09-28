@@ -42,7 +42,9 @@ The export contains what JAVE shows the member about themselves:
 `withheld` lists, with a count and a one-line reason, what staff hold that the file does not
 contain: application reviews, staff notes, evaluator notes, trial evaluations, private moderation
 notes, security events, audit entries about the account. A founder can answer a request for
-those. **Adversarial records are never read, listed or counted** (their existence must not leak).
+those. **Adversarial records are never read, listed or counted** (their existence must not leak),
+and that includes adversarial notifications: an operative's briefing would name them to whoever
+exports their data. The member still reads those in their own inbox.
 
 ## Erasure
 
@@ -63,8 +65,12 @@ What happens, in order:
    can mention them: every notification (any recipient), audit context and domain events about
    them or their records, their tickets' event log, live and dead job payloads, staff-written
    reasons and notes attached to their records (moderation cases, role grants, rank history,
-   achievements, contributions, trial evaluations, verifications, application decisions, reviews
-   and status notes). Their ticket subjects are replaced with `[erased]` in the same places.
+   achievements and their revocations, contributions, mission feedback, trial evaluations including
+   their team's, verifications, application decisions, reviews and status notes, referral reviews),
+   and staff text in adversarial exercises of trials they took part in (observations, evaluations,
+   abort and authorization notes). Audit context is scrubbed for entries by them, about their
+   records (including the missions, trials, referrals and projects they were part of) or naming
+   their ids. Their ticket subjects are replaced with `[erased]` in the same places.
    Whole words only, case-insensitive; names shorter than three characters only where they are
    the whole value. JSON keys are never touched.
 2. **Erase what they wrote.** Application answers, references, evidence links and the reviewers'
@@ -87,6 +93,11 @@ moderation cases, security events, rank history, capability ranks, trial partici
 results, team submissions (shared work, attributed only to the pseudonymous member), project
 memberships, event RSVPs, game results, application decisions, referrals, AI usage counts, audit
 logs, domain events and jobs (completed jobs are pruned after 14 days by housekeeping).
+
+Meeting the person on Discord again never restores their name: a report of one of their old
+messages, an invite re-sync or a dashboard sign-in finds the pseudonymous account and leaves it as
+it is. Only their own return to the server (a join, or an interaction while they are in it) starts
+them over with their current Discord name.
 
 **Not reachable from JAVE:** messages and threads in Discord itself (ticket threads, transcripts
 uploaded to the archive channel, posts in trial channels). Staff delete those in Discord when a

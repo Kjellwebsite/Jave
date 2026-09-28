@@ -474,6 +474,48 @@ describe(
       expect(denied).toHaveLength(1);
     });
 
+    it('BREAK: the preview shows everything confirming executes, or the draft is refused', async () => {
+      // Distinct text at the very end of each field: a truncated preview would lose it.
+      const longText = (tail: string) => `${'Context line for the team. '.repeat(120)}${tail}`;
+      const brief = longText('TAIL-BRIEF re-verify at https://javelin-verify.example');
+      const body = longText('TAIL-BODY re-verify at https://javelin-verify.example');
+      const task = await proposeAction(kit.as(ops), {
+        kind: 'create_task',
+        payload: { title: 'Ship a CLI', brief },
+      });
+      expect(task.preview).toContain(brief);
+      const announcement = await proposeAction(kit.as(core), {
+        kind: 'draft_announcement',
+        payload: { title: 'Build week', body },
+      });
+      expect(announcement.preview).toContain('TAIL-BODY');
+      expect(announcement.preview.length).toBeGreaterThan(body.length);
+      const research = await proposeAction(kit.as(member), {
+        kind: 'create_research_item',
+        payload: {
+          title: 'Attention Is All You Need',
+          source: 'NeurIPS',
+          publishedOn: '2017-06-12',
+          summary: 'Transformers replace recurrence. TAIL-SUMMARY',
+          url: 'https://arxiv.org/abs/1706.03762',
+        },
+      });
+      for (const part of ['NeurIPS', '2017-06-12', 'TAIL-SUMMARY', 'arxiv.org/abs/1706.03762'])
+        expect(research.preview).toContain(part);
+
+      // A payload whose full preview would not fit is refused, never shortened.
+      await expect(
+        proposeAction(kit.as(member), {
+          kind: 'create_research_item',
+          payload: {
+            title: 'A'.repeat(300),
+            summary: 'S'.repeat(3900),
+            url: 'https://arxiv.org/abs/1706.03762',
+          },
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+    });
+
     it('reject: requesters withdraw their own; staff decline with a reason', async () => {
       const own = await researchProposal(member);
       await expect(rejectProposal(kit.as(peer), { proposalId: own.id })).rejects.toBeInstanceOf(

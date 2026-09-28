@@ -5,7 +5,9 @@
 const SECRET_KEY =
   /(token|secret|password|passwd|authorization|cookie|api[_-]?key|private[_-]?key|credential|session)/i;
 const SECRET_VALUE = [
-  /[MN][A-Za-z\d]{23,25}\.[\w-]{6}\.[\w-]{27,}/, // Discord bot token
+  // Discord bot token: base64 of the bot's id (M/N/O for ids starting 1–9), timestamp, HMAC.
+  /\b[MNO][A-Za-z\d_-]{23,27}\.[\w-]{6,7}\.[\w-]{27,}/,
+  /\bwhsec_[A-Za-z0-9_-]{32,}/, // JAVE's own webhook signing secrets (integrations/secrets.ts)
   /sk-(ant-)?[A-Za-z0-9_-]{20,}/, // Anthropic / OpenAI style keys
   /gh[pousr]_[A-Za-z0-9]{36,}/, // GitHub tokens
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,

@@ -132,6 +132,17 @@ trigger, RED FLAG) are recorded under a pseudonymous system actor
 row attributes them for anyone entitled to see it, and `role_revealed` names
 trial, team and operative in the log once disclosure happened.
 
+On top of that, the shared audit log and the job queue shown in `/jave status`
+leave adversarial entries out entirely (counts included) for anyone not
+entitled to adversarial records: without `canManageAdversarial`, or taking part
+in any trial that is not yet completed or cancelled
+(`permissions/adversarial-visibility.ts`). That covers `adversarial.*` actions,
+denials on roles and scenarios, the operative's pseudonymous actions,
+`trial.adversarial_toggled`, retries of adversarial jobs, and the adversarial
+flag on a trial's creation entry. A competitor therefore cannot compare the log
+with what the conflict-of-interest rule hides. Member data exports never
+include adversarial notifications.
+
 **No leakage before the reveal.** Pre-reveal transitions publish **no domain
 events**: events fan out to subscribers (analytics, member activity, webhooks)
 that are not bound by `canManageAdversarial`, so an event would reveal that a
@@ -320,10 +331,8 @@ Full reference: [docs/commands/adversarial.md](../commands/adversarial.md).
 - Operative eligibility loss is enforced immediately for self-service, trigger
   approval and briefing DMs (checked at send time), and by the 15-minute sweep
   for aborting running exercises (there is no standing-changed event yet).
-- The audit log names no trial, team or operative before the reveal, but entry
-  timing remains observable to `canViewAuditLogs` holders (e.g. a role activated
-  minutes after a trial started). Hiding timing needs an audit-log visibility
-  filter in the audit module, outside this module.
+- Staff entitled to adversarial records who compete in no open trial still see
+  adversarial entries' timing in the audit log; they may read the roles anyway.
 - Plan and briefing revisions are `smallint`; tens of thousands of
   trigger add/withdraw cycles on one role would overflow them.
 - The reveal notifies participants who are still `selected` on the team; one

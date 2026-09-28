@@ -14,12 +14,12 @@ import {
   users,
 } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
-import { ConflictError, NotFoundError, isUniqueViolation } from '../kernel/errors';
+import { ConflictError, ForbiddenError, NotFoundError, isUniqueViolation } from '../kernel/errors';
 import { parseInput } from '../kernel/validation';
 import { recordAudit } from '../audit/audit.service';
 import { publishEvent } from '../events/bus';
 import { authorize, can, isSelf, requireMember } from '../permissions/authorize';
-import { highestRole, isStaffRole, type OrgRole } from '../permissions/roles';
+import { highestRole, isStaffRole, type OrgRole, roleRank } from '../permissions/roles';
 import { avatarUrl, HANDLE_PATTERN } from './discord';
 import { type DomainSummary, loadCatalog, summarizeDomains } from './ranks';
 import { activeRoles, getMemberById, type MemberRecord } from './users.service';
@@ -166,9 +166,36 @@ export async function computeProfileStats(
 export async function getProfile(ctx: ServiceContext, ref: ProfileRef): Promise<ProfileView> {
   const row = await findMember(ctx, ref);
   if (!row || !canSeeProfile(ctx, row.member)) throw new NotFoundError('Profile');
-  const { member, user } = row;
-  const self = isSelf(ctx.actor, member.id);
+  const self = isSelf(ctx.actor, row.member.id);
   const staffViewer = can(ctx, 'canViewPrivateProfiles');
+  return buildProfileView(ctx, row, { self, staffViewer });
+}
+
+/**
+ * The profile as the server's members see it, for a card posted where
+ * everyone in a channel reads it: never a viewer's insider view (staff
+ * standing, claims the member keeps private). Null when members may not see
+ * the profile at all (staff-only, or banned). Sharing is still the caller's
+ * choice, so this needs a viewer who may see the profile themselves.
+ */
+export async function getSharedProfile(
+  ctx: ServiceContext,
+  ref: ProfileRef,
+): Promise<ProfileView | null> {
+  const row = await findMember(ctx, ref);
+  if (!row || !canSeeProfile(ctx, row.member)) throw new NotFoundError('Profile');
+  const { member } = row;
+  if (member.standing === 'banned' || member.profileVisibility === 'staff') return null;
+  return buildProfileView(ctx, row, { self: false, staffViewer: false });
+}
+
+async function buildProfileView(
+  ctx: ServiceContext,
+  row: NonNullable<Awaited<ReturnType<typeof findMember>>>,
+  viewer: { self: boolean; staffViewer: boolean },
+): Promise<ProfileView> {
+  const { member, user } = row;
+  const { self, staffViewer } = viewer;
   const claimsVisible = self || staffViewer || member.showClaimsPublicly;
 
   const [catalog, roles, capabilityRows, stats, achievementRows] = await Promise.all([
@@ -343,10 +370,49 @@ export async function completeOnboarding(
   return updated!;
 }
 
+const roleLevel = (roles: readonly OrgRole[]): number => {
+  const top = highestRole(roles);
+  return top ? roleRank(top) : 0;
+};
+
+/**
+ * Staff notes follow the rule for moderation records: nobody reads or writes
+ * the notes about themselves, and staff handle notes only about members ranked
+ * strictly below them (founders: about everyone else). Internal actors: all.
+ */
+export async function mayHandleMemberNotes(
+  ctx: ServiceContext,
+  memberId: string,
+): Promise<boolean> {
+  if (ctx.actor.kind !== 'user') return true;
+  if (isSelf(ctx.actor, memberId)) return false;
+  if (ctx.actor.roles.includes('founder')) return true;
+  return roleLevel(await activeRoles(ctx, memberId)) < roleLevel(ctx.actor.roles);
+}
+
+async function requireNotesAccess(ctx: ServiceContext, memberId: string): Promise<void> {
+  if (await mayHandleMemberNotes(ctx, memberId)) return;
+  await recordAudit(
+    ctx,
+    {
+      action: 'access.denied',
+      targetType: 'member',
+      targetId: memberId,
+      result: 'denied',
+      context: { reason: 'member_notes_hierarchy' },
+    },
+    { durable: true },
+  );
+  throw new ForbiddenError(
+    'Notes about yourself, or about members at or above your rank, are kept by those above them.',
+  );
+}
+
 export async function addMemberNote(ctx: ServiceContext, memberId: string, body: string) {
   await authorize(ctx, 'canManageMembers', { type: 'member', id: memberId });
   const text = parseInput(z.string().trim().min(1).max(4000), body);
   await getMemberById(ctx, memberId);
+  await requireNotesAccess(ctx, memberId);
   const actor = ctx.actor.kind === 'user' ? ctx.actor.userId : null;
   if (!actor) throw new NotFoundError('Author');
   const [row] = await ctx.db
@@ -359,6 +425,7 @@ export async function addMemberNote(ctx: ServiceContext, memberId: string, body:
 
 export async function listMemberNotes(ctx: ServiceContext, memberId: string) {
   await authorize(ctx, 'canViewPrivateProfiles', { type: 'member', id: memberId });
+  await requireNotesAccess(ctx, memberId);
   return ctx.db
     .select({
       id: memberNotes.id,

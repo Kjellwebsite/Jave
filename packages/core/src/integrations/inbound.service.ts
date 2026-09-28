@@ -292,6 +292,20 @@ export function integrationActor(integration: IntegrationRecord): IntegrationAct
   };
 }
 
+/**
+ * Whether a slug names an enabled integration: lets the endpoint rate-limit
+ * senders per integration without a bucket for every slug an attacker invents.
+ */
+export async function isKnownWebhookSlug(ctx: ServiceContext, slug: string): Promise<boolean> {
+  const parsed = integrationSlugSchema.safeParse(slug);
+  if (!parsed.success) return false;
+  const [row] = await ctx.db
+    .select({ enabled: integrations.enabled })
+    .from(integrations)
+    .where(eq(integrations.slug, parsed.data));
+  return Boolean(row?.enabled);
+}
+
 export async function receiveWebhook(
   ctx: ServiceContext,
   request: InboundWebhookRequest,

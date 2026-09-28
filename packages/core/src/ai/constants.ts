@@ -74,7 +74,12 @@ export const AI_LEDGER_LOCK_NAMESPACE = 424_201;
 
 export const MAX_PENDING_PROPOSALS_PER_USER = 10;
 export const MAX_PROPOSAL_PAYLOAD_CHARS = 16_384;
-export const MAX_PREVIEW_CHARS = 1900;
+/**
+ * A proposal's preview shows everything its execution does, untruncated (it is
+ * a Discord embed description, at most 4096). A draft whose full preview would
+ * not fit is refused, never shortened.
+ */
+export const MAX_PREVIEW_CHARS = 4000;
 export const MAX_REJECTION_REASON_LENGTH = 500;
 export const MAX_PROPOSAL_ERROR_LENGTH = 500;
 

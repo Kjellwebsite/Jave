@@ -14,6 +14,7 @@ import {
   listMemberCapabilitiesForEvaluator,
   listMemberNotes,
   loadCatalog,
+  mayHandleMemberNotes,
   type ProfileView,
 } from '@jave/core';
 import {
@@ -92,14 +93,18 @@ interface Permissions {
   managePrivacy: boolean;
 }
 
-function permissionsFor(ctx: UserContext, profile: ProfileView): Permissions {
+async function permissionsFor(ctx: UserContext, profile: ProfileView): Promise<Permissions> {
   const self = profile.isSelf;
+  // Staff notes: never about yourself, and only about members ranked below you.
+  const notesAllowed =
+    (can(ctx, 'canViewPrivateProfiles') || can(ctx, 'canManageMembers')) &&
+    (await mayHandleMemberNotes(ctx, profile.memberId));
   return {
     evaluate: can(ctx, 'canModifyRanks') && !self,
     viewHistory: self || can(ctx, 'canViewRankHistory'),
     viewEvidence: self || can(ctx, 'canVerifyMembers') || can(ctx, 'canModifyRanks'),
-    viewNotes: can(ctx, 'canViewPrivateProfiles'),
-    addNotes: can(ctx, 'canManageMembers') && !self,
+    viewNotes: can(ctx, 'canViewPrivateProfiles') && notesAllowed,
+    addNotes: can(ctx, 'canManageMembers') && notesAllowed,
     endSessions: can(ctx, 'canQuarantine') && !self,
     managePrivacy: can(ctx, 'canManagePrivacy') && !self,
   };
@@ -129,7 +134,7 @@ export default async function MemberPage({
   if (!loaded.ok) notFound();
   const profile = loaded.value;
   const [viewer, catalog] = await Promise.all([loadViewer(ctx), loadCatalog(ctx)]);
-  const permissions = permissionsFor(ctx, profile);
+  const permissions = await permissionsFor(ctx, profile);
   const tabs = availableTabs(permissions);
   const requested = firstParam((await searchParams).tab) as Tab | undefined;
   const tab: Tab = requested && tabs.includes(requested) ? requested : 'capability';

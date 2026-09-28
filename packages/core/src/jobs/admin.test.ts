@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { auditLogs, jobs } from '@jave/database';
+import { auditLogs, jobs, trialParticipants, trials } from '@jave/database';
 import { ConflictError, ForbiddenError, InvalidStateError, NotFoundError } from '../kernel/errors';
 import type { UserActor } from '../permissions/actor';
 import { createTestKit, type TestKit } from '../testing';
+import { listAuditLogs } from '../audit/audit.service';
 import { listJobs, retryDeadJob } from './admin.service';
 import { enqueueJob } from './queue';
 
@@ -54,6 +55,60 @@ describe('job administration', () => {
     expect(job).toMatchObject({ id, type: BROKEN, status: 'dead', attempts: 1 });
     expect(job).not.toHaveProperty('payload');
     expect(job!.lastError!.length).toBeLessThanOrEqual(301);
+  });
+
+  it('BREAK: dead adversarial jobs are hidden from staff who may not know a role exists', async () => {
+    const BRIEF = 'discord.adversarial.brief';
+    const briefId = await enqueueJob(
+      kit.system,
+      BRIEF,
+      { roleId: 'r' },
+      {
+        maxAttempts: 1,
+      },
+    );
+    await kit.drain({
+      [BRIEF]: async () => {
+        throw new Error('Cannot send messages to this user (operative Mara, Team A)');
+      },
+    });
+    await deadJob();
+
+    // A moderator (no adversarial capability) sees the other dead letter only, counts included.
+    const forModerator = await listJobs(kit.as(moderator));
+    expect(forModerator.total).toBe(1);
+    expect(forModerator.items.map((job) => job.type)).toEqual([BROKEN]);
+    expect(await listJobs(kit.as(moderator), { type: BRIEF })).toMatchObject({ total: 0 });
+
+    // Core staff competing in an open trial: hidden too, and a retry answers like a missing job.
+    const competitor = await kit.member({ roles: ['core'] });
+    const [trial] = await kit.db
+      .insert(trials)
+      .values({
+        title: 'Security sprint',
+        category: 'security',
+        brief: 'Ship it.',
+        rubric: [],
+        status: 'active',
+        durationMinutes: 60,
+      })
+      .returning({ id: trials.id });
+    await kit.db
+      .insert(trialParticipants)
+      .values({ trialId: trial!.id, memberId: competitor.memberId!, status: 'selected' });
+    expect((await listJobs(kit.as(competitor))).items.map((job) => job.type)).toEqual([BROKEN]);
+    await expect(retryDeadJob(kit.as(competitor), { jobId: briefId! })).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+
+    // Entitled staff see and retry it; the retry's audit entry stays out of the competitor's log.
+    const entitled = await listJobs(kit.as(founder));
+    expect(entitled.items.map((job) => job.type).sort()).toEqual([BRIEF, BROKEN].sort());
+    await retryDeadJob(kit.as(founder), { jobId: briefId! });
+    const competitorLog = await listAuditLogs(kit.as(competitor), { action: 'job.retried' });
+    expect(competitorLog.total).toBe(0);
+    const founderLog = await listAuditLogs(kit.as(founder), { action: 'job.retried' });
+    expect(founderLog.total).toBe(1);
   });
 
   it('BREAK: members cannot list jobs; only settings managers may retry', async () => {

@@ -1,4 +1,4 @@
-import { and, desc, eq, type SQL } from 'drizzle-orm';
+import { and, desc, eq, like, not, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { jobs } from '@jave/database';
 import { recordAudit } from '../audit/audit.service';
@@ -11,6 +11,10 @@ import {
 } from '../kernel/errors';
 import { type CappedPage, cappedCount, pageSchema } from '../kernel/pagination';
 import { parseInput } from '../kernel/validation';
+import {
+  ADVERSARIAL_JOB_PATTERN,
+  mayReadAdversarialRecords,
+} from '../permissions/adversarial-visibility';
 import { authorize } from '../permissions/authorize';
 import type { JobRecord } from './queue';
 
@@ -63,7 +67,14 @@ function toSummary(row: JobRecord): JobSummary {
   };
 }
 
-/** Jobs by status, newest first (dead letters by default). canViewSystemStatus. */
+/** ADVERSARIAL_JOB_PATTERN, in code. */
+const isAdversarialJob = (type: string) => type.includes('adversarial.');
+
+/**
+ * Jobs by status, newest first (dead letters by default). canViewSystemStatus.
+ * Adversarial jobs (and their errors) are left out, counts included, for
+ * readers not entitled to adversarial records: a failed briefing names a role.
+ */
 export async function listJobs(
   ctx: ServiceContext,
   input: z.input<typeof listJobsSchema> = {},
@@ -72,6 +83,8 @@ export async function listJobs(
   const q = parseInput(listJobsSchema, input);
   const filters: SQL[] = [eq(jobs.status, q.status)];
   if (q.type) filters.push(eq(jobs.type, q.type));
+  if (!(await mayReadAdversarialRecords(ctx)))
+    filters.push(not(like(jobs.type, ADVERSARIAL_JOB_PATTERN)));
   const where = and(...filters);
   const [rows, total] = await Promise.all([
     ctx.db
@@ -109,6 +122,9 @@ export async function retryDeadJob(
     return await withTransaction(ctx, async (tx) => {
       const [job] = await tx.db.select().from(jobs).where(eq(jobs.id, jobId)).for('update');
       if (!job) throw new NotFoundError('Job');
+      // Answers like a missing job: the type alone would name an adversarial role.
+      if (isAdversarialJob(job.type) && !(await mayReadAdversarialRecords(tx)))
+        throw new NotFoundError('Job');
       if (job.status !== 'dead')
         throw new InvalidStateError('Only dead-lettered jobs can be retried.');
       const now = tx.clock.now();

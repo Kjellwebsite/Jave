@@ -59,6 +59,12 @@ describe('routes', () => {
       '/api/auth/discord',
       '/login',
       `/${'a'.repeat(600)}`,
+      // Dot segments that normalise into a protocol-relative path.
+      '/.//evil.example/session-expired',
+      '/..//evil.example',
+      '/%2e%2e//evil.example',
+      '/%2E//evil.example',
+      '/members/..//evil.example',
     ]) {
       const result = safeNextPath(target);
       expect(result === '/overview' || result.startsWith('/%0d'), target).toBe(true);
@@ -355,7 +361,16 @@ describe('URL safety', () => {
 
   it('allows only same-origin internal paths', () => {
     expect(safeInternalPath('/members?x=1')).toBe('/members?x=1');
-    for (const bad of ['//evil.example', 'https://evil.example', '/\\evil', 'members', null]) {
+    for (const bad of [
+      '//evil.example',
+      'https://evil.example',
+      '/\\evil',
+      'members',
+      null,
+      '/.//evil.example',
+      '/%2e%2e//evil.example',
+      '/tickets/..//evil.example',
+    ]) {
       expect(safeInternalPath(bad), String(bad)).toBeNull();
     }
   });

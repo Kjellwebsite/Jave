@@ -5,6 +5,7 @@ import {
   getTableColumns,
   gt,
   inArray,
+  isNotNull,
   isNull,
   like,
   or,
@@ -13,6 +14,9 @@ import {
 } from 'drizzle-orm';
 import type { AnyPgColumn, PgTable } from 'drizzle-orm/pg-core';
 import {
+  adversarialEvaluations,
+  adversarialObservations,
+  adversarialRoles,
   aiActionProposals,
   applicationReviews,
   applications,
@@ -32,9 +36,11 @@ import {
   modCases,
   notificationPreferences,
   notifications,
+  projectMembers,
   rankHistory,
   rateLimitBuckets,
   referralCodes,
+  referrals,
   securityEvents,
   sessions,
   ticketEvents,
@@ -110,8 +116,35 @@ export async function relatedRecordIds(
       .select({ id: securityEvents.id })
       .from(securityEvents)
       .where(eq(securityEvents.userId, ids.userId)),
+    // Records other people act on about her: a mission review, a trial and its
+    // team, a referral decision, a project departure.
+    tx.db
+      .selectDistinct({ id: missionAssignments.missionId })
+      .from(missionAssignments)
+      .where(eq(missionAssignments.memberId, ids.memberId)),
+    tx.db
+      .selectDistinct({ id: trialParticipants.trialId })
+      .from(trialParticipants)
+      .where(eq(trialParticipants.memberId, ids.memberId)),
+    tx.db
+      .select({ id: referrals.id })
+      .from(referrals)
+      .where(or(eq(referrals.inviterUserId, ids.userId), eq(referrals.inviteeUserId, ids.userId))),
+    tx.db
+      .selectDistinct({ id: projectMembers.projectId })
+      .from(projectMembers)
+      .where(eq(projectMembers.memberId, ids.memberId)),
   ]);
-  return [ids.userId, ids.memberId, ...lists.flat().map((row) => row.id)];
+  const teams = await tx.db
+    .select({ id: trialParticipants.teamId })
+    .from(trialParticipants)
+    .where(and(eq(trialParticipants.memberId, ids.memberId), isNotNull(trialParticipants.teamId)));
+  return [
+    ids.userId,
+    ids.memberId,
+    ...lists.flat().map((row) => row.id),
+    ...teams.map((row) => row.id!),
+  ];
 }
 
 /** Subjects of the person's tickets: they also name threads and appear in queued jobs. */
@@ -345,6 +378,15 @@ const ofApplications = (column: AnyPgColumn) => (t: ErasureTarget) =>
     sql`(select ${applications.id} from ${applications} where ${applications.userId} = ${t.userId})`,
   );
 
+/** Trials she took part in (any participant record). */
+const herTrials = (t: ErasureTarget) =>
+  sql`(select ${trialParticipants.trialId} from ${trialParticipants} where ${trialParticipants.memberId} = ${t.memberId})`;
+/** Adversarial roles in those trials: she was the operative, on the team, or a participant. */
+const herTrialRoles = (t: ErasureTarget) =>
+  sql`(select ${adversarialRoles.id} from ${adversarialRoles} where ${adversarialRoles.operativeMemberId} = ${t.memberId} or ${adversarialRoles.trialId} in ${herTrials(t)})`;
+const ofHerTrialRoles = (column: AnyPgColumn) => (t: ErasureTarget) =>
+  inArray(column, herTrialRoles(t));
+
 /**
  * Kept records that can carry the person's name: other people's
  * notifications, staff-written notes and reasons, audit and event context,
@@ -382,7 +424,12 @@ const SCRUB_TARGETS: readonly ScrubTarget[] = [
     column: auditLogs.context,
     json: true,
     scope: (t) =>
-      or(eq(auditLogs.actorUserId, t.userId), inArray(auditLogs.targetId, [...t.relatedIds])),
+      or(
+        eq(auditLogs.actorUserId, t.userId),
+        inArray(auditLogs.targetId, [...t.relatedIds]),
+        sql`${auditLogs.context}::text like ${`%${t.memberId}%`}`,
+        sql`${auditLogs.context}::text like ${`%${t.userId}%`}`,
+      ),
   },
   {
     name: 'domain_events.payload',
@@ -479,7 +526,12 @@ const SCRUB_TARGETS: readonly ScrubTarget[] = [
     id: trialEvaluations.id,
     column: trialEvaluations.notes,
     json: false,
-    scope: byMember(trialEvaluations.memberId),
+    // Her own evaluations and her team's (team evaluations carry no member id).
+    scope: (t) =>
+      or(
+        eq(trialEvaluations.memberId, t.memberId),
+        inArray(trialEvaluations.trialId, herTrials(t)),
+      ),
   },
   {
     name: 'verifications.decision_note',
@@ -520,6 +572,82 @@ const SCRUB_TARGETS: readonly ScrubTarget[] = [
     column: applicationStatusChanges.note,
     json: false,
     scope: ofApplications(applicationStatusChanges.applicationId),
+  },
+  {
+    name: 'mission_assignments.feedback',
+    table: missionAssignments,
+    id: missionAssignments.id,
+    column: missionAssignments.feedback,
+    json: false,
+    scope: byMember(missionAssignments.memberId),
+  },
+  {
+    name: 'member_achievements.revoke_reason',
+    table: memberAchievements,
+    id: memberAchievements.id,
+    column: memberAchievements.revokeReason,
+    json: false,
+    scope: byMember(memberAchievements.memberId),
+  },
+  {
+    name: 'referrals.review_note',
+    table: referrals,
+    id: referrals.id,
+    column: referrals.reviewNote,
+    json: false,
+    scope: (t) => or(eq(referrals.inviterUserId, t.userId), eq(referrals.inviteeUserId, t.userId)),
+  },
+  {
+    name: 'adversarial_observations.description',
+    table: adversarialObservations,
+    id: adversarialObservations.id,
+    column: adversarialObservations.description,
+    json: false,
+    scope: (t) =>
+      or(
+        eq(adversarialObservations.subjectMemberId, t.memberId),
+        inArray(adversarialObservations.roleId, herTrialRoles(t)),
+      ),
+  },
+  {
+    name: 'adversarial_evaluations.summary',
+    table: adversarialEvaluations,
+    id: adversarialEvaluations.id,
+    column: adversarialEvaluations.summary,
+    json: false,
+    scope: ofHerTrialRoles(adversarialEvaluations.roleId),
+  },
+  {
+    name: 'adversarial_evaluations.debrief',
+    table: adversarialEvaluations,
+    id: adversarialEvaluations.id,
+    column: adversarialEvaluations.debrief,
+    json: false,
+    scope: ofHerTrialRoles(adversarialEvaluations.roleId),
+  },
+  {
+    name: 'adversarial_evaluations.override_justification',
+    table: adversarialEvaluations,
+    id: adversarialEvaluations.id,
+    column: adversarialEvaluations.overrideJustification,
+    json: false,
+    scope: ofHerTrialRoles(adversarialEvaluations.roleId),
+  },
+  {
+    name: 'adversarial_roles.abort_reason',
+    table: adversarialRoles,
+    id: adversarialRoles.id,
+    column: adversarialRoles.abortReason,
+    json: false,
+    scope: ofHerTrialRoles(adversarialRoles.id),
+  },
+  {
+    name: 'adversarial_roles.authorization_note',
+    table: adversarialRoles,
+    id: adversarialRoles.id,
+    column: adversarialRoles.authorizationNote,
+    json: false,
+    scope: ofHerTrialRoles(adversarialRoles.id),
   },
 ];
 

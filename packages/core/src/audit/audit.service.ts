@@ -1,10 +1,14 @@
-import { and, desc, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, like, lte, not, or, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { auditLogs, users } from '@jave/database';
 import type { ServiceContext } from '../kernel/context';
 import { redact } from '../kernel/redact';
 import { parseInput } from '../kernel/validation';
 import { type CappedPage, cappedCount, pageSchema } from '../kernel/pagination';
+import {
+  ADVERSARIAL_JOB_PATTERN,
+  mayReadAdversarialRecords,
+} from '../permissions/adversarial-visibility';
 import { authorize } from '../permissions/authorize';
 
 export type AuditResult = 'success' | 'denied' | 'failure';
@@ -79,6 +83,41 @@ export interface AuditLogView {
   createdAt: Date;
 }
 
+/**
+ * Entries that would tell a reader an adversarial role exists: the adversarial
+ * module's own actions, denials on its records (target types from
+ * adversarial/guards.ts), what an operative does under its pseudonymous actor,
+ * switching a trial's adversarial mode, and retries of its jobs.
+ */
+function adversarialEntries(): SQL {
+  const matches = or(
+    like(auditLogs.action, 'adversarial.%'),
+    eq(auditLogs.action, 'trial.adversarial_toggled'),
+    inArray(auditLogs.targetType, ['adversarial_role', 'adversarial_scenario']),
+    sql`${auditLogs.context}->>'systemReason' = 'adversarial.operative'`,
+    // An operator retrying an adversarial job records its type.
+    and(
+      eq(auditLogs.action, 'job.retried'),
+      sql`${auditLogs.context}->>'type' like ${ADVERSARIAL_JOB_PATTERN}`,
+    ),
+  );
+  // Null-safe: a row without a target type or context must count as "no match",
+  // or NOT(...) would drop it too.
+  return sql`coalesce(${matches}, false)`;
+}
+
+/** A trial's creation entry records whether adversarial roles were allowed. */
+function withoutAdversarialFlag(row: AuditLogView): AuditLogView {
+  if (row.action !== 'trial.created' || !('adversarialEnabled' in row.context)) return row;
+  const { adversarialEnabled: _hidden, ...context } = row.context;
+  return { ...row, context };
+}
+
+/**
+ * The shared audit log (canViewAuditLogs). Readers not entitled to adversarial
+ * records (see mayReadAdversarialRecords) get it without adversarial entries,
+ * counts included.
+ */
 export async function listAuditLogs(
   ctx: ServiceContext,
   query: z.input<typeof auditQuerySchema>,
@@ -98,6 +137,8 @@ export async function listAuditLogs(
   if (q.result) filters.push(eq(auditLogs.result, q.result));
   if (q.since) filters.push(gte(auditLogs.createdAt, q.since));
   if (q.until) filters.push(lte(auditLogs.createdAt, q.until));
+  const showAdversarial = await mayReadAdversarialRecords(ctx);
+  if (!showAdversarial) filters.push(not(adversarialEntries()));
   const where = filters.length ? and(...filters) : undefined;
 
   const [rows, count] = await Promise.all([
@@ -124,7 +165,7 @@ export async function listAuditLogs(
     cappedCount(ctx.db, auditLogs, where, { offset: q.offset }),
   ]);
   return {
-    items: rows,
+    items: showAdversarial ? rows : rows.map(withoutAdversarialFlag),
     total: count.total,
     totalCapped: count.capped,
     limit: q.limit,

@@ -3,7 +3,6 @@ import { sanitizeForDiscord } from '@jave/ai';
 import { missions, missionType } from '@jave/database';
 import { enqueueJob } from '../../jobs/queue';
 import { InvalidStateError } from '../../kernel/errors';
-import { truncate } from '../../kernel/redact';
 import { requireUser } from '../../permissions/authorize';
 import { requireContributor } from '../../research/model';
 import { saveResearchItem } from '../../research/research.service';
@@ -13,7 +12,6 @@ import { MIN_DRAFT_BODY_LENGTH, MIN_DRAFT_TITLE_LENGTH } from '../constants';
 import { DISCORD_AI_ANNOUNCE_JOB } from '../discord-jobs';
 import { defineActionKind, type RegisteredActionKind } from './registry';
 
-const PREVIEW_BODY_CHARS = 600;
 const DISCORD_EMBED_TITLE_LIMIT = 256;
 const DISCORD_EMBED_DESCRIPTION_LIMIT = 4096;
 const ANNOUNCE_MAX_ATTEMPTS = 5;
@@ -41,6 +39,9 @@ export const createResearchItemAction = defineActionKind({
       payload.url && `Link: ${payload.url}`,
       payload.topic && `Topic: ${payload.topic}`,
       payload.tags?.length && `Tags: ${payload.tags.join(', ')}`,
+      payload.source && `Source: ${payload.source}`,
+      payload.publishedOn && `Published: ${payload.publishedOn}`,
+      payload.summary && `Summary: ${payload.summary}`,
       'Saved as NEW. A reviewer decides its status and evidence level.',
     ),
   authorizeExecution: async (ctx) => {
@@ -60,7 +61,7 @@ export const createResearchItemAction = defineActionKind({
 
 const createTaskSchema = z.object({
   title: z.string().trim().min(MIN_DRAFT_TITLE_LENGTH).max(120),
-  brief: z.string().trim().min(MIN_DRAFT_BODY_LENGTH).max(4000),
+  brief: z.string().trim().min(MIN_DRAFT_BODY_LENGTH).max(3500),
   type: z.enum(missionType.enumValues).default('individual'),
 });
 
@@ -81,7 +82,7 @@ export const createTaskAction = defineActionKind({
       'DRAFT MISSION',
       `Title: ${payload.title}`,
       `Type: ${payload.type.toUpperCase()}`,
-      `Brief: ${truncate(payload.brief, PREVIEW_BODY_CHARS)}`,
+      `Brief: ${payload.brief}`,
       'Created as DRAFT — not visible to members until published.',
     ),
   execute: async (ctx, payload) => {
@@ -120,12 +121,7 @@ export const draftAnnouncementAction = defineActionKind({
   confirmableBy: 'capability',
   payloadSchema: draftAnnouncementSchema,
   preview: (payload) =>
-    lines(
-      'ANNOUNCEMENT → announcements channel',
-      payload.title.toUpperCase(),
-      '',
-      truncate(payload.body, PREVIEW_BODY_CHARS),
-    ),
+    lines('ANNOUNCEMENT → announcements channel', payload.title.toUpperCase(), '', payload.body),
   execute: async (ctx, payload, meta) => {
     const { announcements } = await getSettings(ctx, 'channels');
     if (!announcements) {

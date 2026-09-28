@@ -175,6 +175,13 @@ export async function proposeAction(
     if (request?.userId !== actor.userId) throw new ValidationError('Unknown AI request.');
   }
   await assertProposalCapacity(ctx, actor.userId);
+  // PREVIEW shows everything CONFIRM executes: a draft too long to show in full is refused.
+  const preview = sanitizeForDiscord(kind.preview(payload), Number.MAX_SAFE_INTEGER);
+  if (preview.length > MAX_PREVIEW_CHARS) {
+    throw new ValidationError(
+      'This draft is too long to show in full before it runs. Shorten it and try again.',
+    );
+  }
   const now = ctx.clock.now();
   const { proposalTtlMinutes } = await getSettings(ctx, 'ai');
   return withTransaction(ctx, async (tx) => {
@@ -186,7 +193,7 @@ export async function proposeAction(
         aiRequestId: data.aiRequestId ?? null,
         payload,
         payloadHash: payloadHash(payload),
-        preview: sanitizeForDiscord(kind.preview(payload), MAX_PREVIEW_CHARS),
+        preview,
         status: 'pending',
         expiresAt: new Date(now.getTime() + proposalTtlMinutes * MINUTE),
         createdAt: now,

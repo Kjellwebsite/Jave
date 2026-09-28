@@ -48,6 +48,9 @@ async function assertEligibleVerifier(
     throw new ValidationError('The subject cannot verify their own request.');
   if (conflict === 'requester')
     throw new ValidationError('Whoever opened a request for someone else cannot also verify it.');
+  const strategy = strategyFor(verification.type);
+  const typeConflict = await strategy.deciderConflict?.(ctx, verification, verifier.userId);
+  if (typeConflict) throw new ValidationError(typeConflict);
   const needed = [
     'canVerifyMembers' as const,
     ...strategyFor(verification.type).deciderCapabilities,

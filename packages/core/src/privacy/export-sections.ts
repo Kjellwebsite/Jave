@@ -1,4 +1,17 @@
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  notLike,
+  or,
+  sql,
+} from 'drizzle-orm';
 import {
   achievementDefinitions,
   aiActionProposals,
@@ -541,6 +554,11 @@ export async function moderationSection(db: Db, userId: string) {
     .orderBy(asc(modCases.createdAt));
 }
 
+/**
+ * Adversarial notifications (an operative's briefing, go-live, stop) are never
+ * exported: an export of a teammate would otherwise name the hidden operative
+ * to whoever downloads it. The member still reads them in their inbox.
+ */
 export async function notificationsSection(db: Db, userId: string) {
   return db
     .select({
@@ -552,7 +570,9 @@ export async function notificationsSection(db: Db, userId: string) {
       readAt: notifications.readAt,
     })
     .from(notifications)
-    .where(eq(notifications.recipientUserId, userId))
+    .where(
+      and(eq(notifications.recipientUserId, userId), notLike(notifications.type, 'adversarial.%')),
+    )
     .orderBy(desc(notifications.createdAt))
     .limit(EXPORT_SECTION_LIMIT);
 }

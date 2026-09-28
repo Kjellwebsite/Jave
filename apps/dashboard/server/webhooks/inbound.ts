@@ -22,11 +22,16 @@ import {
 
 /** Per sender address and integration slug. Generous for real senders, tight for floods. */
 export const WEBHOOK_RATE_LIMIT = { limit: 120, windowSeconds: 60 } as const;
+/**
+ * Per sender address across every slug, consumed first: inventing new slugs
+ * never escapes the flood limit, and never adds a rate-limit row per slug.
+ */
+export const WEBHOOK_SENDER_RATE_LIMIT = { limit: 600, windowSeconds: 60 } as const;
 
 const HTTP_TOO_MANY_REQUESTS = 429;
 const HTTP_INTERNAL_ERROR = 500;
-/** Rate-limit key segment for slugs that cannot name an integration. */
-const INVALID_SLUG_KEY = '_invalid';
+/** Rate-limit key segment for slugs that do not name an enabled integration. */
+const UNKNOWN_SLUG_KEY = '_unknown';
 /** Slugs are attacker-chosen; log at most this much of one. */
 const LOGGED_SLUG_MAX = 64;
 
@@ -81,9 +86,21 @@ export async function readBodyCapped(request: Request, maxBytes: number): Promis
   return { ok: true, text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes) };
 }
 
-function rateLimitKey(slug: string, clientKey: string): string {
-  const slugKey = integrations.INTEGRATION_SLUG_PATTERN.test(slug) ? slug : INVALID_SLUG_KEY;
-  return `webhook:${slugKey}:${clientKey}`;
+async function consumeWebhookBudgets(
+  ctx: ServiceContext,
+  slug: string,
+  clientKey: string,
+): Promise<void> {
+  const sender = WEBHOOK_SENDER_RATE_LIMIT;
+  await consumeRateLimit(ctx, `webhook:*:${clientKey}`, sender.limit, sender.windowSeconds);
+  const slugKey = (await integrations.isKnownWebhookSlug(ctx, slug)) ? slug : UNKNOWN_SLUG_KEY;
+  const perSlug = WEBHOOK_RATE_LIMIT;
+  await consumeRateLimit(
+    ctx,
+    `webhook:${slugKey}:${clientKey}`,
+    perSlug.limit,
+    perSlug.windowSeconds,
+  );
 }
 
 /** Lowercased header map (Headers already lowercases names; this also drops duplicates). */
@@ -109,12 +126,7 @@ export async function handleInboundWebhook(
   const { ctx } = deps;
   try {
     try {
-      await consumeRateLimit(
-        ctx,
-        rateLimitKey(slug, deps.clientKey),
-        WEBHOOK_RATE_LIMIT.limit,
-        WEBHOOK_RATE_LIMIT.windowSeconds,
-      );
+      await consumeWebhookBudgets(ctx, slug, deps.clientKey);
     } catch (error) {
       if (!(error instanceof RateLimitedError)) throw error;
       return json(

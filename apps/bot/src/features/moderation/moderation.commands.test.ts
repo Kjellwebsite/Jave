@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { members, securityEvents } from '@jave/database';
+import { jobs, members, securityEvents } from '@jave/database';
 import { getSettings, updateSettings } from '@jave/core';
 import { createBotHarness, type BotHarness } from '../../testing/harness';
 import type { FakeInteractionInit } from '../../testing/fake-interaction';
@@ -295,6 +295,32 @@ describe('moderation feature — commands and flows', () => {
       await bot.drain();
       expect(bot.gateway.members.get(target.user.id)!.roleIds).not.toContain(QUARANTINE_ROLE_ID);
       expect(bot.gateway.members.get(target.user.id)!.roleIds).toContain(MEMBER_ROLE_ID);
+    });
+
+    it('BREAK: a quarantine role with elevated permissions is never handed out', async () => {
+      // Set from the dashboard, which cannot inspect Discord roles.
+      bot.gateway.addRole(QUARANTINE_ROLE_ID, 'Helpers', 10, false, ['BanMembers', 'KickMembers']);
+      const mod = await staff();
+      const target = await bot.member();
+      bot.gateway.members.get(target.user.id)!.roleIds.push(MEMBER_ROLE_ID);
+      await run({
+        kind: 'slash',
+        name: 'mod',
+        subcommand: 'quarantine',
+        user: mod.user,
+        options: { member: target.user, reason: 'Compromised account suspected' },
+      });
+      await bot.drain();
+      const roles = bot.gateway.members.get(target.user.id)!.roleIds;
+      expect(roles).not.toContain(QUARANTINE_ROLE_ID);
+      // The mapped roles are still stripped: the quarantine holds in JAVE.
+      expect(roles).not.toContain(MEMBER_ROLE_ID);
+      const [dead] = await bot.kit.db
+        .select()
+        .from(jobs)
+        .where(eq(jobs.type, 'discord.moderation.apply'));
+      expect(dead).toMatchObject({ status: 'dead' });
+      expect(dead!.lastError).toContain('not a plain role');
     });
 
     it('falls back to a Discord timeout when no quarantine role is configured', async () => {

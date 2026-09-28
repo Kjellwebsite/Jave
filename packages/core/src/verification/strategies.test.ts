@@ -11,11 +11,18 @@ import {
 } from '@jave/database';
 import { createTestKit, type TestKit } from '../testing';
 import type { UserActor } from '../permissions/actor';
-import { ConflictError, InvalidStateError, NotFoundError } from '../kernel/errors';
+import {
+  ConflictError,
+  ForbiddenError,
+  InvalidStateError,
+  NotFoundError,
+  ValidationError,
+} from '../kernel/errors';
 import { reviewEvidence, setVerifiedRank, submitEvidence } from '../identity/capabilities.service';
 import { grantRoleUnchecked, revokeRoleUnchecked } from '../identity/roles.service';
 import { resolveUserActor } from '../identity/users.service';
 import {
+  assignVerifier,
   decideVerification,
   requestVerification,
   revokeVerification,
@@ -416,6 +423,48 @@ describe('verification strategies', KIT_TEST_OPTIONS, () => {
         .from(memberAchievements)
         .where(eq(memberAchievements.id, memberAchievementId));
       expect(after).toMatchObject({ verification: 'unverified', verifiedByUserId: null });
+    });
+
+    it('BREAK: whoever awarded an achievement can neither verify nor be assigned it', async () => {
+      const member = await kit.member();
+      const { memberAchievementId } = await createMemberAchievement(kit, member.memberId!, {
+        awardedByUserId: ops.userId,
+      });
+      const requested = await requestVerification(kit.as(member), {
+        target: { type: 'achievement', memberAchievementId },
+      });
+      kit.clock.advance(1000);
+      await expect(
+        assignVerifier(kit.as(core), {
+          verificationId: requested.id,
+          verifierMemberId: ops.memberId!,
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+      await expect(
+        decideVerification(kit.as(ops), {
+          verificationId: requested.id,
+          decision: 'approve',
+          note: 'Looks right to me.',
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+      const [row] = await kit.db
+        .select()
+        .from(memberAchievements)
+        .where(eq(memberAchievements.id, memberAchievementId));
+      expect(row!.verification).toBe('unverified');
+      const blocked = await kit.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, 'verification.two_person_blocked'));
+      expect(blocked).toHaveLength(1);
+
+      // A second person verifies it.
+      const approved = await decideVerification(kit.as(core), {
+        verificationId: requested.id,
+        decision: 'approve',
+        note: 'Evidence checks out.',
+      });
+      expect(approved.status).toBe('approved');
     });
 
     it('refuses revoked achievements', async () => {

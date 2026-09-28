@@ -17,6 +17,18 @@ export const achievementStrategy: VerificationStrategy = {
   deciderCapabilities: [],
   singleApproval: false,
 
+  // Four eyes, as in achievements' own verify: whoever awarded it never verifies it.
+  async deciderConflict(ctx, verification, userId) {
+    const memberAchievementId = requireTargetId(verification);
+    const [row] = await ctx.db
+      .select({ awardedByUserId: memberAchievements.awardedByUserId })
+      .from(memberAchievements)
+      .where(eq(memberAchievements.id, memberAchievementId));
+    return row?.awardedByUserId === userId
+      ? 'You awarded this achievement. Someone other than the awarder must verify it.'
+      : null;
+  },
+
   async resolveTarget(ctx, subject, target) {
     const { memberAchievementId } = expectTarget(target, 'achievement');
     const [row] = await ctx.db
@@ -62,6 +74,8 @@ export const achievementStrategy: VerificationStrategy = {
           eq(memberAchievements.memberId, verification.subjectMemberId),
           eq(memberAchievements.verification, 'unverified'),
           isNull(memberAchievements.revokedAt),
+          // The awarder check again, atomically with the approval.
+          sql`${memberAchievements.awardedByUserId} is distinct from ${actorUserId(tx.actor)}`,
         ),
       )
       .returning({ id: memberAchievements.id });

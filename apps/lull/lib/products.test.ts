@@ -32,9 +32,10 @@ describe('product data', () => {
       expect(gradientStops(product.colors.bg_gradient)).toHaveLength(5);
   });
 
-  it('counts 18 distinct active ingredients, as the home page says', () => {
+  it('counts distinct active ingredients for the home page stat', () => {
+    // L-Theanin is in Calm, Drift and Spark, Safranextrakt in Calm and Bloom.
     expect(allIngredients()).toHaveLength(20);
-    expect(distinctIngredientCount()).toBe(18);
+    expect(distinctIngredientCount()).toBe(17);
   });
 
   it('prices every product below its old price', () => {
@@ -64,6 +65,45 @@ describe('flavor, explainer and warnings', () => {
       if (!product.ingredients.some((i) => i.name === 'Koffein')) continue;
       expect(product.warnings?.[0]).toMatch(/^Enthält Koffein \(\d+ mg pro Tablette\)\./);
     }
+  });
+
+  it('gives Drift a release matrix whose ingredients all sit in a releasing layer', () => {
+    const drift = getProduct('drift')!;
+    expect(drift.flavor?.scene).toBe('moon');
+    expect(drift.release?.layers).toHaveLength(3);
+    for (const ingredient of drift.ingredients) {
+      const layer = drift.release!.layers[ingredient.layer!]!;
+      expect(layer.end).toBeGreaterThan(layer.start!);
+      expect(ingredient.evidence?.url).toMatch(/^https:\/\//);
+    }
+    const melatonin = drift.ingredients.find((i) => i.name === 'Melatonin')!;
+    expect(melatonin.dose).toBe('1 mg');
+    expect(melatonin.roles?.find((r) => r.phase === 'einschlafen')?.claim).toBe(true);
+  });
+
+  it('rejects a broken release matrix', () => {
+    const withDrift = (edit: (drift: Record<string, unknown>) => void) => {
+      const copy = structuredClone(raw) as Record<string, unknown>[];
+      edit(copy[1]!);
+      return copy;
+    };
+    type Release = { layers: { start?: number; end?: number }[]; halfLife: { ingredient: string } };
+    expect(() =>
+      parseProducts(withDrift((d) => ((d.release as Release).layers[1]!.end = 0.2))),
+    ).toThrow('[1].release.layers[1]');
+    expect(() =>
+      parseProducts(withDrift((d) => ((d.release as Release).halfLife.ingredient = 'Glycin'))),
+    ).toThrow('[1].release.halfLife.ingredient');
+    expect(() =>
+      parseProducts(withDrift((d) => ((d.ingredients as { layer?: number }[])[0]!.layer = 2))),
+    ).toThrow('[1].ingredients[0].layer');
+    expect(() =>
+      parseProducts(
+        withDrift(
+          (d) => ((d.ingredients as { roles: { phase: string }[] }[])[0]!.roles[0]!.phase = 'x'),
+        ),
+      ),
+    ).toThrow('[1].ingredients[0].roles[0].phase');
   });
 
   it('keeps the new fields optional', () => {

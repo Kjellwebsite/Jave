@@ -67,17 +67,27 @@ Production-Domain fallen weg
 
 Die strukturierten Produktdaten (JSON-LD) enthalten bewusst keine Bewertungen.
 
-**Geschmack, Wirkweise, Hinweise.** Drei optionale Felder in `data/products.json` schalten
-weitere Abschnitte der Produktseite frei, aktuell bei Calm:
+**Geschmack, Wirkweise, Hinweise.** Optionale Felder in `data/products.json` schalten weitere
+Abschnitte der Produktseite frei, aktuell bei Calm und Drift:
 
-- `flavor` (Name, Beschreibung, drei Farben): Chip im Hero und das Wolkenband „Raspberry Clouds“
-  unter der Beschreibung (`components/product/FlavorClouds.tsx`).
+- `flavor` (Name, Beschreibung, drei Farben, `scene`): Chip im Hero und ein Band unter der
+  Beschreibung, entweder Wolken („Raspberry Clouds“ bei Calm, `FlavorClouds.tsx`) oder ein
+  Nachthimmel mit Mond und Heidelbeeren („Blueberry Moon“ bei Drift, `scene: "moon"`,
+  `FlavorMoon.tsx`).
 - `explainer` (Texte): „Anti-Überreizung“ mit der Grafik angespannt/ruhiger
   (`ArousalGraphic.tsx`). Schematisch, ohne Messwerte. Mit reduzierter Bewegung bleibt sie
   statisch und umschaltbar, ohne JavaScript zeigt sie den angespannten Zustand.
 - `warnings`: produktspezifische Warnhinweise. Sie stehen in „Gut zu wissen“ zusammen mit der
   Verzehrempfehlung und den Pflichthinweisen nach § 4 NemV (`SUPPLEMENT_NOTICES` in
   `lib/content.ts`), die auf jeder Produktseite erscheinen.
+- `release` plus `layer`, `roles` und `evidence` an den Wirkstoffen: die „Double Release
+  Matrix“ bei Drift (`ReleaseMatrix.tsx`). Explodierte Tablette mit den drei Schichten, eine
+  Nacht mit Schlafphasen und Freisetzung (`NightChart.tsx`, Fadenkreuz per Maus und Pfeiltasten,
+  Tabellenansicht), je Phase eine Grafik (`SleepCharts.tsx`), die Wirkstoffmatrix und die Studien
+  mit Links. Die Schlafdaten sind schematisch (`lib/sleep.ts`: typische Nacht innerhalb der
+  Lehrbuch-Richtwerte, Zielprofil der Freisetzung, Melatonin-Modell mit 45 Minuten
+  Halbwertszeit) und getestet. Die Diagrammfarben sind auf Farbenblindheit und Kontrast geprüft
+  (`chartTokens.ts`).
 
 Eine neue Rezeptur ist damit nur eine Änderung an `data/products.json`. Der Parser verlangt
 weiterhin genau vier Wirkstoffe pro Produkt, weil Layout und Schichtgrafik dafür gebaut sind.
@@ -108,11 +118,22 @@ Beim Bauen zusätzlich aufgefallen:
   HPA-Achse“ sind gesundheitsbezogene Angaben. Für Nahrungsergänzungsmittel sind nur zugelassene
   Health Claims erlaubt (VO (EG) 1924/2006), also vor Launch rechtlich prüfen lassen. Das gilt
   auch für den Abschnitt „Anti-Überreizung“ und seine Grafik („Mit Calm: weniger Signale, mehr
-  Hemmung“).
+  Hemmung“) und für die Double Release Matrix von Drift. Dort sind nur die als
+  „EU-Health-Claim“ markierten Sätze zugelassene Angaben (Melatonin 1 mg, Magnesium). Die
+  Studien wurden mit einzelnen Wirkstoffen gemacht, nicht mit Drift; die Magnolien-Daten stammen
+  aus einer Tierstudie.
+- **Drift-Rezeptur:** Melatonin 1 mg, L-Theanin 200 mg, Magnolienrinde 200 mg (Honokiol),
+  Magnesium 100 mg. Melatonin stufen BfArM und BfR in Deutschland dosisunabhängig als
+  Arzneimittel ein, die Rechtslage ist umstritten: vor Launch klären, sonst ohne Melatonin.
+  Für Magnolienrinde Novel-Food-Status und Einstufung prüfen, Extrakt und Dosis fachlich
+  festlegen. Freisetzungsprofil und Schichtaufbau sind Zielwerte, mit Dissolution-Tests belegen.
+  „Blueberry Moon“ ist der Geschmack der Hülle, weil die Tablette unzerkaut geschluckt wird.
 - **Geschmack:** „Raspberry Clouds“ passt zu einer Kau- oder Lutschtablette, die
   Verzehrempfehlung von Calm sagt aber „mit Wasser“. Darreichungsform klären.
 - **Wirkstoffe:** Nur Stoffe, die in Nahrungsergänzungsmitteln zulässig sind. Arzneistoffe,
-  nicht zugelassene Novel Foods und Research Chemicals (z. B. GB-115) gehören nicht in den Shop.
+  nicht zugelassene Novel Foods und Research Chemicals gehören nicht in den Shop. Deshalb fehlen
+  GB-115, DHH-B und 8β-(4′-Hydroxytigloyloxy)costunolid, ebenso Venetron (Apocynum-venetum-
+  Extrakt, keine EU-Zulassung gefunden).
 - **Kontrast:** Bei Drift steht der Blister-Text im Prototyp auf mittlerem Violett
   (Kontrast etwa 2:1). Das Design ist so übernommen und sollte geprüft werden.
 

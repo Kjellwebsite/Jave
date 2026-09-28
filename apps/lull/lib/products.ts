@@ -9,11 +9,46 @@ import type { TabletPalette } from './tablet';
  * Later this can move to a CMS or Supabase behind the same functions.
  */
 
+/** The three goals of a sleep formula, the columns of the release matrix. */
+export type PhaseId = 'einschlafen' | 'durchschlafen' | 'aufwachen';
+export const PHASE_IDS: readonly PhaseId[] = ['einschlafen', 'durchschlafen', 'aufwachen'];
+
+/** A published effect with its 95 % confidence interval, e.g. minutes of sleep latency. */
+export interface Effect {
+  label: string;
+  value: number;
+  low: number;
+  high: number;
+  unit: string;
+}
+
+/** The best study behind an ingredient. Studies used the single ingredient, not the product. */
+export interface Evidence {
+  /** 3 meta-analysis in humans, 2 randomized controlled trial in humans, 1 animal study. */
+  level: 1 | 2 | 3;
+  kind: string;
+  finding: string;
+  source: string;
+  url: string;
+  effects?: Effect[];
+}
+
+export interface IngredientRole {
+  phase: PhaseId;
+  text: string;
+  /** The text is an authorized EU health claim (Regulation (EU) No 432/2012). */
+  claim?: boolean;
+}
+
 export interface Ingredient {
   name: string;
   dose: string;
   /** Mechanism, shown in the ingredient zoom on the product page. */
   note: string;
+  /** Release matrix only: the tablet layer that carries it, 0 is the top. */
+  layer?: number;
+  roles?: IngredientRole[];
+  evidence?: Evidence;
 }
 
 export interface Review {
@@ -48,8 +83,10 @@ export interface ProductColors {
 export interface Flavor {
   name: string;
   note: string;
-  /** Deep, middle and light tint of the clouds, #rrggbb. */
+  /** Deep, middle and light tint of the artwork, #rrggbb. */
   colors: [string, string, string];
+  /** Artwork of the band: drifting clouds (default) or a night sky with a moon. */
+  scene?: 'clouds' | 'moon';
 }
 
 /** Copy of the mechanism explainer and its graphic (tense vs. calmer nervous system). */
@@ -60,6 +97,29 @@ export interface Explainer {
   /** Labels of the two states in the graphic. */
   busy: string;
   calm: string;
+}
+
+export interface ReleaseLayer {
+  name: string;
+  text: string;
+  /** Release window in hours after intake. Omitted for a layer without actives. */
+  start?: number;
+  end?: number;
+}
+
+/** "Double release": which layer releases when, and what each ingredient does per phase. */
+export interface ReleaseMatrix {
+  eyebrow: string;
+  title: string;
+  lead: string;
+  /** Three pressed layers, top to bottom. */
+  layers: ReleaseLayer[];
+  /** One entry per phase, in the order of `PHASE_IDS`. */
+  phases: { id: PhaseId; title: string; text: string }[];
+  /** Elimination half-life used for the "wake up clear" chart. */
+  halfLife: { ingredient: string; minutes: number; source: string; url: string };
+  /** Disclaimer under the section. */
+  note: string;
 }
 
 export interface Product {
@@ -78,6 +138,7 @@ export interface Product {
   moments: string;
   flavor?: Flavor;
   explainer?: Explainer;
+  release?: ReleaseMatrix;
   /** Product-specific warnings, shown with the mandatory supplement notices. */
   warnings?: string[];
   rating_PLACEHOLDER: PlaceholderRating;
@@ -106,6 +167,113 @@ function list(o: Json, key: string, where: string): unknown[] {
   const value = o[key];
   if (!Array.isArray(value)) fail(`${where}.${key}`, 'expected a list');
   return value;
+}
+
+function num(o: Json, key: string, where: string): number {
+  const value = o[key];
+  if (typeof value !== 'number' || !Number.isFinite(value))
+    fail(`${where}.${key}`, 'expected a number');
+  return value;
+}
+
+function url(o: Json, key: string, where: string): string {
+  const value = text(o, key, where);
+  if (!/^https:\/\/\S+$/.test(value))
+    fail(`${where}.${key}`, `expected an https link, got "${value}"`);
+  return value;
+}
+
+function parseIngredient(value: unknown, where: string): void {
+  const ingredient = object(value, where);
+  for (const key of ['name', 'dose', 'note']) text(ingredient, key, where);
+  if (ingredient.layer !== undefined) {
+    const layer = num(ingredient, 'layer', where);
+    if (!Number.isInteger(layer) || layer < 0) fail(`${where}.layer`, 'expected a layer index');
+  }
+  if (ingredient.roles !== undefined) {
+    list(ingredient, 'roles', where).forEach((item, i) => {
+      const role = object(item, `${where}.roles[${i}]`);
+      const phase = text(role, 'phase', `${where}.roles[${i}]`);
+      if (!PHASE_IDS.includes(phase as PhaseId)) {
+        fail(`${where}.roles[${i}].phase`, `unknown phase "${phase}"`);
+      }
+      text(role, 'text', `${where}.roles[${i}]`);
+      if (role.claim !== undefined && typeof role.claim !== 'boolean') {
+        fail(`${where}.roles[${i}].claim`, 'expected true or false');
+      }
+    });
+  }
+  if (ingredient.evidence !== undefined) {
+    const at = `${where}.evidence`;
+    const evidence = object(ingredient.evidence, at);
+    const level = num(evidence, 'level', at);
+    if (![1, 2, 3].includes(level)) fail(`${at}.level`, 'expected 1, 2 or 3');
+    for (const key of ['kind', 'finding', 'source']) text(evidence, key, at);
+    url(evidence, 'url', at);
+    if (evidence.effects !== undefined) {
+      list(evidence, 'effects', at).forEach((item, i) => {
+        const effect = object(item, `${at}.effects[${i}]`);
+        text(effect, 'label', `${at}.effects[${i}]`);
+        text(effect, 'unit', `${at}.effects[${i}]`);
+        const [low, mid, high] = ['low', 'value', 'high'].map((key) =>
+          num(effect, key, `${at}.effects[${i}]`),
+        );
+        if (!(low! <= mid! && mid! <= high!)) {
+          fail(`${at}.effects[${i}]`, 'expected low <= value <= high');
+        }
+      });
+    }
+  }
+}
+
+function parseRelease(value: unknown, where: string, ingredients: Json[]): void {
+  const release = object(value, where);
+  for (const key of ['eyebrow', 'title', 'lead', 'note']) text(release, key, where);
+
+  const layers = list(release, 'layers', where);
+  if (layers.length !== 3) fail(`${where}.layers`, 'expected three layers, top to bottom');
+  const windows = layers.map((item, i) => {
+    const layer = object(item, `${where}.layers[${i}]`);
+    for (const key of ['name', 'text']) text(layer, key, `${where}.layers[${i}]`);
+    if (layer.start === undefined && layer.end === undefined) return false;
+    const start = num(layer, 'start', `${where}.layers[${i}]`);
+    const end = num(layer, 'end', `${where}.layers[${i}]`);
+    if (!(start >= 0 && start < end && end <= 8)) {
+      fail(`${where}.layers[${i}]`, 'expected 0 <= start < end <= 8 hours');
+    }
+    return true;
+  });
+  if (!windows[0] || !windows[1])
+    fail(`${where}.layers`, 'the top two layers need a release window');
+
+  const phases = list(release, 'phases', where);
+  if (phases.length !== PHASE_IDS.length) fail(`${where}.phases`, 'expected one entry per phase');
+  phases.forEach((item, i) => {
+    const phase = object(item, `${where}.phases[${i}]`);
+    if (phase.id !== PHASE_IDS[i]) fail(`${where}.phases[${i}].id`, `expected "${PHASE_IDS[i]}"`);
+    for (const key of ['title', 'text']) text(phase, key, `${where}.phases[${i}]`);
+  });
+
+  const halfLife = object(release.halfLife, `${where}.halfLife`);
+  const name = text(halfLife, 'ingredient', `${where}.halfLife`);
+  if (!ingredients.some((ingredient) => ingredient.name === name)) {
+    fail(`${where}.halfLife.ingredient`, `"${name}" is not an ingredient`);
+  }
+  if (num(halfLife, 'minutes', `${where}.halfLife`) <= 0) {
+    fail(`${where}.halfLife.minutes`, 'expected a positive number');
+  }
+  text(halfLife, 'source', `${where}.halfLife`);
+  url(halfLife, 'url', `${where}.halfLife`);
+
+  ingredients.forEach((ingredient, i) => {
+    const layer = ingredient.layer;
+    if (typeof layer !== 'number' || !windows[layer]) {
+      fail(
+        `${where.replace(/\.release$/, '')}.ingredients[${i}].layer`,
+        'every ingredient needs a layer with a release window',
+      );
+    }
+  });
 }
 
 function color(o: Json, key: string, where: string): string {
@@ -146,10 +314,7 @@ function parseProduct(value: unknown, index: number): Product {
 
   const ingredients = list(p, 'ingredients', where);
   if (ingredients.length !== 4) fail(`${where}.ingredients`, 'the design expects four');
-  ingredients.forEach((item, i) => {
-    const ingredient = object(item, `${where}.ingredients[${i}]`);
-    for (const key of ['name', 'dose', 'note']) text(ingredient, key, `${where}.ingredients[${i}]`);
-  });
+  ingredients.forEach((item, i) => parseIngredient(item, `${where}.ingredients[${i}]`));
 
   for (const key of ['name', 'category', 'pack', 'card_blurb', 'howto', 'moments']) {
     text(p, key, where);
@@ -162,12 +327,18 @@ function parseProduct(value: unknown, index: number): Product {
     if (tints.length !== 3 || tints.some((c) => typeof c !== 'string' || !isHexColor(c))) {
       fail(`${where}.flavor.colors`, 'expected three #rrggbb colors');
     }
+    if (flavor.scene !== undefined && flavor.scene !== 'clouds' && flavor.scene !== 'moon') {
+      fail(`${where}.flavor.scene`, 'expected "clouds" or "moon"');
+    }
   }
   if (p.explainer !== undefined) {
     const explainer = object(p.explainer, `${where}.explainer`);
     for (const key of ['eyebrow', 'title', 'lead', 'busy', 'calm']) {
       text(explainer, key, `${where}.explainer`);
     }
+  }
+  if (p.release !== undefined) {
+    parseRelease(p.release, `${where}.release`, ingredients as Json[]);
   }
   if (p.warnings !== undefined) {
     const warnings = list(p, 'warnings', where);

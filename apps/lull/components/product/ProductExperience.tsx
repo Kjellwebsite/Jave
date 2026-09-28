@@ -23,7 +23,9 @@ import { motes } from '@/lib/random';
 import { Blister } from './Blister';
 import { Explainer } from './Explainer';
 import { FlavorClouds } from './FlavorClouds';
+import { FlavorMoon } from './FlavorMoon';
 import { Notices } from './Notices';
+import { ReleaseMatrix } from './ReleaseMatrix';
 import { Reviews } from './Reviews';
 import { RollingPrice } from './RollingPrice';
 
@@ -542,7 +544,12 @@ function ProductScene({ product, showReviews }: { product: Product; showReviews:
           </div>
         </div>
 
-        {product.flavor && <FlavorClouds flavor={product.flavor} ink={ink} textClass={text} />}
+        {product.flavor?.scene === 'moon' && (
+          <FlavorMoon flavor={product.flavor} textClass={text} />
+        )}
+        {product.flavor && product.flavor.scene !== 'moon' && (
+          <FlavorClouds flavor={product.flavor} ink={ink} textClass={text} />
+        )}
 
         <div className="wrap-wide ink-fade" style={{ color: ink, ['--focus' as string]: ink }}>
           {product.explainer && (
@@ -551,6 +558,15 @@ function ProductScene({ product, showReviews }: { product: Product; showReviews:
                 <div aria-hidden="true" className="ink-fade h-px" style={{ background: line }} />
               )}
               <Explainer product={product} copy={product.explainer} textClass={text} />
+            </>
+          )}
+
+          {product.release && (
+            <>
+              {!product.flavor && (
+                <div aria-hidden="true" className="ink-fade h-px" style={{ background: line }} />
+              )}
+              <ReleaseMatrix product={product} copy={product.release} textClass={text} />
             </>
           )}
 

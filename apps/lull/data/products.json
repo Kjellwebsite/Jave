@@ -110,9 +110,9 @@
     },
     "finder": {
       "prompt": "Mein Kopf ist nachts zu laut",
-      "pitch": "Senkt Erregung und Kerntemperatur, damit Einschlafen sich wieder wie Loslassen anfühlt und nicht wie Arbeit.",
-      "when": "30 bis 60 Min vor dem Schlafen",
-      "targets": ["GABA-A", "NMDA", "Thermoregulation", "Schlaflatenz"]
+      "pitch": "Zwei Freisetzungen in einer Tablette: eine fürs Einschlafen, eine für die Stunden danach. Am Morgen ist nichts mehr übrig.",
+      "when": "Kurz vor dem Schlafengehen",
+      "targets": ["Einschlafzeit", "GABA-A", "NREM-Schlaf", "Nervensystem"]
     },
     "card_blurb": "Runterfahren, einschlafen, durchschlafen.",
     "colors": {
@@ -127,28 +127,174 @@
     },
     "ingredients": [
       {
-        "name": "Magnesiumglycinat",
-        "dose": "300 mg",
-        "note": "Senkt den NMDA-Tonus, stützt GABA-A am Abend."
+        "name": "Melatonin",
+        "dose": "1 mg",
+        "note": "Das körpereigene Signal für die Nacht. Trägt dazu bei, die Einschlafzeit zu verkürzen.",
+        "layer": 0,
+        "roles": [
+          {
+            "phase": "einschlafen",
+            "text": "Trägt dazu bei, die Einschlafzeit zu verkürzen.",
+            "claim": true
+          },
+          {
+            "phase": "aufwachen",
+            "text": "Halbwertszeit rund 45 Minuten. Bis zum Morgen ist es abgebaut."
+          }
+        ],
+        "evidence": {
+          "level": 3,
+          "kind": "Meta-Analyse · Mensch",
+          "finding": "19 Studien mit 1.683 Personen: Einschlafzeit im Mittel 7 Minuten kürzer, Gesamtschlafzeit 8 Minuten länger.",
+          "source": "Ferracioli-Oda et al., PLOS ONE 2013",
+          "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0063773",
+          "effects": [
+            {
+              "label": "Einschlafzeit",
+              "value": -7.06,
+              "low": -9.75,
+              "high": -4.37,
+              "unit": "min"
+            },
+            {
+              "label": "Gesamtschlafzeit",
+              "value": 8.25,
+              "low": 1.74,
+              "high": 14.75,
+              "unit": "min"
+            }
+          ]
+        }
       },
       {
-        "name": "Glycin",
-        "dose": "3 g",
-        "note": "Senkt die Kerntemperatur, verkürzt die Einschlaflatenz."
+        "name": "L-Theanin",
+        "dose": "200 mg",
+        "note": "Aminosäure aus Grüntee. Für einen ruhigen Übergang in die Nacht.",
+        "layer": 0,
+        "roles": [
+          {
+            "phase": "einschlafen",
+            "text": "In einer Studie kürzere Einschlafdauer im Schlaffragebogen."
+          },
+          {
+            "phase": "durchschlafen",
+            "text": "In derselben Studie weniger Schlafstörungen."
+          }
+        ],
+        "evidence": {
+          "level": 2,
+          "kind": "RCT · Mensch",
+          "finding": "30 Erwachsene, vier Wochen je 200 mg: bessere Werte für Einschlafdauer, Schlafstörungen und Schlafmittelgebrauch im Pittsburgh-Schlaffragebogen als unter Placebo.",
+          "source": "Hidese et al., Nutrients 2019",
+          "url": "https://www.mdpi.com/2072-6643/11/10/2362"
+        }
       },
       {
-        "name": "Apigenin",
-        "dose": "50 mg",
-        "note": "Bindet an die Benzodiazepin-Stelle des GABA-A-Rezeptors."
+        "name": "Magnolienrinde",
+        "dose": "200 mg",
+        "note": "Extrakt mit Honokiol, das im Tiermodell an der Benzodiazepin-Stelle des GABA-A-Rezeptors ansetzt.",
+        "layer": 1,
+        "roles": [
+          {
+            "phase": "durchschlafen",
+            "text": "Honokiol verlängerte im Maus-EEG den NREM-Schlaf."
+          }
+        ],
+        "evidence": {
+          "level": 1,
+          "kind": "Tierstudie · Maus-EEG",
+          "finding": "Honokiol (10 und 20 mg/kg) verkürzte die Zeit bis zum NREM-Schlaf und verlängerte ihn. Flumazenil hob den Effekt auf. Humandaten zu Schlafphasen gibt es noch nicht.",
+          "source": "Qu et al., British Journal of Pharmacology 2012",
+          "url": "https://bpspubs.onlinelibrary.wiley.com/doi/10.1111/j.1476-5381.2012.02010.x"
+        }
       },
       {
-        "name": "Passionsblume",
-        "dose": "250 mg",
-        "note": "Chrysin und Flavonoide, milde GABAerge Wirkung."
+        "name": "Magnesium",
+        "dose": "100 mg",
+        "note": "Aus Bisglycinat. Trägt zu einer normalen Funktion des Nervensystems bei.",
+        "layer": 1,
+        "roles": [
+          {
+            "phase": "durchschlafen",
+            "text": "Trägt zu einer normalen Funktion des Nervensystems bei.",
+            "claim": true
+          },
+          {
+            "phase": "aufwachen",
+            "text": "Trägt zur Verringerung von Müdigkeit und Ermüdung bei.",
+            "claim": true
+          }
+        ],
+        "evidence": {
+          "level": 2,
+          "kind": "RCT · Mensch",
+          "finding": "46 ältere Erwachsene mit Schlafproblemen, acht Wochen je 500 mg: bessere Schlafeffizienz, längere Schlafzeit und kürzere Einschlafzeit. Die Studiendosis liegt über der in Drift.",
+          "source": "Abbasi et al., J Res Med Sci 2012",
+          "url": "https://www.semanticscholar.org/paper/The-effect-of-magnesium-supplementation-on-primary-Abbasi-Kimiagar/042fc87490256d934f2b025b6ca6c6115be73404"
+        }
       }
     ],
-    "howto": "Eine Tablette 30 bis 60 Minuten vor dem Schlafen. Nicht mit Alkohol kombinieren.",
+    "howto": "Eine Tablette kurz vor dem Schlafengehen unzerkaut mit Wasser schlucken. Nicht teilen oder kauen, sonst funktioniert die Schichtfreisetzung nicht.",
     "moments": "Nach langen Tagen. Vor frühen Flügen. Wenn der Kopf um Mitternacht erst richtig warm wird.",
+    "flavor": {
+      "name": "Blueberry Moon",
+      "note": "Heidelbeere auf der Hülle, dunkel und weich. Das Letzte, was du vor dem Einschlafen schmeckst.",
+      "colors": ["#3d45d8", "#8c9bff", "#e3e7ff"],
+      "scene": "moon"
+    },
+    "release": {
+      "eyebrow": "Double Release Matrix",
+      "title": "Einschlafen. Durchschlafen. Klar aufwachen.",
+      "lead": "Drift ist in drei Schichten gepresst. Die obere löst sich in Minuten und begleitet das Einschlafen. Der Kern gibt über Stunden ab, durch die Tiefschlafphasen der ersten Nachthälfte. Nach rund sechs Stunden ist alles freigesetzt, lange bevor der Wecker klingelt.",
+      "layers": [
+        {
+          "name": "Einschlaf-Schicht",
+          "text": "Löst sich in Minuten",
+          "start": 0,
+          "end": 0.5
+        },
+        {
+          "name": "Durchschlaf-Kern",
+          "text": "Gibt über rund sechs Stunden ab",
+          "start": 0.5,
+          "end": 6
+        },
+        {
+          "name": "Barriere",
+          "text": "Ohne Wirkstoff, bremst den Kern"
+        }
+      ],
+      "phases": [
+        {
+          "id": "einschlafen",
+          "title": "Einschlafen",
+          "text": "Melatonin ist das Signal, auf das dein Körper abends ohnehin wartet. In Studien verkürzt es die Einschlafzeit, im Mittel um sieben Minuten."
+        },
+        {
+          "id": "durchschlafen",
+          "title": "Durchschlafen",
+          "text": "Tiefschlaf (N3) liegt vor allem in den ersten beiden Schlafzyklen. Genau dann gibt der Kern ab."
+        },
+        {
+          "id": "aufwachen",
+          "title": "Klar aufwachen",
+          "text": "Die Freisetzung endet rund zwei Stunden vor dem Aufwachen. Melatonin ist nach 45 Minuten zur Hälfte abgebaut, am Morgen ist praktisch nichts mehr davon übrig."
+        }
+      ],
+      "halfLife": {
+        "ingredient": "Melatonin",
+        "minutes": 45,
+        "source": "Harpsøe et al., European Journal of Clinical Pharmacology 2015",
+        "url": "https://link.springer.com/article/10.1007/s00228-015-1873-4"
+      },
+      "note": "Schematische Darstellungen. Die Studien wurden mit einzelnen Wirkstoffen gemacht, nicht mit Drift. Das Freisetzungsprofil ist das Ziel der Rezeptur und wird im Labor geprüft."
+    },
+    "warnings": [
+      "Kann müde machen. Nach der Einnahme kein Fahrzeug führen und keine Maschinen bedienen.",
+      "Nicht zusammen mit Alkohol, Schlafmitteln oder anderen dämpfenden Substanzen einnehmen.",
+      "Nicht geeignet für Schwangere, Stillende sowie Kinder und Jugendliche.",
+      "Wenn du Medikamente nimmst oder chronisch krank bist, sprich vorher mit deiner Ärztin oder deinem Arzt."
+    ],
     "rating_PLACEHOLDER": {
       "avg": "4,7",
       "count": "962",

@@ -90,7 +90,7 @@ export const FAQ = [
   },
   {
     q: 'Kann ich mehrere Lull Produkte kombinieren?',
-    a: 'Ja, die Formeln sind aufeinander abgestimmt. Ein klassisches Setup ist Spark am Morgen und Drift am Abend. Calm und Spark enthalten beide L-Theanin, am selben Tag also nicht beide voll ausreizen.',
+    a: 'Ja, die Formeln sind aufeinander abgestimmt. Ein klassisches Setup ist Spark am Morgen und Drift am Abend. Calm, Drift und Spark enthalten alle L-Theanin, am selben Tag also nicht alle voll ausreizen.',
   },
   {
     q: 'Was genau prüft das AM-Zertifikat?',

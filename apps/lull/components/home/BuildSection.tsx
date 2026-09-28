@@ -1,48 +1,7 @@
+import { ExplodedTablet } from '@/components/ExplodedTablet';
 import { Reveal } from '@/components/Reveal';
-import { depth, TabletBottomFace, TabletTopFace } from '@/components/Tablet';
 import { BUILD_PRINCIPLES, LAYER_LABELS } from '@/lib/content';
-import { DEFAULT_PRODUCT, palette } from '@/lib/products';
-import { buildTablet, SEAMS, type TabletLayer } from '@/lib/tablet';
-
-function Discs({ layers }: { layers: TabletLayer[] }) {
-  return layers.map((layer) => (
-    <div
-      key={layer.t}
-      className="layer"
-      style={{
-        transform: `${depth(layer.z)} scale(${layer.scale.toFixed(3)})`,
-        background: layer.background,
-      }}
-    />
-  ));
-}
-
-/** A Calm tablet whose three pressed layers drift apart and back together. */
-function ExplodedTablet() {
-  const geometry = buildTablet(palette(DEFAULT_PRODUCT), 40);
-  const [low, high] = SEAMS;
-  return (
-    <div className="tablet ex-stage">
-      <div className="ex-pill">
-        <div className="slab slab-bot">
-          <TabletBottomFace geometry={geometry} />
-          <Discs layers={geometry.layers.filter((l) => l.t < low)} />
-        </div>
-        <div className="slab">
-          <Discs layers={geometry.layers.filter((l) => l.t >= low && l.t < high)} />
-        </div>
-        <div className="slab slab-top">
-          <Discs layers={geometry.layers.filter((l) => l.t >= high)} />
-          <TabletTopFace
-            geometry={geometry}
-            code={DEFAULT_PRODUCT.name.toUpperCase()}
-            shine={false}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
+import { DEFAULT_PRODUCT } from '@/lib/products';
 
 export function BuildSection() {
   return (
@@ -59,7 +18,7 @@ export function BuildSection() {
             <div aria-hidden="true" className="ex-art">
               <div className="ex-glow" />
               <div className="ex-shadow" />
-              <ExplodedTablet />
+              <ExplodedTablet product={DEFAULT_PRODUCT} />
             </div>
             <ol className="ex-labels" aria-label="Die drei Schichten, von oben nach unten">
               {LAYER_LABELS.map((label, k) => (

@@ -45,7 +45,7 @@ Postgres run is part of the release gate.
 | 8   | Surfaces per domain (wave 2)                           | [✓]    | bot commands, `discord.*` job handlers, dashboard pages, dev seed; 11 workstreams reviewed and fixed (table below)                |
 | 9   | Discord Activity                                       | [✓]    | Mission Control + JVLN Arena, token exchange, instance scope, two-player e2e                                                      |
 | 10  | Privacy                                                | [✓]    | member data export, erasure with a whole-schema scan, session control                                                             |
-| 11  | Gauntlets: security, failure, visual, performance, E2E | [~]    | see Gauntlets                                                                                                                     |
+| 11  | Gauntlets: security, failure, visual, performance, E2E | [✓]    | see Gauntlets                                                                                                                     |
 | 12  | Docs and deployment                                    | [✓]    | README, ARCHITECTURE, SECURITY, DEPLOYMENT, ENVIRONMENT, RUNBOOK, COMMANDS (generated), DATABASE (generated), CONTRIBUTING, docs/ |
 
 ## Wave 1: domain modules
@@ -152,9 +152,21 @@ decision.
 
 ### End to end
 
-[~] The final run over the merged tree follows the security fixes. The dashboard
-suite (20 specs) and the Activity suite (two players in one instance) run
-against a seeded Postgres.
+[✓] Final run over the merged tree, after the security fixes:
+
+| Suite                                             | Result      |
+| ------------------------------------------------- | ----------- |
+| Unit and integration, real PostgreSQL (257 files) | 3252 passed |
+| Dashboard e2e, production build (20 specs)        | 181 passed  |
+| Discord Activity e2e, two players in one instance | 10 passed   |
+| Typecheck, lint (`--max-warnings=0`), format      | clean       |
+
+The e2e suites cover sign-in and access per persona, every console workflow
+(applications, verification, trials and the adversarial tab, moderation,
+tickets, missions, achievements, projects, events, games, AI proposals,
+research, referrals, analytics, integrations, settings, privacy export and
+erasure), BREAK cases (cross-site posts, hostile filters, markup in profile
+text, other members' data) and the visual checks below.
 
 ### Visual
 

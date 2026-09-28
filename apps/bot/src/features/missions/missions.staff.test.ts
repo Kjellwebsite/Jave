@@ -360,7 +360,10 @@ describe('missions — staff flows', () => {
       name: customId('missions', 'verify', assignmentA!.id, 0),
       user: ops.user,
       modalText: { feedback: '' },
+      sourceMessage: { ephemeral: true },
     });
+    // The queue panel advances in place.
+    expect(verified.interaction.responses.map((r) => r.type)).toEqual(['update']);
     expect(verified.interaction.lastText()).toContain('SUBMISSION VERIFIED');
     expect(verified.interaction.lastText()).toContain('REVIEW QUEUE · 1 OF 1');
     const proofs = await bot.kit.db

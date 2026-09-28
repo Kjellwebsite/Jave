@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { achievements } from '@jave/core';
+import { achievements, missions } from '@jave/core';
 import { ruleEventOptions } from '@/server/data/achievements';
 import { criteriaFrom, definitionFields } from './achievement-form';
+import { ACHIEVEMENT_FORM_LIMITS, MISSION_FORM_LIMITS } from './form-limits';
 import { RULE_EVENT_LABELS, ruleEventLabel, ruleText } from './achievement-labels';
 import { type MemberOption, toggleSelection } from './member-search';
 import { INVALID_DATE, missionFormInput, parseUtcInput } from './mission-form';
-import { holdingLabel, rewardLabel, slotsLabel, toUtcInputValue } from './mission-labels';
+import {
+  holdingLabel,
+  rewardLabel,
+  showsDueDate,
+  slotsLabel,
+  toUtcInputValue,
+} from './mission-labels';
 import { NAV_GROUPS, visibleNav } from './nav';
 
 function form(entries: Record<string, string | string[]>): FormData {
@@ -59,6 +66,14 @@ describe('mission form', () => {
     expect(slotsLabel(3, 10)).toBe('7 of 10 left');
     expect(slotsLabel(10, 10)).toBe('Full · 10 of 10');
     expect(slotsLabel(4, null)).toBe('No cap · 4 taking part');
+  });
+
+  it('shows a due date only while the work can still fall due', () => {
+    expect(missions.ASSIGNMENT_STATUSES.filter(showsDueDate)).toEqual([
+      'assigned',
+      'accepted',
+      'rejected',
+    ]);
   });
 
   it('labels rewards, masking a hidden one to its rarity', () => {
@@ -143,6 +158,59 @@ describe('member picker selection', () => {
   it('BREAK: refuses a pick past the cap instead of dropping an earlier one', () => {
     const full = toggleSelection(toggleSelection([], mara, 2), jun, 2);
     expect(toggleSelection(full, sana, 2).map((member) => member.handle)).toEqual(['mara', 'jun']);
+  });
+});
+
+/** The longest value a pattern accepts, from lowercase letters. */
+function patternMax(pattern: RegExp): number {
+  let length = 1;
+  while (pattern.test('a'.repeat(length + 1))) length++;
+  return length;
+}
+
+describe('form limits mirrored in the browser', () => {
+  it('equal the mission service limits', () => {
+    expect(MISSION_FORM_LIMITS).toEqual({
+      titleMin: missions.TITLE_MIN,
+      titleMax: missions.TITLE_MAX,
+      briefMin: missions.BRIEF_MIN,
+      briefMax: missions.BRIEF_MAX,
+      rewardNoteMax: missions.REWARD_NOTE_MAX,
+      maxAssignees: missions.MAX_ASSIGNEES_LIMIT,
+      durationHoursMax: missions.MAX_DURATION_HOURS,
+      submissionMax: missions.SUBMISSION_MAX,
+      evidenceTitleMax: missions.EVIDENCE_TITLE_MAX,
+      evidenceUrlMax: MISSION_FORM_LIMITS.evidenceUrlMax,
+      feedbackMin: missions.FEEDBACK_MIN,
+      feedbackMax: missions.FEEDBACK_MAX,
+      assignBatchMax: missions.MAX_ASSIGN_BATCH,
+      teamKeyMax: patternMax(missions.TEAM_KEY_PATTERN),
+    });
+    const evidence = (length: number) =>
+      missions.submitMissionSchema.safeParse({
+        assignmentId: '00000000-0000-4000-8000-000000000000',
+        submission: 'Done.',
+        evidence: {
+          title: 'Log',
+          url: `https://example.org/${'a'.repeat(length - 'https://example.org/'.length)}`,
+        },
+      }).success;
+    expect(evidence(MISSION_FORM_LIMITS.evidenceUrlMax)).toBe(true);
+    expect(evidence(MISSION_FORM_LIMITS.evidenceUrlMax + 1)).toBe(false);
+  });
+
+  it('equal the achievements service limits', () => {
+    expect(ACHIEVEMENT_FORM_LIMITS).toEqual({
+      keyMax: patternMax(achievements.ACHIEVEMENT_KEY_PATTERN),
+      titleMax: achievements.TITLE_MAX,
+      summaryMax: achievements.SUMMARY_MAX,
+      descriptionMax: achievements.DESCRIPTION_MAX,
+      categoryMax: patternMax(achievements.ACHIEVEMENT_CATEGORY_PATTERN),
+      thresholdMax: achievements.MAX_EVENT_THRESHOLD,
+      ordinalMax: achievements.MAX_ORDINAL,
+      reasonMin: achievements.REASON_MIN,
+      reasonMax: achievements.REASON_MAX,
+    });
   });
 });
 

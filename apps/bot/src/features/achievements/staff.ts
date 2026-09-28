@@ -1,4 +1,5 @@
 import {
+  type APIEmbed,
   LabelBuilder,
   ModalBuilder,
   StringSelectMenuBuilder,
@@ -11,8 +12,10 @@ import { customId } from '../../interactions/custom-id';
 import { failure, panel, row, stringSelect, success } from '../../ui/components';
 import { plainText, userText } from '../../ui/format';
 import { COLORS, GLYPH, LIMITS } from '../../ui/theme';
+import { presentInPlace } from '../missions/present';
 import { heldAwards, memberName, resolveMemberId } from './data';
 import { ACHIEVEMENTS_NS, NAME_MAX, RARITY_LABEL, type HeldAward } from './render';
+import { memberCatalogPayload } from './view';
 
 /** Form field ids inside the award/revoke modals. */
 export const FIELD_ACHIEVEMENT = 'achievement';
@@ -69,6 +72,20 @@ export async function achievementAutocomplete(h: HandlerContext): Promise<void> 
 
 // ── Award / revoke ──────────────────────────────────────────────────────────
 
+/**
+ * The outcome of an award or revoke. A modal opened from the private member
+ * view refreshes that view in place, notice on top; a slash command (or a
+ * press from anywhere else) gets the notice as a new private reply.
+ */
+async function report(h: HandlerContext, memberId: string, notice: APIEmbed): Promise<void> {
+  if (h.interaction.sourceMessage?.ephemeral !== true) {
+    await h.respond({ embeds: [notice], ephemeral: true });
+    return;
+  }
+  const view = await memberCatalogPayload(h, memberId, { page: 0, share: false });
+  await h.interaction.update({ ...view, embeds: [notice, ...(view.embeds ?? [])] });
+}
+
 async function award(h: HandlerContext, memberId: string, key: string, reason: string) {
   const record = await achievements.awardAchievement(h.ctx, { memberId, key, reason });
   const [definition, name] = await Promise.all([
@@ -82,27 +99,25 @@ async function award(h: HandlerContext, memberId: string, key: string, reason: s
     record.verification === 'verified'
       ? 'Recorded, notified and announced where enabled.'
       : 'Pending verification by a second staff member.';
-  await h.respond({
-    embeds: [
-      success('Achievement awarded', `${nameOf(title)} — ${userText(name, NAME_MAX)}.\n${pending}`),
-    ],
-    ephemeral: true,
-  });
+  await report(
+    h,
+    memberId,
+    success('Achievement awarded', `${nameOf(title)} — ${userText(name, NAME_MAX)}.\n${pending}`),
+  );
 }
 
 async function revoke(h: HandlerContext, memberId: string, key: string, reason: string) {
   const held = await heldAwards(h, memberId);
   const title = held.find((entry) => entry.key === key)?.title ?? key;
   await achievements.revokeAchievement(h.ctx, { memberId, key, reason });
-  await h.respond({
-    embeds: [
-      success(
-        'Achievement revoked',
-        `${nameOf(title)} — ${userText(await memberName(h, memberId), NAME_MAX)}.\nThe member is notified and any public card is removed.`,
-      ),
-    ],
-    ephemeral: true,
-  });
+  await report(
+    h,
+    memberId,
+    success(
+      'Achievement revoked',
+      `${nameOf(title)} — ${userText(await memberName(h, memberId), NAME_MAX)}.\nThe member is notified and any public card is removed.`,
+    ),
+  );
 }
 
 function commandTarget(h: HandlerContext) {
@@ -340,5 +355,5 @@ export async function verifyChosen(
           `${name}\n${lines.join('\n')}`,
         )
       : failure('Nothing verified', `${name}\n${lines.join('\n')}`);
-  await h.interaction.update({ embeds: [embed], components: [] });
+  await presentInPlace(h, { embeds: [embed], components: [] });
 }

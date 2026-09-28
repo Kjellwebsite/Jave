@@ -1,6 +1,7 @@
 import { type JobHandler, missions, PermanentJobError } from '@jave/core';
 import type { BotServices } from '../../runtime';
-import { asJobError, deletePosted, isGone } from '../achievements/jobs';
+import { jobFailure } from '../../discord/discord-errors';
+import { deletePosted, isGone } from '../achievements/jobs';
 import { renderMissionCard } from './render';
 
 const DUPLICATE_REASON = 'Duplicate mission card';
@@ -22,7 +23,7 @@ export function announceMissionHandler(services: BotServices): JobHandler {
     try {
       ({ messageId } = await services.gateway.sendMessage(channelId, renderMissionCard(card)));
     } catch (error) {
-      throw asJobError(error);
+      throw jobFailure(error);
     }
     let stored: boolean;
     try {
@@ -57,7 +58,7 @@ export function refreshMissionCardHandler(services: BotServices): JobHandler {
       await services.gateway.editMessage(channelId, messageId, renderMissionCard(card));
     } catch (error) {
       if (isGone(error)) return { skipped: 'card deleted' };
-      throw asJobError(error);
+      throw jobFailure(error);
     }
     return { edited: messageId, status: card.status };
   };

@@ -13,6 +13,12 @@ export interface LifecycleActions {
   archive: FormAction;
 }
 
+function blockedArchiveCopy(awaitingReview: number): string {
+  return awaitingReview === 1
+    ? 'One submission still awaits review. Decide it first; archiving is refused until then.'
+    : `${awaitingReview} submissions still await review. Decide them first; archiving is refused until then.`;
+}
+
 /** Publish, close, reopen and archive — each behind a confirmation that states the consequence. */
 export function LifecycleControls({
   missionId,
@@ -82,7 +88,7 @@ export function LifecycleControls({
           title="Archive mission"
           description={
             awaitingReview > 0
-              ? `${awaitingReview} submission(s) still await review. Decide them first; archiving is refused until then.`
+              ? blockedArchiveCopy(awaitingReview)
               : `${headline} is archived for good. Work in progress expires with a notice to each member.`
           }
           confirmLabel="Archive mission"

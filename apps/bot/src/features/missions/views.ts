@@ -15,6 +15,7 @@ import {
   MISSIONS_NS,
   ownAssignmentField,
   rewardTitle,
+  showsDueDate,
   slotsOf,
   TYPE_LABEL,
   type MissionType,
@@ -157,7 +158,7 @@ function mineLine(item: missions.MyMissionItem): string {
   const facts = [
     `${ASSIGNMENT_GLYPH[assignment.status]} ${ASSIGNMENT_LABEL[assignment.status]}`,
     assignment.teamKey ? `team \`${assignment.teamKey}\`` : null,
-    assignment.dueAt && assignment.status !== 'verified'
+    assignment.dueAt && showsDueDate(assignment.status)
       ? `due ${discordTime(assignment.dueAt, 'R')}`
       : null,
     assignment.attempts > 0

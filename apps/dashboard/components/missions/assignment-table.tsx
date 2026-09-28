@@ -11,10 +11,14 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@jave/ui';
-import { ASSIGNMENT_STATUS_LABELS, ASSIGNMENT_STATUS_TONE } from '@/lib/mission-labels';
+import {
+  ASSIGNMENT_STATUS_LABELS,
+  ASSIGNMENT_STATUS_TONE,
+  showsDueDate,
+} from '@/lib/mission-labels';
 import { formatTimestamp } from '@/lib/time';
 
-/** The mission roster for staff: who holds it, in which state, due when. */
+/** The mission roster for staff: who holds it, in which state, due when (while it still is). */
 export function AssignmentTable({
   assignments,
   timeZone,
@@ -43,39 +47,44 @@ export function AssignmentTable({
         </tr>
       </TableHead>
       <TableBody>
-        {assignments.map((row) => (
-          <TableRow key={row.id} data-assignment={row.memberHandle}>
-            <TableCell>
-              <Link
-                href={`/members/${row.memberId}`}
-                className="block min-w-0 hover:text-fg focus-visible:outline-none"
-              >
-                <span className="block truncate text-body text-fg">{row.memberDisplayName}</span>
-                <Mono dim className="block truncate text-[12px]">
-                  @{row.memberHandle}
+        {assignments.map((row) => {
+          const due = row.dueAt && showsDueDate(row.status) ? row.dueAt : null;
+          return (
+            <TableRow key={row.id} className="relative" data-assignment={row.memberHandle}>
+              <TableCell>
+                <Link href={`/members/${row.memberId}`} className="row-link block min-w-0">
+                  <span className="block truncate text-body text-fg">{row.memberDisplayName}</span>
+                  <Mono dim className="block truncate text-[12px]">
+                    @{row.memberHandle}
+                  </Mono>
+                  {due ? (
+                    <Mono dim className="mt-0.5 block text-[12px] sm:hidden">
+                      due {formatTimestamp(due, timeZone)}
+                    </Mono>
+                  ) : null}
+                </Link>
+              </TableCell>
+              <TableCell>
+                <StatusBadge
+                  quiet={row.status === 'verified'}
+                  tone={ASSIGNMENT_STATUS_TONE[row.status]}
+                  label={ASSIGNMENT_STATUS_LABELS[row.status].toUpperCase()}
+                />
+              </TableCell>
+              <TableCell className="hidden md:table-cell">
+                {row.teamKey ? <Mono>{row.teamKey}</Mono> : <Mono dim>—</Mono>}
+              </TableCell>
+              <TableCell className="hidden sm:table-cell text-right">
+                <Mono dim>{due ? formatTimestamp(due, timeZone) : '—'}</Mono>
+              </TableCell>
+              <TableCell className="hidden lg:table-cell text-right">
+                <Mono dim>
+                  {row.attempts} / {missions.MAX_SUBMISSION_ATTEMPTS}
                 </Mono>
-              </Link>
-            </TableCell>
-            <TableCell>
-              <StatusBadge
-                quiet={row.status === 'verified'}
-                tone={ASSIGNMENT_STATUS_TONE[row.status]}
-                label={ASSIGNMENT_STATUS_LABELS[row.status].toUpperCase()}
-              />
-            </TableCell>
-            <TableCell className="hidden md:table-cell">
-              {row.teamKey ? <Mono>{row.teamKey}</Mono> : <Mono dim>—</Mono>}
-            </TableCell>
-            <TableCell className="hidden sm:table-cell text-right">
-              <Mono dim>{row.dueAt ? formatTimestamp(row.dueAt, timeZone) : '—'}</Mono>
-            </TableCell>
-            <TableCell className="hidden lg:table-cell text-right">
-              <Mono dim>
-                {row.attempts} / {missions.MAX_SUBMISSION_ATTEMPTS}
-              </Mono>
-            </TableCell>
-          </TableRow>
-        ))}
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

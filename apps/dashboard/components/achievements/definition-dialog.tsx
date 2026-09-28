@@ -20,21 +20,13 @@ import {
   VISIBILITY_LABELS,
   type VisibilityKey,
 } from '@/lib/achievement-labels';
+import { ACHIEVEMENT_FORM_LIMITS } from '@/lib/form-limits';
 import { optionsFrom } from '@/lib/member-labels';
 import { ActionForm, type FormAction } from '../forms/action-form';
 import { FormField } from '../forms/form-field';
 import { useToast } from '../toast';
 
-/** Limits mirrored from the achievements service (it re-validates everything). */
-const LIMITS = {
-  keyMax: 64,
-  titleMax: 64,
-  summaryMax: 120,
-  descriptionMax: 1000,
-  categoryMax: 32,
-  thresholdMax: 10_000,
-  ordinalMax: 9999,
-} as const;
+const LIMITS = ACHIEVEMENT_FORM_LIMITS;
 
 export interface DefinitionValues {
   key: string;

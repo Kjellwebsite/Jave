@@ -1,26 +1,15 @@
-import { RESTJSONErrorCodes } from 'discord.js';
 import { achievements, isSnowflake, type JobHandler, PermanentJobError } from '@jave/core';
-import { DiscordActionError } from '../../discord/gateway';
+import { isDiscordError, jobFailure, UNKNOWN_OBJECT } from '../../discord/discord-errors';
 import type { BotServices } from '../../runtime';
 import { renderAnnouncement } from './render';
 
 const DUPLICATE_REASON = 'Duplicate achievement card';
 
-/** Discord answers these when the message or its channel no longer exists. */
-const GONE_CODES = new Set<number | string>([
-  RESTJSONErrorCodes.UnknownMessage,
-  RESTJSONErrorCodes.UnknownChannel,
-]);
-
+/** Discord answered that the message, or its channel, no longer exists. */
 export function isGone(error: unknown): boolean {
-  return error instanceof DiscordActionError && error.code !== null && GONE_CODES.has(error.code);
-}
-
-/** Permanent Discord failures dead-letter; everything else is retried. */
-export function asJobError(error: unknown): unknown {
-  if (error instanceof DiscordActionError && error.permanent)
-    return new PermanentJobError(error.message);
-  return error;
+  return (
+    isDiscordError(error, UNKNOWN_OBJECT.message) || isDiscordError(error, UNKNOWN_OBJECT.channel)
+  );
 }
 
 /**
@@ -65,7 +54,7 @@ export function announceAchievementHandler(services: BotServices): JobHandler {
     try {
       ({ messageId } = await services.gateway.sendMessage(channelId, message));
     } catch (error) {
-      throw asJobError(error);
+      throw jobFailure(error);
     }
     let stored: boolean;
     try {
@@ -99,7 +88,7 @@ export function retractAchievementHandler(services: BotServices): JobHandler {
       await services.gateway.deleteMessage(channelId, messageId, 'Achievement revoked');
     } catch (error) {
       if (isGone(error)) return { skipped: 'already gone' };
-      throw asJobError(error);
+      throw jobFailure(error);
     }
     return { deleted: messageId };
   };

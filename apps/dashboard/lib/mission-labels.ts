@@ -54,6 +54,21 @@ export const ASSIGNMENT_STATUS_TONE: Record<AssignmentStatusKey, BadgeTone> = {
   abandoned: 'neutral',
 };
 
+/** Assignment states still working toward their due date. */
+const DUE_STATUSES: ReadonlySet<AssignmentStatusKey> = new Set([
+  'assigned',
+  'accepted',
+  'rejected',
+]);
+
+/**
+ * Whether an assignment's due date still means anything: submitted work
+ * never expires, and finished work has no due date left to meet.
+ */
+export function showsDueDate(status: AssignmentStatusKey): boolean {
+  return DUE_STATUSES.has(status);
+}
+
 /** Missions staff list tabs, in order. */
 export const MISSION_TABS = [
   'open',

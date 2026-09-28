@@ -1,11 +1,12 @@
 'use client';
 
 import { Button, Textarea } from '@jave/ui';
+import { MISSION_FORM_LIMITS } from '@/lib/form-limits';
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 
-const FEEDBACK_MAX = 2000;
+const { feedbackMin: FEEDBACK_MIN, feedbackMax: FEEDBACK_MAX } = MISSION_FORM_LIMITS;
 
 /** VERIFY (optional feedback) and REJECT (required feedback) for one review unit. */
 export function ReviewActions({
@@ -60,7 +61,13 @@ export function ReviewActions({
           description="Required. The member sees it."
           required
         >
-          <Textarea name="feedback" required minLength={3} maxLength={FEEDBACK_MAX} rows={4} />
+          <Textarea
+            name="feedback"
+            required
+            minLength={FEEDBACK_MIN}
+            maxLength={FEEDBACK_MAX}
+            rows={4}
+          />
         </FormField>
       </ConfirmActionDialog>
     </div>

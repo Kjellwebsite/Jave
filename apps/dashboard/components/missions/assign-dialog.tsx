@@ -2,16 +2,18 @@
 
 import { UserPlus } from 'lucide-react';
 import { Button, Input } from '@jave/ui';
+import { MISSION_FORM_LIMITS } from '@/lib/form-limits';
 import type { MemberOption, MemberSearch } from '@/lib/member-search';
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 import { MemberPicker } from '../forms/member-picker';
 
-/** The mission service accepts at most this many members per call. */
-const MAX_BATCH = 50;
-const TEAM_KEY_MAX = 32;
-const DURATION_HOURS_MAX = 2160;
+const {
+  assignBatchMax: MAX_BATCH,
+  teamKeyMax: TEAM_KEY_MAX,
+  durationHoursMax,
+} = MISSION_FORM_LIMITS;
 
 /** Assign members to an open mission. The service skips anyone who cannot take it and says why. */
 export function AssignDialog({
@@ -84,7 +86,7 @@ export function AssignDialog({
           type="number"
           inputMode="numeric"
           min={1}
-          max={DURATION_HOURS_MAX}
+          max={durationHoursMax}
         />
       </FormField>
     </ConfirmActionDialog>

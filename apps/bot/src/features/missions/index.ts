@@ -7,6 +7,7 @@ import { missionCommand } from './commands';
 import { missionFromArg, offsetFromArg, typeFromValue } from './data';
 import { announceMissionHandler, refreshMissionCardHandler } from './jobs';
 import { abandon, acceptMission, confirmAbandon, openSubmission, submitFromModal } from './member';
+import { presentInPlace } from './present';
 import { MISSIONS_NS } from './render';
 import { openReviewModal, showReviewPage, submitReview } from './review';
 import { backToDetail, changeSetting, openSettings } from './settings';
@@ -95,23 +96,25 @@ const components: ComponentHandler = {
   async handle(h, action, args) {
     switch (action) {
       case 'filter':
-        return h.interaction.update(
+        return presentInPlace(
+          h,
           await openListPayload(h, typeFromValue(h.interaction.values[0]), 0),
         );
       case 'list':
-        return h.interaction.update(
+        return presentInPlace(
+          h,
           await openListPayload(h, typeFromValue(args[0]), offsetFromArg(args[1])),
         );
       case 'mine': {
         const scope = MINE_SCOPES.find((candidate) => candidate === h.interaction.values[0]);
-        return h.interaction.update(await minePayload(h, scope ?? 'active'));
+        return presentInPlace(h, await minePayload(h, scope ?? 'active'));
       }
       case 'open':
         return h.respond(await detailPayload(h, pickedMission(h)));
       case 'submit_pick':
         return openSubmission(h, pickedMission(h));
       case 'dismiss':
-        return h.interaction.update({
+        return presentInPlace(h, {
           embeds: [panel({ title: 'NO CHANGE', description: 'Nothing was changed.' })],
           components: [],
         });

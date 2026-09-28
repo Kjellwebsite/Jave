@@ -107,6 +107,8 @@ test('members accept and submit with evidence; drafts stay invisible', async ({ 
     await dialog.getByRole('button', { name: 'Send submission' }).click();
     await expect(page.getByText('SUBMISSION SENT — attempt 1 of 3.')).toBeVisible();
     await expect(page.getByText('AWAITING REVIEW', { exact: true })).toBeVisible();
+    // Submitted work never expires: no due date is shown while it waits for review.
+    await expect(page.getByText('In review · no deadline')).toBeVisible();
   }
 });
 
@@ -131,7 +133,9 @@ test('BREAK: members get no staff surface and no drafts', async ({ page }) => {
 test('staff assign members and review the queue', async ({ page }) => {
   await signInAs(page, 'operations');
   await page.goto(missionPath);
-  await expect(page.locator('[data-assignment="dev_verified"]')).toContainText('AWAITING REVIEW');
+  const inReview = page.locator('[data-assignment="dev_verified"]');
+  await expect(inReview).toContainText('AWAITING REVIEW');
+  await expect(inReview).not.toContainText(/\d{4}-\d{2}-\d{2}/);
 
   await page.getByTestId('assign-members').click();
   const assign = page.getByRole('dialog', { name: 'Assign members' });

@@ -18,6 +18,7 @@ import {
   MISSION_STATUS_TONE,
   MISSION_TYPE_LABELS,
   rewardLabel,
+  showsDueDate,
   slotsLabel,
 } from '@/lib/mission-labels';
 import { safeExternalUrl } from '@/lib/safe-url';
@@ -236,6 +237,21 @@ function OwnSubmission({ own }: { own: missions.OwnAssignmentView }) {
   );
 }
 
+/** What taking the mission means right now: slots, and when the work falls due. */
+function takeableCopy(detail: missions.MissionDetail): string {
+  const { mission } = detail;
+  const slots =
+    detail.slotsLeft === null
+      ? 'Open to every member.'
+      : `${detail.slotsLeft} of ${mission.maxAssignees} slots left.`;
+  const due = mission.durationHours
+    ? ` Due ${mission.durationHours}h after you accept${mission.deadlineAt ? ', and never after the deadline' : ''}.`
+    : mission.deadlineAt
+      ? ' Due by the deadline.'
+      : ' No time limit.';
+  return `${slots}${due}`;
+}
+
 function OwnAssignment({
   detail,
   headline,
@@ -300,7 +316,15 @@ function OwnAssignment({
             </Fact>
           ) : (
             <Fact label="DUE">
-              <Mono>{own.dueAt ? formatTimestamp(own.dueAt, timeZone) : '—'}</Mono>
+              {own.status === 'submitted' ? (
+                'In review · no deadline'
+              ) : (
+                <Mono>
+                  {own.dueAt && showsDueDate(own.status)
+                    ? formatTimestamp(own.dueAt, timeZone)
+                    : '—'}
+                </Mono>
+              )}
             </Fact>
           )}
           <Fact label="ATTEMPTS">
@@ -320,11 +344,7 @@ function OwnAssignment({
           <OwnSubmission own={own} />
         </dl>
       ) : (
-        <p className="text-small text-fg-subtle">
-          {detail.slotsLeft === null
-            ? 'Open to every member.'
-            : `${slotsLabel(detail.assigneeCount, mission.maxAssignees)}.`}
-        </p>
+        <p className="text-small text-fg-subtle">{takeableCopy(detail)}</p>
       )}
     </Panel>
   );

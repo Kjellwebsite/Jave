@@ -34,7 +34,10 @@ There is no score anywhere: no totals, no points, no ranking of people.
 
 Staff buttons appear only for `canAwardAchievements` and never on your own panel. The
 member id in a custom id only routes: every handler calls core as the clicking user, so
-a member pressing a forged AWARD gets **ACCESS RESTRICTED** and nothing changes.
+a member pressing a forged AWARD gets **ACCESS RESTRICTED** and nothing changes. Paging,
+verification results and the AWARD / REVOKE modals replace only a private (ephemeral) panel
+(after a modal: the notice on top of the refreshed member view); a press or modal arriving from
+a public message is answered privately and never edits it.
 
 ## Job handlers
 

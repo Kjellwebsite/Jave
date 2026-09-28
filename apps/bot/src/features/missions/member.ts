@@ -6,6 +6,7 @@ import { button, failure, panel, row, stringSelect, success } from '../../ui/com
 import { discordTime, plainText } from '../../ui/format';
 import { COLORS, LIMITS } from '../../ui/theme';
 import { ownAssignment } from './data';
+import { presentInPlace } from './present';
 import { MISSIONS_NS, missionHeadline, TYPE_LABEL } from './render';
 import { detailPayload } from './views';
 
@@ -155,7 +156,7 @@ export async function submitFromModal(h: HandlerContext, missionId: string): Pro
     'Submission sent',
     `${missionHeadline(detail.mission.number, detail.mission.title)}. Attempt ${submitted.attempts} of ${missions.MAX_SUBMISSION_ATTEMPTS}.${team}\nA reviewer verifies it; the result arrives as a notification.`,
   );
-  await h.respond(await detailPayload(h, missionId, notice));
+  await presentInPlace(h, await detailPayload(h, missionId, notice));
 }
 
 /** /mission submit without a mission: pick one of the assignments that can take a submission. */
@@ -238,7 +239,7 @@ export async function confirmAbandon(h: HandlerContext, missionId: string): Prom
 export async function abandon(h: HandlerContext, missionId: string): Promise<void> {
   const { detail, own } = await ownAssignment(h, missionId);
   await missions.abandonMission(h.ctx, { assignmentId: own.id });
-  await h.interaction.update({
+  await presentInPlace(h, {
     embeds: [
       success(
         'Mission abandoned',

@@ -12,6 +12,7 @@ import {
   parseTeamKey,
   resolveAssignees,
 } from './data';
+import { presentInPlace } from './present';
 import { missionHeadline, MISSIONS_NS } from './render';
 import { ensureManager } from './staff-access';
 
@@ -153,7 +154,7 @@ export async function assignOptionsFromModal(h: HandlerContext, missionId: strin
     teamKey: parseTeamKey(modal.text(FIELD_TEAM)),
     durationHours: parseHours(modal.text(FIELD_ASSIGN_HOURS), 'durationHours'),
   };
-  await h.respond(await assignPanel(h, missionId, options));
+  await presentInPlace(h, await assignPanel(h, missionId, options));
 }
 
 async function nameOf(h: HandlerContext, memberId: string): Promise<string> {
@@ -202,5 +203,5 @@ export async function assignPicked(
           description: `${headline}.\n${lines.join('\n')}`,
           color: COLORS.warning,
         });
-  await h.interaction.update({ embeds: [summary], components: [] });
+  await presentInPlace(h, { embeds: [summary], components: [] });
 }

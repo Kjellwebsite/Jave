@@ -7,6 +7,7 @@ import { button, field, linkButton, panel, row, success } from '../../ui/compone
 import { discordTime, plainText, userText } from '../../ui/format';
 import { COLORS, GLYPH } from '../../ui/theme';
 import { offsetFromArg } from './data';
+import { presentInPlace } from './present';
 import { missionHeadline, MISSIONS_NS, SUBMISSION_PREVIEW_MAX } from './render';
 import { restricted } from './staff-access';
 
@@ -124,7 +125,7 @@ export async function reviewPayload(
 /** Queue page from a button: re-rendered in place. */
 export async function showReviewPage(h: HandlerContext, rawOffset: string | undefined) {
   if (!can(h.ctx, 'canVerifyMissions')) return h.respond(restricted(REVIEWER_ONLY));
-  await h.interaction.update(await reviewPayload(h, offsetFromArg(rawOffset)));
+  await presentInPlace(h, await reviewPayload(h, offsetFromArg(rawOffset)));
 }
 
 type Decision = 'verify' | 'reject';
@@ -201,7 +202,8 @@ export async function submitReview(
           'Submission returned',
           `The ${who} ${count === 1 ? 'is' : 'are'} notified with your feedback.`,
         );
-  await h.respond(await reviewPayload(h, offsetFromArg(rawOffset), notice));
+  // From the queue panel the queue advances in place; the decided entry leaves it.
+  await presentInPlace(h, await reviewPayload(h, offsetFromArg(rawOffset), notice));
 }
 
 /** `/mission review`: the queue from the start. */

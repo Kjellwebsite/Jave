@@ -6,7 +6,6 @@ import { spawnSync } from 'node:child_process';
 import postgres from 'postgres';
 import { databaseEnvSchema, parseEnv } from '@jave/config';
 import { seedMissionFixtures } from './missions-seed';
-import { seedModerationFixturesAt } from './moderation-seed';
 import { seedDashboardFixtures } from './seed';
 import { seedAiResearchFixtures } from './seed-ai-research';
 import { seedEventsAndGames } from './seed-events-games';
@@ -41,8 +40,6 @@ async function main(): Promise<void> {
   await seedTicketFixtures(DATABASE_URL);
   await seedTrialFixtures(DATABASE_URL);
   await seedMissionFixtures(DATABASE_URL);
-  // Last: its quarantine refuses the quarantined member's writes in earlier fixtures.
-  await seedModerationFixturesAt(DATABASE_URL);
   console.log(`e2e database "${name}" ready`);
 }
 

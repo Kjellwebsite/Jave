@@ -34,6 +34,7 @@ import {
   MISSION_STATUS_TONE,
   MISSION_TABS,
   MISSION_TYPE_LABELS,
+  showsDueDate,
   type MissionStatusKey,
   type MissionTypeKey,
 } from '@/lib/mission-labels';
@@ -205,10 +206,7 @@ async function StaffMissions({
                 page.items.map((mission) => (
                   <TableRow key={mission.id} className="relative">
                     <TableCell>
-                      <Link
-                        href={`/missions/${mission.id}`}
-                        className="block min-w-0 after:absolute after:inset-0 focus-visible:outline-none"
-                      >
+                      <Link href={`/missions/${mission.id}`} className="row-link block min-w-0">
                         <span className="flex items-center gap-2">
                           <Mono dim className="text-[12px]">
                             {mission.number}
@@ -228,6 +226,9 @@ async function StaffMissions({
                               label={MISSION_STATUS_LABELS[mission.status].toUpperCase()}
                             />
                           </span>
+                          <Mono dim className="text-[12px] md:hidden">
+                            holding {holdingLabel(mission.assigneeCount, mission.maxAssignees)}
+                          </Mono>
                         </span>
                       </Link>
                     </TableCell>
@@ -345,9 +346,11 @@ async function MemberMissions({
                     {mission.title}
                   </span>
                   <span className="mt-1 block text-small text-fg-subtle">
-                    {assignment.dueAt
-                      ? `Due ${formatDate(assignment.dueAt, viewer.timeZone)}`
-                      : 'No due date'}
+                    {assignment.status === 'submitted'
+                      ? 'In review · no deadline'
+                      : assignment.dueAt && showsDueDate(assignment.status)
+                        ? `Due ${formatDate(assignment.dueAt, viewer.timeZone)}`
+                        : 'No due date'}
                   </span>
                 </Link>
               </li>

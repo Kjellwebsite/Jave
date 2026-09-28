@@ -12,6 +12,7 @@ import { button, panel, row, success } from '../../ui/components';
 import { plainText } from '../../ui/format';
 import { COLORS, LIMITS } from '../../ui/theme';
 import { parseDeadline, parseHours } from './data';
+import { presentInPlace } from './present';
 import { missionHeadline, MISSIONS_NS, TYPE_LABEL } from './render';
 import { ensureManager } from './staff-access';
 import { detailPayload } from './views';
@@ -240,7 +241,7 @@ export async function editFromModal(h: HandlerContext, missionId: string): Promi
     'Mission updated',
     `${missionHeadline(missions.formatMissionNumber(updated.number), updated.title)}. A posted card follows the change.`,
   );
-  await h.respond(await detailPayload(h, missionId, notice));
+  await presentInPlace(h, await detailPayload(h, missionId, notice));
 }
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -278,7 +279,7 @@ export async function publish(h: HandlerContext, missionId: string, announce: bo
     'Mission published',
     `${missionHeadline(missions.formatMissionNumber(mission.number), mission.title)}. ${where}`,
   );
-  await h.interaction.update(await detailPayload(h, missionId, notice));
+  await presentInPlace(h, await detailPayload(h, missionId, notice));
 }
 
 export async function close(h: HandlerContext, missionId: string): Promise<void> {
@@ -287,7 +288,7 @@ export async function close(h: HandlerContext, missionId: string): Promise<void>
     'Mission closed',
     `${missionHeadline(missions.formatMissionNumber(mission.number), mission.title)}. No new assignments; work in progress continues.`,
   );
-  await h.interaction.update(await detailPayload(h, missionId, notice));
+  await presentInPlace(h, await detailPayload(h, missionId, notice));
 }
 
 export async function reopen(h: HandlerContext, missionId: string): Promise<void> {
@@ -296,7 +297,7 @@ export async function reopen(h: HandlerContext, missionId: string): Promise<void
     'Mission reopened',
     `${missionHeadline(missions.formatMissionNumber(mission.number), mission.title)}. Open for assignments again.`,
   );
-  await h.interaction.update(await detailPayload(h, missionId, notice));
+  await presentInPlace(h, await detailPayload(h, missionId, notice));
 }
 
 /** ARCHIVE is final: confirm first. */
@@ -324,7 +325,7 @@ export async function confirmArchive(h: HandlerContext, missionId: string): Prom
 
 export async function archive(h: HandlerContext, missionId: string): Promise<void> {
   const mission = await missions.archiveMission(h.ctx, { missionId });
-  await h.interaction.update({
+  await presentInPlace(h, {
     embeds: [
       success(
         'Mission archived',

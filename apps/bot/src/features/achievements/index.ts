@@ -1,8 +1,9 @@
 import { achievements, requireUser } from '@jave/core';
 import type { ComponentHandler, HandlerContext, ModalHandler } from '../../interactions/types';
 import { failure } from '../../ui/components';
+import { presentInPlace } from '../missions/present';
 import type { BotFeature } from '../types';
-import { achievementsCommand, achievementsContextCommand, memberCatalogPayload } from './catalog';
+import { achievementsCommand, achievementsContextCommand } from './catalog';
 import { resolveMemberId } from './data';
 import { announceAchievementHandler, retractAchievementHandler } from './jobs';
 import { ACHIEVEMENTS_NS } from './render';
@@ -13,6 +14,7 @@ import {
   submitAchievementModal,
   verifyChosen,
 } from './staff';
+import { memberCatalogPayload } from './view';
 
 async function expired(h: HandlerContext): Promise<void> {
   requireUser(h.ctx);
@@ -35,7 +37,8 @@ const components: ComponentHandler = {
     switch (action) {
       case 'page': {
         const page = Number(rawPage);
-        await h.interaction.update(
+        await presentInPlace(
+          h,
           await memberCatalogPayload(h, memberId, {
             page: Number.isInteger(page) ? page : 0,
             share: false,

@@ -112,6 +112,7 @@ describe('missions — member flows', () => {
     });
     expect(accepted.interaction.lastText()).toContain('MISSION ACCEPTED');
     expect(accepted.interaction.lastText()).toContain('IN PROGRESS');
+    expect(accepted.interaction.lastText()).toMatch(/Due <t:\d+:f>/);
     expect(labels(accepted.interaction)).toEqual(['SUBMIT', 'ABANDON']);
     expect((await assignmentOf(mission.id, member.actor.memberId!))?.status).toBe('accepted');
 
@@ -148,10 +149,15 @@ describe('missions — member flows', () => {
         evidence_title: 'Repository',
         evidence_url: EVIDENCE_URL,
       },
+      sourceMessage: { ephemeral: true },
     });
+    // Submitted from the private detail view: the view refreshes in place.
+    expect(sent.interaction.responses.map((r) => r.type)).toEqual(['update']);
     expect(sent.interaction.lastText()).toContain('SUBMISSION SENT');
     expect(sent.interaction.lastText()).toContain('Attempt 1 of 3');
     expect(sent.interaction.lastText()).toContain('AWAITING REVIEW');
+    // Submitted work never expires: the assignment no longer shows a due date.
+    expect(sent.interaction.lastText()).not.toMatch(/Due <t:\d+:f> \(/);
     const row = await assignmentOf(mission.id, member.actor.memberId!);
     expect(row).toMatchObject({ status: 'submitted', submissionEvidenceUrl: EVIDENCE_URL });
 
@@ -388,5 +394,43 @@ describe('missions — member flows', () => {
     expect(stored?.evidenceRequired).toBe(false);
     expect(stored?.title).toBe(mission.title);
     expect(await bot.kit.db.select().from(missionsTable)).toHaveLength(1);
+  });
+
+  it('BREAK: a press carrying a list or staff id never rewrites a public card', async () => {
+    const mission = await openMission(bot, ops.actor);
+    const publicCard = { ephemeral: false } as const;
+    const filter = await bot.run({
+      kind: 'select',
+      name: customId('missions', 'filter'),
+      user: member.user,
+      values: ['build'],
+      sourceMessage: publicCard,
+    });
+    expect(filter.interaction.responses.map((r) => r.type)).toEqual(['reply']);
+    expect(filter.interaction.lastPayload()?.ephemeral).toBe(true);
+    expect(filter.interaction.lastText()).toContain('OPEN MISSIONS');
+
+    pace();
+    // Staff pressing a forged CLOSE on the public card: the mission closes, the card is not edited
+    // in place (the refresh job re-renders it from state); the result arrives privately.
+    const closed = await bot.run({
+      kind: 'button',
+      name: customId('missions', 'close', mission.id),
+      user: ops.user,
+      sourceMessage: publicCard,
+    });
+    expect(closed.interaction.responses.map((r) => r.type)).toEqual(['reply']);
+    expect(closed.interaction.lastPayload()?.ephemeral).toBe(true);
+    expect(closed.interaction.lastText()).toContain('MISSION CLOSED');
+
+    pace();
+    const page = await bot.run({
+      kind: 'button',
+      name: customId('achievements', 'page', member.actor.memberId!, 1),
+      user: member.user,
+      sourceMessage: publicCard,
+    });
+    expect(page.interaction.responses.map((r) => r.type)).toEqual(['reply']);
+    expect(page.interaction.lastPayload()?.ephemeral).toBe(true);
   });
 });

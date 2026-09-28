@@ -5,6 +5,7 @@ import { customId } from '../../interactions/custom-id';
 import { button, field, panel, row, stringSelect, success } from '../../ui/components';
 import { plainText, userText } from '../../ui/format';
 import { GLYPH, LIMITS } from '../../ui/theme';
+import { presentInPlace } from './present';
 import { missionHeadline, MISSIONS_NS, rewardTitle, TYPE_LABEL } from './render';
 import { ensureManager } from './staff-access';
 import { detailPayload } from './views';
@@ -155,7 +156,7 @@ export async function settingsPayload(
 
 export async function openSettings(h: HandlerContext, missionId: string): Promise<void> {
   if (!(await ensureManager(h))) return;
-  await h.interaction.update(await settingsPayload(h, missionId));
+  await presentInPlace(h, await settingsPayload(h, missionId));
 }
 
 type Patch = NonNullable<Parameters<typeof missions.updateMission>[1]['patch']>;
@@ -166,7 +167,7 @@ async function applyPatch(h: HandlerContext, missionId: string, patch: Patch, wh
     `${what} updated`,
     `${missionHeadline(missions.formatMissionNumber(updated.number), updated.title)}.`,
   );
-  await h.interaction.update(await settingsPayload(h, missionId, notice));
+  await presentInPlace(h, await settingsPayload(h, missionId, notice));
 }
 
 function chosenValue(h: HandlerContext): string | null {
@@ -216,5 +217,5 @@ export async function changeSetting(
 
 /** BACK from the settings panel: the detail view, in place. */
 export async function backToDetail(h: HandlerContext, missionId: string): Promise<void> {
-  await h.interaction.update(await detailPayload(h, missionId));
+  await presentInPlace(h, await detailPayload(h, missionId));
 }

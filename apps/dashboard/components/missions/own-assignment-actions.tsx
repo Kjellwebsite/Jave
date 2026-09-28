@@ -1,13 +1,16 @@
 'use client';
 
 import { Button, Input, Textarea } from '@jave/ui';
+import { MISSION_FORM_LIMITS } from '@/lib/form-limits';
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 
-const SUBMISSION_MAX = 4000;
-const EVIDENCE_TITLE_MAX = 200;
-const EVIDENCE_URL_MAX = 2048;
+const {
+  submissionMax: SUBMISSION_MAX,
+  evidenceTitleMax: EVIDENCE_TITLE_MAX,
+  evidenceUrlMax: EVIDENCE_URL_MAX,
+} = MISSION_FORM_LIMITS;
 
 export interface OwnAssignmentActionsProps {
   missionId: string;

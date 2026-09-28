@@ -178,11 +178,20 @@ export function renderMissionCard(card: missions.MissionCard): MessagePayload {
   return { embeds: [embed], components: buttons.length > 0 ? [row(...buttons)] : [] };
 }
 
+/** Assignment states still working toward their due date. */
+const DUE_STATUSES: ReadonlySet<AssignmentStatus> = new Set(['assigned', 'accepted', 'rejected']);
+
+/** Submitted work never expires, and finished work has no due date left to meet. */
+export function showsDueDate(status: AssignmentStatus): boolean {
+  return DUE_STATUSES.has(status);
+}
+
 /** The viewer's own assignment, as a field block. */
 export function ownAssignmentField(own: missions.OwnAssignmentView): APIEmbedField {
   const lines = [`${ASSIGNMENT_GLYPH[own.status]} **${ASSIGNMENT_LABEL[own.status]}**`];
   if (own.teamKey) lines.push(`Team \`${own.teamKey}\``);
-  if (own.dueAt) lines.push(`Due ${discordTime(own.dueAt, 'f')} (${discordTime(own.dueAt, 'R')})`);
+  if (own.dueAt && showsDueDate(own.status))
+    lines.push(`Due ${discordTime(own.dueAt, 'f')} (${discordTime(own.dueAt, 'R')})`);
   if (own.attempts > 0)
     lines.push(`Attempt ${own.attempts} of ${missions.MAX_SUBMISSION_ATTEMPTS}`);
   if (own.feedback && (own.status === 'rejected' || own.status === 'verified'))

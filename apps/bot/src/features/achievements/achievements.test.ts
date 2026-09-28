@@ -306,8 +306,15 @@ describe('achievements feature', () => {
         user: ops.user,
         modalSelect: { achievement: ['first_trial'] },
         modalText: { reason: 'Result published by hand after an import failure.' },
+        sourceMessage: { ephemeral: true },
       });
-      expect(submitted.interaction.lastText()).toContain('FIRST TRIAL');
+      // The private member view refreshes in place: the notice on top, the award now unlocked.
+      expect(submitted.interaction.responses.map((r) => r.type)).toEqual(['update']);
+      expect(submitted.interaction.lastText()).toContain('ACHIEVEMENT AWARDED');
+      expect(submitted.interaction.lastText()).toContain('✓ **FIRST TRIAL**');
+      expect(customIds(submitted.interaction)).toContain(
+        customId('achievements', 'revoke', memberId),
+      );
       expect(await heldKeys(memberId)).toEqual(['first_trial']);
 
       const again = await bot.run({
@@ -323,13 +330,18 @@ describe('achievements feature', () => {
         user: ops.user,
       });
       expect(modalSelectValues(modalOf(revokeModal.interaction)!)).toEqual(['first_trial']);
-      await bot.run({
+      const revoked = await bot.run({
         kind: 'modal',
         name: customId('achievements', 'revoke', memberId),
         user: ops.user,
         modalSelect: { achievement: ['first_trial'] },
         modalText: { reason: 'Duplicate of the automatic award.' },
+        sourceMessage: { ephemeral: false },
       });
+      // A modal whose message is public never rewrites it: the notice arrives privately.
+      expect(revoked.interaction.responses.map((r) => r.type)).toEqual(['reply']);
+      expect(revoked.interaction.lastPayload()?.ephemeral).toBe(true);
+      expect(revoked.interaction.lastText()).toContain('ACHIEVEMENT REVOKED');
       expect(await heldKeys(memberId)).toEqual([]);
     });
 

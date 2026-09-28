@@ -2,19 +2,11 @@
 
 import { type ReactNode, useId, useState } from 'react';
 import { Input, Mono, NativeSelect, Switch, Textarea } from '@jave/ui';
+import { MISSION_FORM_LIMITS as MISSION_LIMITS } from '@/lib/form-limits';
 import { MISSION_TYPE_LABELS, type MissionTypeKey, toUtcInputValue } from '@/lib/mission-labels';
 import { optionsFrom } from '@/lib/member-labels';
 import { ActionForm, type FormAction } from '../forms/action-form';
 import { FormField } from '../forms/form-field';
-
-/** Limits mirrored from the mission service (it re-validates everything). */
-export const MISSION_LIMITS = {
-  titleMax: 120,
-  briefMax: 4000,
-  rewardNoteMax: 200,
-  maxAssignees: 1000,
-  durationHoursMax: 2160,
-} as const;
 
 export interface MissionFormValues {
   missionId?: string;
@@ -70,7 +62,7 @@ export function MissionForm({
           <Input
             name="title"
             required
-            minLength={3}
+            minLength={MISSION_LIMITS.titleMin}
             maxLength={MISSION_LIMITS.titleMax}
             defaultValue={values.title}
           />
@@ -108,7 +100,7 @@ export function MissionForm({
           <Textarea
             name="brief"
             required
-            minLength={10}
+            minLength={MISSION_LIMITS.briefMin}
             maxLength={MISSION_LIMITS.briefMax}
             rows={8}
             defaultValue={values.brief}

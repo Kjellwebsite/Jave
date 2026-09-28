@@ -4,15 +4,14 @@ import { useRef, useState } from 'react';
 import { Award, BadgeX } from 'lucide-react';
 import { Button, NativeSelect, Textarea } from '@jave/ui';
 import type { AchievementOption, HeldAwardsResult, HeldAwardView } from '@/lib/achievement-labels';
+import { ACHIEVEMENT_FORM_LIMITS } from '@/lib/form-limits';
 import type { MemberOption, MemberSearch } from '@/lib/member-search';
 import type { FormAction } from '../forms/action-form';
 import { ConfirmActionDialog } from '../forms/confirm-action-dialog';
 import { FormField } from '../forms/form-field';
 import { MemberPicker } from '../forms/member-picker';
 
-/** Limits mirrored from the achievements service (it re-validates everything). */
-const REASON_MIN = 3;
-const REASON_MAX = 500;
+const { reasonMin: REASON_MIN, reasonMax: REASON_MAX } = ACHIEVEMENT_FORM_LIMITS;
 
 type HeldState =
   | { status: 'none' }

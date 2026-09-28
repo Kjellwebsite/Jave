@@ -57,6 +57,13 @@ clicking user in core: a forged VERIFY on your own unit is refused and audited
 (`mission.self_review_blocked`); assigning yourself is refused and audited
 (`mission.self_assign_blocked`); someone else's assignment is NOT FOUND.
 
+Lists, panels and the review queue re-render in place only when the press — or the modal
+it opened (SUBMIT, EDIT, TEAM & TIME LIMIT, VERIFY / REJECT) — came from a private (ephemeral)
+message: a decided submission leaves the queue and the next one takes its place. A press on
+the public card never rewrites it, whatever custom id it carries: the result arrives as a new
+private reply, and the card changes only through `discord.missions.refresh_card`, from the
+mission's state.
+
 ## Job handlers
 
 ### `discord.missions.announce`

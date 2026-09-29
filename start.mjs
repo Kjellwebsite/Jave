@@ -201,13 +201,26 @@ async function ensureEnv() {
   let text = readFileSync(exists ? ENV_FILE : EXAMPLE_FILE, 'utf8');
   const missing = QUESTIONS.filter((question) => !question.valid(readValue(text, question.key)));
   const firstRun = missing.length > 0;
+  // A value handed over in the environment (a prepared install line) is not asked for.
+  const preset = (question) => {
+    const value = (process.env[question.key] ?? '').trim();
+    return question.valid(value) ? value : '';
+  };
+  const toAsk = missing.filter((question) => !preset(question));
 
   if (firstRun) {
-    say('\nEinmalige Einrichtung: vier Werte aus Discord. Kopieren und hier einfügen.');
-    say(`Ich öffne dir das Discord Developer Portal: ${DEVELOPER_PORTAL}`);
-    say('Dort: „New Application“ → Namen eingeben (z. B. JAVELIN) → „Create“.');
-    openUrl(DEVELOPER_PORTAL);
-    for (const question of missing) text = writeValue(text, question.key, await ask(question));
+    for (const question of missing) {
+      if (preset(question)) text = writeValue(text, question.key, preset(question));
+    }
+    if (toAsk.length > 0) {
+      const count = toAsk.length === 1 ? 'ein Wert' : `${toAsk.length} Werte`;
+      say(`\nEinmalige Einrichtung: ${count} aus Discord. Kopieren und hier einfügen.`);
+      say(`Ich öffne dir das Discord Developer Portal: ${DEVELOPER_PORTAL}`);
+      if (toAsk.length === QUESTIONS.length)
+        say('Dort: „New Application“ → Namen eingeben (z. B. JAVELIN) → „Create“.');
+      openUrl(DEVELOPER_PORTAL);
+    }
+    for (const question of toAsk) text = writeValue(text, question.key, await ask(question));
     if (!readValue(text, 'DISCORD_CLIENT_SECRET')) {
       const secret = await ask({
         title: 'Optional: Client Secret (damit du dich im Dashboard mit Discord anmeldest)',

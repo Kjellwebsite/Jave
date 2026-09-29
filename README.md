@@ -84,6 +84,12 @@ The bot needs a real Discord application: see [DEPLOYMENT.md](DEPLOYMENT.md)
 standalone against the dashboard with `pnpm dev:activity`
 ([docs/ACTIVITY.md](docs/ACTIVITY.md#local-development)).
 
+**Local AI agent.** `node agent/agent.mjs` (or `pnpm agent`) starts JAVE Agent: Gemma 4 12B
+uncensored (GGUF) on llama.cpp, entirely on your own computer, with tools for files, the shell
+and the web. It asks before it writes or runs anything, and it can also serve JAVE's own AI
+(`AI_PROVIDER=openai-compatible`). The first run downloads llama.cpp and the 7.4 GB model.
+Details, in German: [agent/README.md](agent/README.md).
+
 ## Checks
 
 ```bash
@@ -93,6 +99,7 @@ JAVE_TEST_POSTGRES_URL=postgres://jave_test:jave_test@localhost:5432/postgres \
 pnpm test                            # the same suite on a real PostgreSQL (release gate)
 pnpm test:e2e                        # dashboard end-to-end (Playwright, seeded Postgres)
 pnpm test:e2e:activity               # Discord Activity end-to-end (two players, standalone dev mode)
+pnpm test:agent                      # the local agent (no model needed)
 pnpm format:check
 ```
 
@@ -110,6 +117,7 @@ packages/
   ui/           JAVELIN design system (tokens, fonts, React primitives)
   brand/        emblem, wordmark, role icons, avatars and their render pipeline
   config/       environment schemas: the only place process.env is read
+agent/          JAVE Agent: local Gemma 4 agent on llama.cpp (no dependencies, not in the workspace)
 docs/           per-module rules, per-feature command pages, design system, screenshots
 ```
 

@@ -47,8 +47,17 @@ safe. It is three surfaces over one data layer:
 
 ## Quick start
 
-**Just want to run it on your own computer?** `node start.mjs` does everything and asks for the
-four Discord values once. Step by step, in German: [START-HIER.md](START-HIER.md).
+**Just want to run it on your own computer?** One line installs everything (its own Node.js and
+a built-in PostgreSQL, no Docker) and asks for the four Discord values once:
+
+```bash
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/Kjellwebsite/Jave/HEAD/install.ps1 | iex
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Kjellwebsite/Jave/HEAD/install.sh | bash
+```
+
+In a clone, `node start.mjs` does the same. Step by step, in German: [START-HIER.md](START-HIER.md).
 
 For development:
 

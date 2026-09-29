@@ -34,3 +34,6 @@ blob-report/
 # written by `next dev` when it detects an AI agent (generated Next.js boilerplate)
 apps/dashboard/AGENTS.md
 apps/dashboard/CLAUDE.md
+
+# built-in database and tools of the local launcher (start.mjs)
+.jave-local/

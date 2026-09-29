@@ -1,20 +1,21 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
-import { dirname } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /**
  * JAVE on your own computer, in one command: `node start.mjs`.
  *
- * The first run asks for the Discord values and writes `.env`. Every run then
- * installs what is missing, starts the database, applies migrations, registers
- * the slash commands and runs the bot and the dashboard together (Ctrl+C stops
- * both). Messages are German: this is the owner's launcher (START-HIER.md).
- * Servers follow DEPLOYMENT.md instead.
+ * The first run asks for the Discord values (opening the right pages) and
+ * writes `.env`. Every run then installs what is missing, starts a database
+ * (the configured one, or a built-in PostgreSQL in `.jave-local/`, no Docker
+ * needed), applies migrations, registers the slash commands and runs the bot
+ * and the dashboard together (Ctrl+C stops everything). Messages are German:
+ * this is the owner's launcher (START-HIER.md). Servers follow DEPLOYMENT.md.
  */
 
 const WINDOWS = process.platform === 'win32';
@@ -26,14 +27,24 @@ const BOT_TOKEN = /^[\w-]{20,}\.[\w-]{5,}\.[\w-]{20,}$/;
 const DASHBOARD_URL = 'http://localhost:3000';
 const OAUTH_CALLBACK = `${DASHBOARD_URL}/api/auth/discord/callback`;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
-const DATABASE_WAIT_MS = 60_000;
+const DEVELOPER_PORTAL = 'https://discord.com/developers/applications';
+/** The built-in database: real PostgreSQL 16 binaries from npm, kept apart from the workspace. */
+const LOCAL_DIR = '.jave-local';
+const EMBEDDED_PACKAGE = 'embedded-postgres@16.14.0-beta.17';
+const EMBEDDED_PORT = 5433;
+const EMBEDDED_URL = `postgres://jave:jave@localhost:${EMBEDDED_PORT}/jave`;
+const DEFAULT_URL = 'postgres://jave:jave@localhost:5432/jave';
 
 const say = (text = '') => console.log(text);
 const step = (text) => console.log(`\n▸ ${text}`);
+
+class LauncherError extends Error {}
 function fail(text) {
-  console.error(`\n✗ ${text}\n`);
-  process.exit(1);
+  throw new LauncherError(text);
 }
+
+/** Stops the built-in database, if this run started it. */
+let stopDatabase = async () => {};
 
 /**
  * Typed answers, one line each, in order. Lines are queued, so an answer that
@@ -75,6 +86,23 @@ function run(command, args, { quiet = false } = {}) {
   return { ok: result.status === 0, output: `${result.stdout ?? ''}${result.stderr ?? ''}` };
 }
 
+/** Open a page in the default browser; the link is printed as well, so failure is harmless. */
+function openUrl(url) {
+  // rundll32 hands the URL to the browser as is (cmd would split it at '&').
+  const [command, args] = WINDOWS
+    ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
+    : process.platform === 'darwin'
+      ? ['open', [url]]
+      : ['xdg-open', [url]];
+  try {
+    spawn(command, args, { stdio: 'ignore', detached: true })
+      .on('error', () => {})
+      .unref();
+  } catch {
+    // No browser here: the printed link is enough.
+  }
+}
+
 // ── Prerequisites ────────────────────────────────────────────────────────────
 
 function checkNode() {
@@ -86,24 +114,27 @@ function checkNode() {
   );
 }
 
-/** pnpm, however it is available: installed, through corepack, or fetched by npx. */
+/** Install an npm package into `.jave-local/`, away from the workspace. */
+function installLocal(spec) {
+  mkdirSync(LOCAL_DIR, { recursive: true });
+  const flags = ['--prefix', LOCAL_DIR, '--no-audit', '--no-fund', '--loglevel=error'];
+  return run('npm', ['install', ...flags, spec]).ok;
+}
+
+/**
+ * pnpm: the installed one, or else the pinned version, kept in `.jave-local/`.
+ * Its folder goes on PATH because the workspace scripts call `pnpm` themselves.
+ */
 function findPnpm() {
   const pinned = JSON.parse(readFileSync('package.json', 'utf8')).packageManager ?? 'pnpm@10';
-  const candidates = [
-    ['pnpm', []],
-    ['corepack', ['pnpm']],
-    ['npx', ['--yes', pinned]],
-  ];
-  for (const [command, prefix] of candidates) {
-    if (run(command, [...prefix, '--version'], { quiet: true }).ok) {
-      return {
-        command,
-        prefix,
-        run: (args, options) => run(command, [...prefix, ...args], options),
-      };
-    }
+  process.env.PATH = [resolve(LOCAL_DIR, 'node_modules', '.bin'), process.env.PATH].join(delimiter);
+  const works = () => run('pnpm', ['--version'], { quiet: true }).ok;
+  if (!works()) {
+    step('Lade pnpm (einmalig) …');
+    if (!installLocal(pinned.split('+')[0]) || !works())
+      fail('pnpm ließ sich nicht laden. Prüfe deine Internetverbindung und starte neu.');
   }
-  return fail('pnpm lässt sich nicht starten. Installiere es mit: npm install -g pnpm');
+  return { run: (args, options) => run('pnpm', args, options) };
 }
 
 // ── .env ─────────────────────────────────────────────────────────────────────
@@ -173,6 +204,9 @@ async function ensureEnv() {
 
   if (firstRun) {
     say('\nEinmalige Einrichtung: vier Werte aus Discord. Kopieren und hier einfügen.');
+    say(`Ich öffne dir das Discord Developer Portal: ${DEVELOPER_PORTAL}`);
+    say('Dort: „New Application“ → Namen eingeben (z. B. JAVELIN) → „Create“.');
+    openUrl(DEVELOPER_PORTAL);
     for (const question of missing) text = writeValue(text, question.key, await ask(question));
     if (!readValue(text, 'DISCORD_CLIENT_SECRET')) {
       const secret = await ask({
@@ -217,31 +251,81 @@ function reachable(host, port, timeoutMs = 1500) {
   });
 }
 
+async function startEmbeddedDatabase() {
+  const packageDir = join(LOCAL_DIR, 'node_modules', 'embedded-postgres');
+  if (!existsSync(packageDir)) {
+    step('Lade die eingebaute Datenbank (einmalig, etwa 60 MB) …');
+    if (!installLocal(EMBEDDED_PACKAGE))
+      fail('Die eingebaute Datenbank ließ sich nicht herunterladen.');
+  }
+  const entry = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')).exports;
+  const { default: EmbeddedPostgres } = await import(
+    pathToFileURL(resolve(packageDir, typeof entry === 'string' ? entry : 'dist/index.js')).href
+  );
+  const dataDir = resolve(LOCAL_DIR, 'postgres');
+  // Written once the database exists: a setup cut short is simply redone.
+  const readyMarker = resolve(LOCAL_DIR, 'postgres-ready');
+  const fresh = !existsSync(readyMarker);
+  if (fresh) rmSync(dataDir, { recursive: true, force: true });
+  const log = [];
+  const database = new EmbeddedPostgres({
+    databaseDir: dataDir,
+    user: 'jave',
+    password: 'jave',
+    port: EMBEDDED_PORT,
+    persistent: true,
+    onLog: (message) => log.push(...String(message).trim().split('\n').slice(-5)),
+  });
+  step('Starte die Datenbank …');
+  try {
+    if (fresh) await database.initialise();
+    await database.start();
+    if (fresh) {
+      await database.createDatabase('jave');
+      writeFileSync(readyMarker, `${new Date().toISOString()}\n`);
+    }
+  } catch (error) {
+    await database.stop().catch(() => {});
+    const detail = [error?.message, ...log.slice(-5)].filter(Boolean).join('\n  ');
+    fail(
+      'Die eingebaute Datenbank startet nicht. Läuft JAVE vielleicht schon in einem anderen ' +
+        `Fenster? Dann dieses schließen.${detail ? `\n  ${detail}` : ''}`,
+    );
+  }
+  stopDatabase = async () => {
+    stopDatabase = async () => {};
+    await database.stop().catch(() => {});
+  };
+}
+
+/**
+ * The configured database when it answers; otherwise the built-in one. A
+ * `.env` still on the default address is switched to it, once.
+ */
 async function ensureDatabase(envText) {
+  let text = envText;
   let url;
   try {
-    url = new URL(readValue(envText, 'DATABASE_URL'));
+    url = new URL(readValue(text, 'DATABASE_URL') || DEFAULT_URL);
   } catch {
     return fail('DATABASE_URL in .env ist ungültig.');
   }
   const host = url.hostname.replace(/^\[|\]$/g, '');
   const port = Number(url.port || 5432);
-  if (await reachable(host, port)) return;
-  if (!LOCAL_HOSTS.has(host)) fail(`Die Datenbank ${host}:${port} ist nicht erreichbar.`);
-
-  step('Starte die Datenbank (Docker) …');
-  if (!run('docker', ['info'], { quiet: true }).ok)
+  if (await reachable(host, port)) return text;
+  const current = url.toString().replace(/\/$/, '');
+  if (current !== EMBEDDED_URL && current !== DEFAULT_URL) {
+    if (!LOCAL_HOSTS.has(host)) fail(`Die Datenbank ${host}:${port} ist nicht erreichbar.`);
     fail(
-      'Docker läuft nicht. Starte „Docker Desktop“, warte, bis es bereit ist, ' +
-        'und führe dann noch einmal `node start.mjs` aus.',
+      `Die Datenbank auf Port ${port} läuft nicht. Starte sie, oder lösche DATABASE_URL in .env.`,
     );
-  if (!run('docker', ['compose', 'up', '-d', '--wait']).ok)
-    fail('Die Datenbank ließ sich nicht starten (siehe Meldung oben).');
-  const deadline = Date.now() + DATABASE_WAIT_MS;
-  while (!(await reachable(host, port))) {
-    if (Date.now() > deadline) fail('Die Datenbank antwortet nicht.');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+  if (current !== EMBEDDED_URL) {
+    text = writeValue(text, 'DATABASE_URL', EMBEDDED_URL);
+    writeFileSync(ENV_FILE, text);
+  }
+  await startEmbeddedDatabase();
+  return text;
 }
 
 // ── Discord ──────────────────────────────────────────────────────────────────
@@ -274,29 +358,54 @@ function explainDeployFailure(output, invite) {
 
 // ── Run ──────────────────────────────────────────────────────────────────────
 
-function startAll(pnpm) {
+/** Plain words for a bot that cannot log in: the JSON log line alone says little. */
+function loginHint(line) {
+  if (!line.includes('discord login failed')) return null;
+  if (/disallowed intents|Privileged intent/i.test(line))
+    return (
+      'Discord lässt den Bot nicht herein: Schalte im Developer Portal → Bot „Server Members ' +
+      'Intent“ und „Message Content Intent“ ein, speichere, dann Strg + C und neu starten.'
+    );
+  if (/invalid token|TokenInvalid|"status":401/i.test(line))
+    return (
+      'Discord lehnt den Bot-Token ab. Hol im Developer Portal (Bot → Reset Token) einen neuen, ' +
+      'trag ihn in .env bei DISCORD_TOKEN ein, dann Strg + C und neu starten.'
+    );
+  return 'Der Bot kommt nicht zu Discord durch. Prüfe deine Internetverbindung, dann neu starten.';
+}
+
+function startAll() {
   const processes = [
     ['bot', ['dev:bot']],
     ['dashboard', ['dev:dashboard']],
   ];
   let running = processes.length;
+  let stopping = false;
   const children = processes.map(([name, args]) => {
-    const child = spawn(pnpm.command, [...pnpm.prefix, ...args], {
+    const child = spawn('pnpm', args, {
       shell: WINDOWS,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     for (const stream of [child.stdout, child.stderr]) {
-      createInterface({ input: stream }).on('line', (line) => say(`[${name}] ${line}`));
+      createInterface({ input: stream }).on('line', (line) => {
+        // While stopping, pnpm reports the interrupted runs as failures: noise.
+        if (stopping) return;
+        say(`[${name}] ${line}`);
+        const hint = name === 'bot' ? loginHint(line) : null;
+        if (hint) say(`\n✗ ${hint}\n`);
+      });
     }
     child.on('exit', (code) => {
-      say(`[${name}] beendet${code ? ` (Fehlercode ${code})` : ''}`);
+      if (!stopping) say(`[${name}] beendet${code ? ` (Fehlercode ${code})` : ''}`);
       running -= 1;
-      if (running === 0) process.exit(code ?? 0);
+      if (running === 0) void stopDatabase().then(() => process.exit(stopping ? 0 : (code ?? 0)));
     });
     return child;
   });
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, () => {
+      if (!stopping) say('\nJAVE wird beendet …');
+      stopping = true;
       for (const child of children) child.kill(signal);
     });
   }
@@ -306,21 +415,23 @@ async function main() {
   // Every path below is relative to the repository, wherever the terminal is.
   process.chdir(dirname(fileURLToPath(import.meta.url)));
   say('JAVE · lokaler Start');
+  process.env.COREPACK_ENABLE_DOWNLOAD_PROMPT = '0';
   checkNode();
   const pnpm = findPnpm();
-  const { text, firstRun } = await ensureEnv();
+  const { text: envText, firstRun } = await ensureEnv();
 
   step('Installiere, was fehlt …');
   if (!pnpm.run(['install', '--prefer-offline']).ok) fail('Die Installation ist fehlgeschlagen.');
 
-  await ensureDatabase(text);
+  await ensureDatabase(envText);
   step('Richte die Datenbank ein …');
   if (!pnpm.run(['db:migrate']).ok) fail('Die Datenbank ließ sich nicht einrichten.');
 
   const invite = inviteLink(pnpm);
   if (firstRun && invite) {
-    say('\nJetzt den Bot in deinen Server holen:');
-    say(`  1. Öffne diesen Link, wähle deinen Server, bestätige:\n     ${invite}`);
+    say('\nJetzt den Bot in deinen Server holen (ich öffne den Link für dich):');
+    say(`  1. Deinen Server wählen, „Autorisieren“ klicken:\n     ${invite}`);
+    openUrl(invite);
     say(
       '  2. Developer Portal → Bot: „Server Members Intent“ und „Message Content Intent“ einschalten.',
     );
@@ -337,7 +448,13 @@ async function main() {
   step('Starte Bot und Dashboard (beenden mit Strg + C) …');
   say(`  Dashboard: ${DASHBOARD_URL}`);
   say('  In Discord: /jave setup  (zeigt, ob alles eingestellt ist)');
-  startAll(pnpm);
+  startAll();
 }
 
-main().catch((error) => fail(error instanceof Error ? error.message : String(error)));
+main().catch(async (error) => {
+  console.error(
+    `\n✗ ${error instanceof LauncherError ? error.message : String(error?.stack ?? error)}\n`,
+  );
+  await stopDatabase();
+  process.exit(1);
+});

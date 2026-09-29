@@ -10,7 +10,8 @@ Du brauchst etwa 20 Minuten, einmal. Danach reicht ein einziger Befehl.
 
 ## 2. JAVE herunterladen
 
-Auf GitHub: grüner Knopf **Code** → **Download ZIP** → entpacken.
+Öffne https://github.com/Kjellwebsite/Jave → grüner Knopf **Code** → **Download ZIP** → die ZIP-Datei
+entpacken (Doppelklick, bzw. Rechtsklick → „Alle extrahieren“).
 
 ## 3. Deinen Bot bei Discord anlegen
 

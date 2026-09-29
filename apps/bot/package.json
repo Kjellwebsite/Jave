@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "commands:deploy": "tsx --env-file-if-exists=../../.env src/scripts/deploy-commands.ts",
     "commands:print": "tsx src/scripts/print-commands.ts",
-    "commands:doc": "tsx src/scripts/generate-commands-doc.ts"
+    "commands:doc": "tsx src/scripts/generate-commands-doc.ts",
+    "invite:url": "tsx --env-file-if-exists=../../.env src/scripts/invite-url.ts"
   },
   "dependencies": {
     "@jave/ai": "workspace:*",

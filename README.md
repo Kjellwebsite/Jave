@@ -47,6 +47,11 @@ safe. It is three surfaces over one data layer:
 
 ## Quick start
 
+**Just want to run it on your own computer?** `node start.mjs` does everything and asks for the
+four Discord values once. Step by step, in German: [START-HIER.md](START-HIER.md).
+
+For development:
+
 Requirements: Node.js 22.12+, pnpm 10, PostgreSQL 16 (or Docker).
 
 ```bash

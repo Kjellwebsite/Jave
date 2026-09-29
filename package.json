@@ -9,6 +9,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "start": "node start.mjs",
     "dev:bot": "pnpm --filter @jave/bot dev",
     "dev:dashboard": "pnpm --filter @jave/dashboard dev",
     "dev:activity": "pnpm --filter @jave/activity dev",

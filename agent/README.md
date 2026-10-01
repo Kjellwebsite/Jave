@@ -88,15 +88,21 @@ node agent/agent.mjs --hilfe
 
 ## Wie schnell ist das?
 
-Das hängt fast nur vom Speicher ab, in den das Modell passt:
+Das hängt fast nur davon ab, wie schnell der Speicher ist, in dem das Modell liegt. Für jedes
+Wort liest der Computer die ganzen 7,4 GB einmal:
 
-| Computer                            | etwa           |
-| ----------------------------------- | -------------- |
-| NVIDIA-Grafikkarte mit ≥ 10 GB VRAM | 40–80 Tokens/s |
-| Mac mit Apple Silicon und ≥ 16 GB   | 20–40 Tokens/s |
-| Nur CPU, 16 GB RAM                  | 3–8 Tokens/s   |
+| Computer                             | etwa           |
+| ------------------------------------ | -------------- |
+| NVIDIA-Grafikkarte mit ≥ 10 GB VRAM  | 40–80 Tokens/s |
+| Mac mit M-Pro- oder M-Max-Chip       | 20–40 Tokens/s |
+| Mac mit M1–M5 (ohne Pro/Max), 16 GB  | 6–15 Tokens/s  |
+| Nur CPU, 16 GB RAM                   | 3–8 Tokens/s   |
 
 Nach jeder Antwort steht die gemessene Geschwindigkeit. Tipps:
+
+- **Mac mit 16 GB:** Das Modell belegt etwa die Hälfte des Speichers. Docker, viele Browser-Tabs
+  oder andere Programme, die die Grafik nutzen, kosten spürbar Tempo. Gemessen auf einem M5 mit
+  16 GB, mit Docker und anderen Grafik-Programmen nebenher: 8–9 Tokens/s.
 
 - **Denkmodus aus lassen** (Standard). Er kostet viele Tokens pro Antwort.
 - **`--server-behalten`:** Das Modell bleibt geladen, der nächste Start dauert unter einer Sekunde.

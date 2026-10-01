@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { parseArgs, UsageError } from '../lib/config.mjs';
-import { explainFailure, serverArgs } from '../lib/server.mjs';
+import { explainFailure, serverArgs, startServer } from '../lib/server.mjs';
 import {
   assetChoices,
   download,
@@ -204,5 +204,39 @@ describe('downloads', { skip: process.platform === 'win32' }, () => {
     const requests = served.length;
     assert.equal(await ensureLlamaServer({ home, releasesUrl: `${origin}/releases` }), path);
     assert.equal(served.length, requests, 'no network when already installed');
+  });
+});
+
+describe('stopping the model server', () => {
+  // A server that ignores SIGTERM, like a llama-server stuck in its shutdown.
+  test('stop ends a server that ignores SIGTERM', { skip: process.platform === 'win32' }, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jave-stop-'));
+    const fake = join(dir, 'llama-server');
+    writeFileSync(
+      fake,
+      `#!${process.execPath}\nprocess.on('SIGTERM', () => {});\nsetInterval(() => {}, 1000);\n`,
+      { mode: 0o755 },
+    );
+    try {
+      const { child, stop } = await startServer({
+        serverPath: fake,
+        modelPath: 'none.gguf',
+        port: 1,
+        ctx: 512,
+        foreground: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const exited = new Promise((resolve) => child.on('exit', (code, signal) => resolve(signal)));
+      stop();
+      stop(); // the agent stops it in `finally` and again on process exit
+      const signal = await Promise.race([
+        exited,
+        new Promise((resolve) => setTimeout(() => resolve('still running'), 3000)),
+      ]);
+      if (signal === 'still running') child.kill('SIGKILL');
+      assert.equal(signal, 'SIGKILL');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

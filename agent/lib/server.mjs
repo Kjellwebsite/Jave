@@ -100,8 +100,16 @@ export async function startServer({
   child.on('error', (error) => {
     exited = { code: -1, error };
   });
+  // One SIGKILL, sent once. The agent stops the server in `finally` and again on exit;
+  // a second SIGTERM makes llama-server call exit() inside its signal handler, which
+  // on macOS trips a Metal assert and can hang with the model still in memory, where
+  // the next start then reuses it. The server has nothing to save, and a swapped-out
+  // one would have to page back in just to shut down cleanly.
+  let killed = false;
   const kill = () => {
-    if (exited === null) child.kill();
+    if (exited !== null || killed) return;
+    killed = true;
+    child.kill('SIGKILL');
   };
   process.on('exit', kill);
   const stop = keep ? () => process.off('exit', kill) : kill;

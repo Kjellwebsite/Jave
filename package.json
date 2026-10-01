@@ -10,6 +10,7 @@
   },
   "scripts": {
     "start": "node start.mjs",
+    "agent": "node agent/agent.mjs",
     "dev:bot": "pnpm --filter @jave/bot dev",
     "dev:dashboard": "pnpm --filter @jave/dashboard dev",
     "dev:activity": "pnpm --filter @jave/activity dev",
@@ -22,6 +23,7 @@
     "test:watch": "vitest",
     "test:e2e": "pnpm --filter @jave/dashboard test:e2e",
     "test:e2e:activity": "pnpm --filter @jave/activity test:e2e",
+    "test:agent": "node --test \"agent/test/*.test.mjs\"",
     "db:generate": "pnpm --filter @jave/database generate",
     "db:migrate": "pnpm --filter @jave/database migrate",
     "db:seed": "pnpm --filter @jave/core seed",

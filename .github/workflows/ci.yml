@@ -45,6 +45,8 @@ jobs:
         run: pnpm db:migrate
       - name: Unit + integration tests (PGlite)
         run: pnpm test
+      - name: Local agent tests (no model needed)
+        run: pnpm test:agent
       - name: Unit + integration tests (real Postgres, production driver)
         # Same suite through postgres-js with a real pool: catches driver-only
         # bugs and exercises row-lock interleaving PGlite cannot.

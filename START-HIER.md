@@ -64,6 +64,17 @@ JAVE erledigt den Rest: Datenbank, Befehle, Bot und Dashboard.
 **Beenden:** `Strg + C` im Fenster, oder das Fenster schließen.
 **Aktualisieren:** die Zeile aus Teil 1 noch einmal einfügen. Deine Einstellungen und Daten bleiben.
 
+## Extra: der lokale KI-Agent
+
+Im JAVE-Ordner liegt auch **JAVE Agent**, ein KI-Agent, der komplett auf deinem Computer läuft
+(Gemma 4 12B, ohne Konto und ohne Kosten). Er kann Dateien lesen und bearbeiten, Befehle
+ausführen und im Web suchen. Vor jeder Änderung fragt er dich.
+
+- **Windows:** Doppelklick auf `starten.cmd` im Ordner `%USERPROFILE%\JAVE\app\agent`
+- **Mac:** Doppelklick auf `starten.command` im Ordner `~/JAVE/app/agent`
+
+Beim ersten Start lädt er etwa 8 GB herunter. Mehr dazu in [agent/README.md](agent/README.md).
+
 ## Wenn etwas nicht klappt
 
 JAVE sagt dir im Fenster, was fehlt, zum Beispiel „Der Bot ist noch nicht in deinem Server“ mit
